@@ -1,0 +1,6 @@
+jax
+jaxtyping
+equinox
+optax
+orbax-checkpoint
+typing-extensions
