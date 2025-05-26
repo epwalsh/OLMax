@@ -1,9 +1,12 @@
 import logging
 import multiprocessing as mp
+import os
 import random
 import socket
 import sys
+import tempfile
 from collections import deque
+from pathlib import Path
 from typing import Any, Callable, Literal, Optional
 
 import jax
@@ -63,6 +66,10 @@ def _init_process(
     primary_port: int = 29500,
 ):
     assert world_size > 1
+
+    os.environ[
+        dist.SHARED_FS_DIRS_ENV_VAR
+    ] = f"{Path.home()}:{Path(tempfile.gettempdir()).resolve()}"
 
     old_log_record_factory = logging.getLogRecordFactory()
 

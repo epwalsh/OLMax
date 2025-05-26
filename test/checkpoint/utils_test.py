@@ -1,10 +1,10 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from jax.sharding import NamedSharding, PartitionSpec
+from jax.sharding import NamedSharding
 from jaxtyping import Array, PRNGKeyArray
 
-import olmax.checkpoint as checkpoint
+import olmax.checkpoint.utils as checkpoint_utils
 import olmax.distributed as dist
 import olmax.nn as nn
 from olmax.testing.distributed import run_distributed_test
@@ -41,7 +41,7 @@ def test_save_and_restore(tmp_path, block: bool):
     model = Linear(2, 3, key=jax.random.PRNGKey(0))
 
     # Save checkpoint.
-    handle = checkpoint.save(checkpoint_dir, model, block=block)
+    handle = checkpoint_utils.save(checkpoint_dir, model, block=block)
     if not block:
         assert handle is not None
         handle.wait()
@@ -49,14 +49,14 @@ def test_save_and_restore(tmp_path, block: bool):
         assert handle.done()
 
     # Get metadata about checkpoint.
-    metadata = checkpoint.get_metadata(checkpoint_dir)
+    metadata = checkpoint_utils.get_metadata(checkpoint_dir)
 
     # Restore from metadata.
-    checkpoint.restore(checkpoint_dir, metadata)
+    checkpoint_utils.restore(checkpoint_dir, metadata)
 
     # Restore from model.
     model2 = Linear(2, 3, key=jax.random.PRNGKey(1))
-    model2 = checkpoint.restore(checkpoint_dir, model2)
+    model2 = checkpoint_utils.restore(checkpoint_dir, model2)
 
     # Check that both model's are now equal.
     assert jnp.allclose(model.weight, model2.weight).item()
@@ -78,7 +78,7 @@ def _run_save_and_restore_distributed(
     )
 
     # Save checkpoint.
-    checkpoint.save(checkpoint_dir, model)
+    checkpoint_utils.save(checkpoint_dir, model)
 
     # Restore from model.
     model2 = Linear(
@@ -87,7 +87,7 @@ def _run_save_and_restore_distributed(
         key=jax.random.PRNGKey(1),
         sharding=load_sharding,
     )
-    model2 = checkpoint.restore(checkpoint_dir, model2)
+    model2 = checkpoint_utils.restore(checkpoint_dir, model2)
 
     # Check that both model's are now equal.
     assert jnp.allclose(model.weight, model2.weight).item()
@@ -95,11 +95,10 @@ def _run_save_and_restore_distributed(
 
 
 def _run_save_and_restore_distributed_fsdp(checkpoint_dir):
-    mesh = jax.make_mesh((dist.get_global_device_count(),), ("model",))
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        NamedSharding(mesh, PartitionSpec("model")),
-        NamedSharding(mesh, PartitionSpec("model")),
+        dist.get_fsdp_sharding(),
+        dist.get_fsdp_sharding(),
     )
 
 
@@ -112,11 +111,10 @@ def test_save_and_restore_distributed_fsdp(tmp_path):
 
 def _run_save_and_restore_distributed_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
-    mesh = jax.make_mesh((2, 2), ("replicate", "shard"))
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        NamedSharding(mesh, PartitionSpec("shard")),
-        NamedSharding(mesh, PartitionSpec("shard")),
+        dist.get_hsdp_sharding(2),
+        dist.get_hsdp_sharding(2),
     )
 
 
@@ -131,10 +129,8 @@ def _run_save_and_restore_distributed_fsdp_to_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        NamedSharding(jax.make_mesh((4,), ("model")), PartitionSpec("model")),
-        NamedSharding(
-            jax.make_mesh((2, 2), ("replicate", "shard")), PartitionSpec("shard")
-        ),
+        dist.get_fsdp_sharding(),
+        dist.get_hsdp_sharding(2),
     )
 
 

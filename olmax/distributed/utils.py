@@ -1,8 +1,15 @@
+import os
+from pathlib import Path
 from typing import Sequence, TypeVar
 
 import jax
 import jax.experimental.multihost_utils as multihost_utils
 import jax.numpy as jnp
+
+from .. import fs
+from ..types import PathOrStr
+
+SHARED_FS_DIRS_ENV_VAR = "OLMAX_SHARED_FS_DIRS"
 
 _DIST_INITIALIZED = False
 
@@ -39,19 +46,84 @@ def teardown_distributed():
     _DIST_INITIALIZED = False
 
 
-def get_process_world_size():
+def get_process_world_size() -> int:
     return jax.process_count()
 
 
-def get_process_rank():
+def get_process_rank() -> int:
     return jax.process_index()
 
 
-def get_global_device_count():
+_PROCESS_FS_RANK_CACHE: dict[int, dict[Path, int]] = {}
+
+
+def _get_process_filesystem_rank(dir: Path, process_world_size: int) -> int:
+    global _PROCESS_FS_RANK_CACHE
+
+    if (cache := _PROCESS_FS_RANK_CACHE.get(process_world_size)) is None:
+        cache = {}
+        _PROCESS_FS_RANK_CACHE[process_world_size] = cache
+
+    # Direct cache hit.
+    if dir in cache:
+        return cache[dir]
+
+    def cache_result(rank: int) -> int:
+        cache[dir] = rank
+        for parent in dir.parents:
+            cache[parent] = rank
+        return rank
+
+    # Check if any parent is already cached.
+    for parent in dir.parents:
+        if (rank := cache.get(parent)) is not None:
+            return cache_result(rank)
+
+    # No cache hit, check env var.
+    if (shared_dirs_var := os.environ.get(SHARED_FS_DIRS_ENV_VAR)) is not None:
+        shared_dirs = shared_dirs_var.split(":")
+        for shared_dir in shared_dirs:
+            shared_dir = Path(shared_dir).resolve()
+
+            if dir == shared_dir:
+                return cache_result(get_process_rank())
+
+            for parent in dir.parents:
+                if parent == shared_dir:
+                    return cache_result(get_process_rank())
+
+    return cache_result(0)
+
+
+def get_process_filesystem_rank(dir: PathOrStr) -> int:
+    f"""
+    Get the rank of the current process modulo the number of processes that have write access to
+    the given directory.
+
+    This will check to see if the ``dir`` or any of its parents are listed in the environment variable
+    '{SHARED_FS_DIRS_ENV_VAR}', which should be a colon-separated list of directories that are accessible
+    by all processes. Otherwise this will assume that only the current process can access to the ``dir``
+    and return 0 for all processes.
+    """
+    if fs.is_url(dir):
+        raise ValueError("expected a local directory, not a URL")
+    dir = Path(fs.normalize_path(dir)).resolve()
+    return _get_process_filesystem_rank(dir, get_process_world_size())
+
+
+def get_global_device_count() -> int:
     return jax.device_count()
 
 
-def is_distributed():
+def get_local_device_count() -> int:
+    return jax.local_device_count()
+
+
+def get_local_devices(process_rank: int | None = None) -> list[jax.Device]:
+    return jax.local_devices(process_rank)
+
+
+def is_distributed() -> bool:
     return get_process_world_size() > 1
 
 
