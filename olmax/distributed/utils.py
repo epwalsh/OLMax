@@ -47,6 +47,10 @@ def get_process_rank():
     return jax.process_index()
 
 
+def get_global_device_count():
+    return jax.device_count()
+
+
 def is_distributed():
     return get_process_world_size() > 1
 

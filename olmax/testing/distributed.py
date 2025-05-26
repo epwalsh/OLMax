@@ -4,9 +4,12 @@ import random
 import socket
 import sys
 from collections import deque
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Literal, Optional
 
-import olmax.distributed.utils as dist
+import jax
+import pytest
+
+from .. import distributed as dist
 
 log = logging.getLogger(__name__)
 
@@ -54,8 +57,8 @@ def _init_process(
     world_size: int,
     log_from_all_ranks: bool,
     func: Callable,
-    func_args: Optional[Tuple[Any, ...]] = None,
-    func_kwargs: Optional[Dict[str, Any]] = None,
+    func_args: Optional[tuple[Any, ...]] = None,
+    func_kwargs: Optional[dict[str, Any]] = None,
     primary_addr: str = "127.0.0.1",
     primary_port: int = 29500,
 ):
@@ -101,35 +104,45 @@ def run_distributed_test(
     world_size: int = 2,
     log_from_all_ranks: bool = False,
     start_method: Optional[str] = "spawn",
-    func_args: Optional[Tuple[Any, ...]] = None,
-    func_kwargs: Optional[Dict[str, Any]] = None,
+    args: Optional[tuple[Any, ...]] = None,
+    kwargs: Optional[dict[str, Any]] = None,
     primary_addr: str = "127.0.0.1",
     primary_port: Optional[int] = None,
+    backend: Literal["gpu", "tpu", "cpu"] | str | None = None,
 ):
     """
     This runs the `func` in a simulated distributed environment.
     """
-    mp.set_start_method(start_method)
+    if backend is None:
+        backend = jax.default_backend()
+
+    if backend != "cpu" and jax.device_count(backend) < world_size:
+        pytest.skip(f"Requires at least {world_size} {backend} devices")
+
+    ctx = mp.get_context(method=start_method)
 
     if primary_port is None:
         primary_port = _find_open_port(host=primary_addr)
 
     log.info(f"Running distributed test on port {primary_port}...")
 
-    with mp.Pool(processes=world_size) as pool:
+    with ctx.Pool(processes=world_size) as pool:
         results = []
         for rank in range(world_size):
-            kwargs = dict(
-                process_rank=rank,
-                world_size=world_size,
-                log_from_all_ranks=log_from_all_ranks,
-                func=func,
-                func_args=func_args,
-                func_kwargs=func_kwargs,
-                primary_addr=primary_addr,
-                primary_port=primary_port,
+            result = pool.apply_async(
+                _init_process,
+                [],
+                dict(
+                    process_rank=rank,
+                    world_size=world_size,
+                    log_from_all_ranks=log_from_all_ranks,
+                    func=func,
+                    func_args=args,
+                    func_kwargs=kwargs,
+                    primary_addr=primary_addr,
+                    primary_port=primary_port,
+                ),
             )
-            result = pool.apply_async(_init_process, [], kwargs)
             results.append(result)
 
         for result in results:
