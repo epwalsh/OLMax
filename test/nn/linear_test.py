@@ -1,4 +1,5 @@
 import functools as ft
+import logging
 
 import jax
 import jax.numpy as jnp
@@ -63,4 +64,9 @@ def _run_linear_with_fsdp():
 
 
 def test_linear_with_fsdp():
+    run_distributed_test(_run_linear_with_fsdp)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
     run_distributed_test(_run_linear_with_fsdp)
