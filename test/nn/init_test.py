@@ -1,9 +1,9 @@
 import jax
-import jax.numpy as jnp
 
 import olmax.distributed as dist
 import olmax.nn as nn
 from olmax.testing.distributed import run_distributed_test
+from olmax.testing.utils import allclose
 
 
 def test_truncated_normal():
@@ -19,7 +19,7 @@ def _run_truncated_normal_distributed():
     x_sharded = nn.init.truncated_normal(
         key, (4, 8), sharding=dist.get_hsdp_sharding(2)
     )
-    assert jnp.allclose(x_full, x_sharded).item()
+    assert allclose(x_full, x_sharded)
 
 
 def test_truncated_normal_distributed():

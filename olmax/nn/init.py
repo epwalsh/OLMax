@@ -5,7 +5,9 @@ from jax.sharding import NamedSharding
 from jaxtyping import Array, DTypeLike, PRNGKeyArray
 
 
-@ft.partial(jax.jit, static_argnums=(1,), static_argnames=("shape", "sharding"))
+@ft.partial(
+    jax.jit, static_argnums=(1,), static_argnames=("shape", "dtype", "sharding")
+)
 def truncated_normal(
     key: PRNGKeyArray,
     shape: tuple[int, ...],
@@ -24,7 +26,9 @@ def truncated_normal(
     return out
 
 
-@ft.partial(jax.jit, static_argnums=(1,), static_argnames=("shape", "sharding"))
+@ft.partial(
+    jax.jit, static_argnums=(1,), static_argnames=("shape", "dtype", "sharding")
+)
 def zeros(
     key: PRNGKeyArray,
     shape: tuple[int, ...],
@@ -38,7 +42,9 @@ def zeros(
     return out
 
 
-@ft.partial(jax.jit, static_argnums=(1,), static_argnames=("shape", "sharding"))
+@ft.partial(
+    jax.jit, static_argnums=(1,), static_argnames=("shape", "dtype", "sharding")
+)
 def ones(
     key: PRNGKeyArray,
     shape: tuple[int, ...],
