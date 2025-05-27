@@ -15,6 +15,9 @@ class MeshAxisNames:
         replicate = "hsdp_replicate"
         shard = "hsdp_shard"
 
+    class DDP:
+        replicate = "ddp_replicate"
+
 
 @ft.cache
 def _get_fsdp_mesh(global_device_count: int) -> Mesh:
@@ -65,3 +68,21 @@ def get_hsdp_sharding(shard_degree: int, sharding_axis: int = 0) -> NamedShardin
     return _get_hsdp_sharding(
         dist_utils.get_global_device_count(), shard_degree, sharding_axis
     )
+
+
+@ft.cache
+def _get_ddp_mesh(global_device_count: int) -> Mesh:
+    return jax.make_mesh((global_device_count,), (MeshAxisNames.DDP.replicate,))
+
+
+def get_ddp_mesh() -> Mesh:
+    return _get_ddp_mesh(dist_utils.get_global_device_count())
+
+
+@ft.cache
+def _get_ddp_sharding(global_device_count: int) -> NamedSharding:
+    return NamedSharding(_get_ddp_mesh(global_device_count), P())
+
+
+def get_ddp_sharding() -> NamedSharding:
+    return _get_ddp_sharding(dist_utils.get_global_device_count())

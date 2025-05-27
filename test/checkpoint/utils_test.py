@@ -2,7 +2,6 @@ import jax
 import jax.numpy as jnp
 import pytest
 from jax.sharding import NamedSharding
-from jaxtyping import Array, PRNGKeyArray
 
 import olmax.checkpoint.utils as checkpoint_utils
 import olmax.distributed as dist
@@ -10,35 +9,11 @@ import olmax.nn as nn
 from olmax.testing.distributed import run_distributed_test
 
 
-class Linear(nn.Module):
-    weight: Array
-    bias: Array
-
-    def __init__(
-        self,
-        in_size: int,
-        out_size: int,
-        key: PRNGKeyArray,
-        sharding: NamedSharding | None = None,
-    ):
-        wkey, bkey = jax.random.split(key)
-        weight = jax.random.normal(wkey, (out_size, in_size))
-        bias = jax.random.normal(bkey, (out_size,))
-        if sharding is not None:
-            weight = jax.device_put(weight, sharding)
-            bias = jax.device_put(bias, sharding)
-        self.weight = weight
-        self.bias = bias
-
-    def __call__(self, x: Array) -> Array:
-        return self.weight @ x + self.bias
-
-
 @pytest.mark.parametrize("block", [True, False])
 def test_save_and_restore(tmp_path, block: bool):
     checkpoint_dir = tmp_path / "checkpoint"
 
-    model = Linear(2, 3, key=jax.random.PRNGKey(0))
+    model = nn.Linear(2, 3, key=jax.random.PRNGKey(0))
 
     # Save checkpoint.
     handle = checkpoint_utils.save(checkpoint_dir, model, block=block)
@@ -55,11 +30,12 @@ def test_save_and_restore(tmp_path, block: bool):
     checkpoint_utils.restore(checkpoint_dir, metadata)
 
     # Restore from model.
-    model2 = Linear(2, 3, key=jax.random.PRNGKey(1))
+    model2 = nn.Linear(2, 3, key=jax.random.PRNGKey(1))
     model2 = checkpoint_utils.restore(checkpoint_dir, model2)
 
     # Check that both model's are now equal.
     assert jnp.allclose(model.weight, model2.weight).item()
+    assert model.bias is not None
     assert jnp.allclose(model.bias, model2.bias).item()
 
 
@@ -70,27 +46,30 @@ def _run_save_and_restore_distributed(
     out_size = dist.get_global_device_count() * 2
 
     # Initialize sharded model.
-    model = Linear(
+    model = nn.Linear(
         in_size,
         out_size,
         key=jax.random.PRNGKey(0),
-        sharding=save_sharding,
+        weight_sharding=save_sharding,
+        bias_sharding=save_sharding,
     )
 
     # Save checkpoint.
     checkpoint_utils.save(checkpoint_dir, model)
 
     # Restore from model.
-    model2 = Linear(
+    model2 = nn.Linear(
         in_size,
         out_size,
         key=jax.random.PRNGKey(1),
-        sharding=load_sharding,
+        weight_sharding=load_sharding,
+        bias_sharding=load_sharding,
     )
     model2 = checkpoint_utils.restore(checkpoint_dir, model2)
 
     # Check that both model's are now equal.
     assert jnp.allclose(model.weight, model2.weight).item()
+    assert model.bias is not None
     assert jnp.allclose(model.bias, model2.bias).item()
 
 
