@@ -43,6 +43,16 @@ def test_linear():
     assert grads is not None
 
 
+def test_linear_3d():
+    batch_size, seq_len, in_size, out_size = 2, 12, 8, 4
+    key = jax.random.PRNGKey(0)
+    key, batch_key = jax.random.split(key)
+    inputs = jax.random.normal(batch_key, (batch_size, seq_len, in_size))
+    linear = nn.Linear(in_size, out_size, key=key)
+    out = linear(inputs)
+    assert out.shape == (batch_size, seq_len, out_size)
+
+
 def _run_linear_data_parallel(parallel_config: dist.ParallelConfig):
     in_size, out_size, batch_size = (
         2 * dist.get_global_device_count(),

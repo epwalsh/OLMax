@@ -102,10 +102,23 @@ class ParallelConfig:
         return devices
 
     def get_param_sharding(
-        self, dp_sharding_axis: int | None = 0, tp_sharding_axis: int | None = None
+        self,
+        dp_sharding_axis: int | None = 0,
+        tp_sharding_axis: int | None = None,
+        ndim: int | None = None,
     ) -> NamedSharding:
         if tp_sharding_axis is not None and self.tp is None:
             raise ValueError("'tp_sharding_axis' is only valid when tensor parallelism is enabled")
+
+        if dp_sharding_axis is not None and dp_sharding_axis < 0:
+            if ndim is None:
+                raise ValueError("using negative offset axes requires specifying ndim")
+            dp_sharding_axis = ndim + dp_sharding_axis
+
+        if tp_sharding_axis is not None and tp_sharding_axis < 0:
+            if ndim is None:
+                raise ValueError("using negative offset axes requires specifying ndim")
+            tp_sharding_axis = ndim + tp_sharding_axis
 
         mesh = self.get_param_mesh()
         partitions: list[str | tuple[str, ...] | None] = []

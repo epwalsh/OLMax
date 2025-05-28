@@ -102,3 +102,24 @@ def test_mlp_tensor_parallel(parallel_config: dist.ParallelConfig):
         devices_per_process=parallel_config.get_min_device_count(),
         args=(parallel_config,),
     )
+
+
+if __name__ == "__main__":
+    import os
+
+    os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
+
+    parallel_config = dist.ParallelConfig(tp=dist.TensorParallelConfig(2))
+    d_model, hidden_size, batch_size = (
+        2 * dist.get_global_device_count(),
+        4 * dist.get_global_device_count(),
+        2 * dist.get_global_device_count(),
+    )
+    key = jax.random.PRNGKey(0)
+
+    key, batch_key = jax.random.split(key)
+    full_batch = _get_batch(batch_key, batch_size, d_model)
+    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+
+    dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, parallel_config=parallel_config)
+    dist_loss, dist_grads = _get_loss_and_grads(dist_mlp, dist_batch)

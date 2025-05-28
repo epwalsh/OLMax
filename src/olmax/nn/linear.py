@@ -91,7 +91,7 @@ class Linear(Module):
             elif self.tp_style == TPStyle.rowwise:
                 x = jax.lax.with_sharding_constraint(
                     x,
-                    self.parallel_config.get_param_sharding(tp_sharding_axis=0),
+                    self.parallel_config.get_param_sharding(tp_sharding_axis=-1, ndim=x.ndim),
                 )
                 weight = jax.lax.with_sharding_constraint(
                     weight,
@@ -109,7 +109,7 @@ class Linear(Module):
         if self.tp_style == TPStyle.colwise:
             assert self.parallel_config is not None
             out = jax.lax.with_sharding_constraint(
-                out, self.parallel_config.get_param_sharding(tp_sharding_axis=0)
+                out, self.parallel_config.get_param_sharding(tp_sharding_axis=-1, ndim=out.ndim)
             )
 
         return out
