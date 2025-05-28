@@ -30,7 +30,7 @@ def _run_test_utils_mp():
 
 
 def test_utils_mp():
-    run_distributed_test(_run_test_utils_mp)
+    run_distributed_test(_run_test_utils_mp, num_processes=2, devices_per_process=1)
 
 
 def _run_test_utils_sp():
