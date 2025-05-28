@@ -64,12 +64,17 @@ def _init_process(
     func_kwargs: Optional[dict[str, Any]] = None,
     primary_addr: str = "127.0.0.1",
     primary_port: int = 29500,
+    backend: Literal["gpu", "tpu", "cpu"] | str | None = None,
     devices_per_process: int | None = None,
 ):
     if devices_per_process is not None:
-        os.environ[
-            "XLA_FLAGS"
-        ] = f"--xla_force_host_platform_device_count={devices_per_process}"
+        if backend == "cpu":
+            os.environ[
+                "XLA_FLAGS"
+            ] = f"--xla_force_host_platform_device_count={devices_per_process}"
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        elif backend == "gpu":
+            os.environ["CUDA_VISIBLE_DEVICES"] = f"{process_rank}"
 
     os.environ[
         dist.SHARED_FS_DIRS_ENV_VAR
@@ -167,6 +172,7 @@ def run_distributed_test(
                     func_kwargs=kwargs,
                     primary_addr=primary_addr,
                     primary_port=primary_port,
+                    backend=backend,
                 ),
             )
             results.append(result)
