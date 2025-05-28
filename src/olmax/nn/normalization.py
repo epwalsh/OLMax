@@ -43,9 +43,7 @@ class LayerNorm(Module):
                 wkey,
                 shape,
                 dtype=dtype,
-                sharding=None
-                if parallel_config is None
-                else parallel_config.get_param_sharding(),
+                sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
             )
         )
         self.bias = (
@@ -55,9 +53,7 @@ class LayerNorm(Module):
                 bkey,
                 shape,
                 dtype=dtype,
-                sharding=None
-                if parallel_config is None
-                else parallel_config.get_param_sharding(),
+                sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
             )
         )
 
@@ -106,9 +102,7 @@ class RMSNorm(Module):
                 wkey,
                 shape,
                 dtype=dtype,
-                sharding=None
-                if parallel_config is None
-                else parallel_config.get_param_sharding(),
+                sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
             )
         )
         self.bias = (
@@ -118,9 +112,7 @@ class RMSNorm(Module):
                 bkey,
                 shape,
                 dtype=dtype,
-                sharding=None
-                if parallel_config is None
-                else parallel_config.get_param_sharding(),
+                sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
             )
         )
 

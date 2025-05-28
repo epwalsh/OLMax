@@ -11,19 +11,10 @@ def _run_test_utils_mp():
     assert dist_utils.get_local_device_count() < dist_utils.get_global_device_count()
 
     assert (
-        dist_utils.synchronize_value(
-            True if dist_utils.get_process_rank() == 0 else False
-        )
-        is True
+        dist_utils.synchronize_value(True if dist_utils.get_process_rank() == 0 else False) is True
     )
-    assert (
-        dist_utils.synchronize_value(2.0 if dist_utils.get_process_rank() == 0 else 0.0)
-        == 2.0
-    )
-    assert (
-        dist_utils.synchronize_value(-1 if dist_utils.get_process_rank() == 0 else 0)
-        == -1
-    )
+    assert dist_utils.synchronize_value(2.0 if dist_utils.get_process_rank() == 0 else 0.0) == 2.0
+    assert dist_utils.synchronize_value(-1 if dist_utils.get_process_rank() == 0 else 0) == -1
 
     # NOTE: relies on the SHARED_FS_DIRS_ENV_VAR which is set by 'run_distributed_test'.
     assert dist_utils.get_process_filesystem_rank(".") == dist_utils.get_process_rank()

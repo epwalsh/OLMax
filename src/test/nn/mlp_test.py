@@ -52,9 +52,7 @@ def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
     dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
 
     full_mlp = nn.GatedMLP(d_model, hidden_size, key=key)
-    dist_mlp = nn.GatedMLP(
-        d_model, hidden_size, key=key, parallel_config=parallel_config
-    )
+    dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, parallel_config=parallel_config)
 
     assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
     assert allclose(full_mlp.w2.weight, dist_mlp.w2.weight)
@@ -88,9 +86,7 @@ def test_mlp_data_parallel(parallel_config: dist.ParallelConfig):
     "parallel_config",
     [
         pytest.param(
-            dist.ParallelConfig(
-                dp=dist.DataParallelConfig.FSDP(), tp=dist.TensorParallelConfig(2)
-            ),
+            dist.ParallelConfig(dp=dist.DataParallelConfig.FSDP(), tp=dist.TensorParallelConfig(2)),
             id="FSDP+TP",
         ),
         pytest.param(

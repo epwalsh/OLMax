@@ -14,9 +14,7 @@ def _randomize_start_offsets(
     key: PRNGKeyArray,
 ) -> Array:
     num_instances, sequence_length = batch.shape
-    start_offsets = random.randint(
-        key, (num_instances, 1), 0, vocab_size - sequence_length
-    )
+    start_offsets = random.randint(key, (num_instances, 1), 0, vocab_size - sequence_length)
     return batch + start_offsets
 
 

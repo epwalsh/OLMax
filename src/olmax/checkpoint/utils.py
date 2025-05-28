@@ -63,6 +63,7 @@ def save(
     if block:
         save_handle.wait()
         save_handle.close()
+        return None
     else:
         return save_handle
 
@@ -124,9 +125,7 @@ def _get_checkpointer(
 ) -> ocp.AsyncCheckpointer:
     return ocp.AsyncCheckpointer(
         ocp.PyTreeCheckpointHandler(use_ocdbt=True, use_zarr3=True),
-        async_options=ocp.options.AsyncOptions(
-            post_finalization_callback=post_save_callback
-        ),
+        async_options=ocp.options.AsyncOptions(post_finalization_callback=post_save_callback),
     )
 
 

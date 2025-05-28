@@ -16,13 +16,9 @@ def _run_truncated_normal_mp():
     # given the same key, should get same result regardless of how we shard
     key = jax.random.PRNGKey(0)
     x_full = nn.init.truncated_normal(key, (4, 8))
-    x_sharded = nn.init.truncated_normal(
-        key, (4, 8), sharding=dist.get_hsdp_sharding(2)
-    )
+    x_sharded = nn.init.truncated_normal(key, (4, 8), sharding=dist.get_hsdp_sharding(2))
     assert allclose(x_full, x_sharded)
 
 
 def test_truncated_normal_mp():
-    run_distributed_test(
-        _run_truncated_normal_mp, num_processes=2, devices_per_process=1
-    )
+    run_distributed_test(_run_truncated_normal_mp, num_processes=2, devices_per_process=1)

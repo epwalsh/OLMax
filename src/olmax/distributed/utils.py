@@ -69,6 +69,7 @@ def _get_process_filesystem_rank(dir: Path, process_world_size: int) -> int:
         return cache[dir]
 
     def cache_result(rank: int) -> int:
+        assert cache is not None
         cache[dir] = rank
         for parent in dir.parents:
             cache[parent] = rank
@@ -82,8 +83,8 @@ def _get_process_filesystem_rank(dir: Path, process_world_size: int) -> int:
     # No cache hit, check env var.
     if (shared_dirs_var := os.environ.get(SHARED_FS_DIRS_ENV_VAR)) is not None:
         shared_dirs = shared_dirs_var.split(":")
-        for shared_dir in shared_dirs:
-            shared_dir = Path(shared_dir).resolve()
+        for shared_dir_str in shared_dirs:
+            shared_dir = Path(shared_dir_str).resolve()
 
             if dir == shared_dir:
                 return cache_result(get_process_rank())
