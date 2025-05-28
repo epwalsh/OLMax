@@ -72,8 +72,10 @@ def _init_process(
             os.environ[
                 "XLA_FLAGS"
             ] = f"--xla_force_host_platform_device_count={devices_per_process}"
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
         elif backend == "gpu":
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = f"{process_rank}"
 
     os.environ[
