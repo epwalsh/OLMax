@@ -35,6 +35,7 @@ class Module(eqx.Module):
             and (dp_sharding := self.parallel_config.get_data_sharding()) is not None
         ):
             # Default data-parallel implementation for FSDP, DDP, HSDP...
+            assert ndims > 1
             args = jax.lax.with_sharding_constraint(args, dp_sharding)
             kwargs = jax.lax.with_sharding_constraint(kwargs, dp_sharding)
             out = vmap_multiple(self.forward, ndims - self.keepdims)(*args, **kwargs)
