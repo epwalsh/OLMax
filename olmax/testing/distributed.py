@@ -123,6 +123,7 @@ def run_distributed_test(
     primary_addr: str = "127.0.0.1",
     primary_port: Optional[int] = None,
     backend: Literal["gpu", "tpu", "cpu"] | str | None = None,
+    timeout: int = 60,
 ):
     """
     This runs the `func` in a simulated distributed environment.
@@ -171,4 +172,4 @@ def run_distributed_test(
             results.append(result)
 
         for result in results:
-            result.get()
+            result.get(timeout=timeout)
