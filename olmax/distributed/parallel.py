@@ -75,7 +75,7 @@ class ExpertParallelConfig:
 class ParallelConfig:
     dp: DataParallelConfig = dataclasses.field(default_factory=DataParallelConfig)
     tp: TensorParallelConfig | None = None
-    #  cp: ContextParallelConfig | None = Non
+    #  cp: ContextParallelConfig | None = None
     #  pp: PipelineParallelConfig | None = None
     #  ep: ExpertParallelConfig | None = None
 
@@ -93,8 +93,8 @@ class ParallelConfig:
 
     def get_min_device_count(self) -> int:
         devices = 1
-        if (d := self.dp.replicate_degree) != 0:
-            devices *= d if d > 0 else 2
+        if (d := self.dp.replicate_degree) > 0:
+            devices *= d
         if (d := self.dp.shard_degree) != 0:
             devices *= d if d > 0 else 2
         if self.tp is not None and (d := self.tp.degree) != 0:

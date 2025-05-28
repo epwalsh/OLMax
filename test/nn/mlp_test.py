@@ -93,6 +93,10 @@ def test_mlp_data_parallel(parallel_config: dist.ParallelConfig):
             ),
             id="FSDP+TP",
         ),
+        pytest.param(
+            dist.ParallelConfig(tp=dist.TensorParallelConfig(2)),
+            id="TP",
+        ),
     ],
 )
 def test_mlp_tensor_parallel(parallel_config: dist.ParallelConfig):
