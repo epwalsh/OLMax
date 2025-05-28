@@ -130,8 +130,18 @@ def run_distributed_test(
     if backend is None:
         backend = jax.default_backend()
 
-    if backend != "cpu" and jax.device_count(backend) < num_processes:
-        pytest.skip(f"Requires at least {num_processes} {backend} devices")
+    total_devices_needed = num_processes
+    if devices_per_process is not None:
+        total_devices_needed *= devices_per_process
+    if backend != "cpu" and jax.device_count(backend) < total_devices_needed:
+        pytest.skip(f"Requires at least {total_devices_needed} {backend} devices")
+
+    if (
+        devices_per_process is not None
+        and num_processes == 1
+        and jax.device_count() == devices_per_process
+    ):
+        devices_per_process = None
 
     ctx = mp.get_context(method=start_method)
 
