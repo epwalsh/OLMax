@@ -11,15 +11,9 @@ from . import utils as dist_utils
 
 
 class MeshAxisNames:
-    class FSDP:
-        shard = "fsdp_shard"
-
-    class HSDP:
-        replicate = "hsdp_replicate"
-        shard = "hsdp_shard"
-
-    class DDP:
-        replicate = "ddp_replicate"
+    class DP:
+        replicate = "dp_replicate"
+        shard = "dp_shard"
 
     class PP:
         split = "pp_split"
@@ -91,9 +85,9 @@ class ParallelConfig:
     def DDP(cls) -> Self:
         return cls(dp=DataParallelConfig.DDP())
 
-    def get_dp_param_sharding(self, sharding_axis: int = 0) -> NamedSharding:
-        mesh = self._get_param_mesh()
-        shard_axis_name = self.get_dp_param_sharding_axis_name()
+    def get_dp_sharding(self, sharding_axis: int = 0) -> NamedSharding:
+        mesh = self.get_param_mesh()
+        shard_axis_name = self.get_dp_sharding_axis()
         partitions: list[str | None]
         if shard_axis_name is not None:
             partitions = [None] * sharding_axis + [shard_axis_name]
@@ -101,20 +95,12 @@ class ParallelConfig:
             partitions = []
         return NamedSharding(mesh, P(*partitions))
 
-    def get_dp_param_sharding_axis_name(self) -> str | None:
-        mesh = self._get_param_mesh()
-        if MeshAxisNames.FSDP.shard in mesh.shape:
-            return MeshAxisNames.FSDP.shard
-        elif MeshAxisNames.HSDP.shard in mesh.shape:
-            return MeshAxisNames.HSDP.shard
+    def get_dp_sharding_axis(self) -> str | None:
+        mesh = self.get_param_mesh()
+        if (axis := MeshAxisNames.DP.shard) in mesh.shape:
+            return axis
         else:
             return None
-
-    def get_data_sharding(self) -> NamedSharding:
-        return self.get_dp_param_sharding()
-
-    def get_data_sharding_axis_name(self) -> str | None:
-        return self.get_dp_param_sharding_axis_name()
 
     def _validate_dp_degrees(self, dp_device_ws: int) -> tuple[int, int]:
         dp_replicate_degree = self.dp.replicate_degree or 1
@@ -175,17 +161,12 @@ class ParallelConfig:
         axis_names: list[str] = []
 
         # Data parallel.
-        if dp_shard_degree > 1 and dp_replicate_degree > 1:
+        if dp_replicate_degree > 1:
             axis_shapes.append(dp_replicate_degree)
-            axis_names.append(MeshAxisNames.HSDP.replicate)
+            axis_names.append(MeshAxisNames.DP.replicate)
+        if dp_shard_degree > 1:
             axis_shapes.append(dp_shard_degree)
-            axis_names.append(MeshAxisNames.HSDP.shard)
-        elif dp_shard_degree > 1:
-            axis_shapes.append(dp_shard_degree)
-            axis_names.append(MeshAxisNames.FSDP.shard)
-        elif dp_replicate_degree > 1:
-            axis_shapes.append(dp_replicate_degree)
-            axis_names.append(MeshAxisNames.DDP.replicate)
+            axis_names.append(MeshAxisNames.DP.shard)
 
         # Tensor parallel, the inner-most axis.
         if self.tp is not None:
@@ -194,17 +175,14 @@ class ParallelConfig:
 
         return tuple(axis_shapes), tuple(axis_names)
 
-    def _get_param_mesh(self) -> Mesh:
+    def get_param_mesh(self) -> Mesh:
         axis_shapes, axis_names = self._get_param_mesh_axes(
             dist_utils.get_global_device_count()
         )
         return make_mesh(tuple(axis_shapes), tuple(axis_names))
 
-    def get_dp_param_mesh(self) -> Mesh:
-        return self._get_param_mesh()
-
     def get_data_mesh(self) -> Mesh:
-        return self._get_param_mesh()
+        return self.get_param_mesh()
 
 
 @ft.cache
@@ -214,7 +192,7 @@ def make_mesh(axis_shapes: tuple[int, ...], axis_names: tuple[str, ...]) -> Mesh
 
 
 def _get_fsdp_mesh(global_device_count: int) -> Mesh:
-    return make_mesh((global_device_count,), (MeshAxisNames.FSDP.shard,))
+    return make_mesh((global_device_count,), (MeshAxisNames.DP.shard,))
 
 
 def get_fsdp_mesh() -> Mesh:
@@ -222,7 +200,7 @@ def get_fsdp_mesh() -> Mesh:
 
 
 def _get_fsdp_sharding(global_device_count: int, sharding_axis: int) -> NamedSharding:
-    partitions = [None] * sharding_axis + [MeshAxisNames.FSDP.shard]
+    partitions = [None] * sharding_axis + [MeshAxisNames.DP.shard]
     return NamedSharding(_get_fsdp_mesh(global_device_count), P(*partitions))
 
 
@@ -234,8 +212,8 @@ def _get_hsdp_mesh(global_device_count: int, shard_degree: int) -> Mesh:
     return make_mesh(
         (global_device_count // shard_degree, shard_degree),
         (
-            MeshAxisNames.HSDP.replicate,
-            MeshAxisNames.HSDP.shard,
+            MeshAxisNames.DP.replicate,
+            MeshAxisNames.DP.shard,
         ),
     )
 
@@ -248,7 +226,7 @@ def get_hsdp_mesh(shard_degree: int) -> Mesh:
 def _get_hsdp_sharding(
     global_device_count: int, shard_degree: int, sharding_axis: int
 ) -> NamedSharding:
-    partitions = [None] * sharding_axis + [MeshAxisNames.HSDP.shard]
+    partitions = [None] * sharding_axis + [MeshAxisNames.DP.shard]
     return NamedSharding(
         _get_hsdp_mesh(global_device_count, shard_degree), P(*partitions)
     )
@@ -261,7 +239,7 @@ def get_hsdp_sharding(shard_degree: int, sharding_axis: int = 0) -> NamedShardin
 
 
 def _get_ddp_mesh(global_device_count: int) -> Mesh:
-    return make_mesh((global_device_count,), (MeshAxisNames.DDP.replicate,))
+    return make_mesh((global_device_count,), (MeshAxisNames.DP.replicate,))
 
 
 def get_ddp_mesh() -> Mesh:

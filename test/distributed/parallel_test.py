@@ -10,7 +10,7 @@ def test_parallel_config_fsdp():
     config = ParallelConfig.FSDP()
     assert config._get_param_mesh_axes(4) == (
         (4,),
-        (MeshAxisNames.FSDP.shard,),
+        (MeshAxisNames.DP.shard,),
     )
 
 
@@ -18,7 +18,7 @@ def test_parallel_config_hsdp():
     config = ParallelConfig.HSDP(2)
     assert config._get_param_mesh_axes(4) == (
         (2, 2),
-        (MeshAxisNames.HSDP.replicate, MeshAxisNames.HSDP.shard),
+        (MeshAxisNames.DP.replicate, MeshAxisNames.DP.shard),
     )
 
 
@@ -26,7 +26,7 @@ def test_parallel_config_ddp():
     config = ParallelConfig.DDP()
     assert config._get_param_mesh_axes(4) == (
         (4,),
-        (MeshAxisNames.DDP.replicate,),
+        (MeshAxisNames.DP.replicate,),
     )
 
 
@@ -35,7 +35,7 @@ def test_parallel_config_tp_with_fsdp():
     assert config._get_param_mesh_axes(4) == (
         (2, 2),
         (
-            MeshAxisNames.FSDP.shard,
+            MeshAxisNames.DP.shard,
             MeshAxisNames.TP.split,
         ),
     )

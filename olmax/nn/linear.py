@@ -39,7 +39,7 @@ class Linear(Module):
             (out_size, in_size),
             sharding=None
             if parallel_config is None
-            else parallel_config.get_dp_param_sharding(),
+            else parallel_config.get_dp_sharding(),
             dtype=dtype,
         )
         self.bias = (
@@ -50,7 +50,7 @@ class Linear(Module):
                 (out_size,),
                 sharding=None
                 if parallel_config is None
-                else parallel_config.get_dp_param_sharding(),
+                else parallel_config.get_dp_sharding(),
                 dtype=dtype,
             )
         )
@@ -58,35 +58,32 @@ class Linear(Module):
 
         if (
             parallel_config is not None
-            and (all_gather_axis := parallel_config.get_dp_param_sharding_axis_name())
-            is not None
+            and (dp_sharding_axis := parallel_config.get_dp_sharding_axis()) is not None
         ):
-            mesh = parallel_config.get_dp_param_mesh()
+            mesh = parallel_config.get_param_mesh()
+
+            def all_gather(p: Array) -> Array:
+                return jax.lax.all_gather(p, dp_sharding_axis, tiled=True)
 
             @ft.partial(
                 jax.remat,  # pyright: ignore
                 policy=lambda op, *_, **__: str(op) != "all_gather",  # pyright: ignore
             )
             def linear_fsdp(x: Array, weight: Array, bias: Array | None) -> Array:
-                weight = jax.lax.all_gather(weight, all_gather_axis, tiled=True)
-                bias = (
-                    None
-                    if bias is None
-                    else jax.lax.all_gather(bias, all_gather_axis, tiled=True)
-                )
+                weight = all_gather(weight)
+                bias = None if bias is None else all_gather(bias)
                 return linear(x, weight, bias)
-
-            self.linear_fn = linear_fsdp  # type: ignore
 
             @ft.partial(
                 jax.shard_map,
                 mesh=mesh,
-                in_specs=P(all_gather_axis),
-                out_specs=P(all_gather_axis),
+                in_specs=P(dp_sharding_axis),
+                out_specs=P(dp_sharding_axis),
             )
             def batch_linear_fsdp(self_: Self, x: Array) -> Array:
                 return jax.vmap(self_.forward)(x)
 
+            self.linear_fn = linear_fsdp
             self.forward_batch = batch_linear_fsdp
 
     @jax.named_scope("olmax.nn.Linear")

@@ -46,12 +46,10 @@ def _run_linear_with_fsdp():
     key = jax.random.PRNGKey(0)
 
     parallel_config = dist.ParallelConfig.FSDP()
-    shard_axis = parallel_config.get_data_sharding_axis_name()
-    assert shard_axis is not None
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, 2, 4, 4)
-    fsdp_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+    fsdp_batch = jax.device_put(full_batch, parallel_config.get_dp_sharding())
 
     full_linear = nn.Linear(4, 4, key=key)
     fsdp_linear = nn.Linear(4, 4, key=key, parallel_config=parallel_config)

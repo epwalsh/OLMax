@@ -37,7 +37,9 @@ def test_save_and_restore(tmp_path, block: bool):
 
 
 def _run_save_and_restore_distributed(
-    checkpoint_dir, save_sharding: nn.LinearSharding, load_sharding: nn.LinearSharding
+    checkpoint_dir,
+    save_sharding: dist.ParallelConfig,
+    load_sharding: dist.ParallelConfig,
 ):
     in_size = dist.get_global_device_count() * 4
     out_size = dist.get_global_device_count() * 2
@@ -47,7 +49,7 @@ def _run_save_and_restore_distributed(
         in_size,
         out_size,
         key=jax.random.PRNGKey(0),
-        sharding=save_sharding,
+        parallel_config=save_sharding,
     )
 
     # Save checkpoint.
@@ -58,7 +60,7 @@ def _run_save_and_restore_distributed(
         in_size,
         out_size,
         key=jax.random.PRNGKey(1),
-        sharding=load_sharding,
+        parallel_config=load_sharding,
     )
     model2 = checkpoint_utils.restore(checkpoint_dir, model2)
 
@@ -71,8 +73,8 @@ def _run_save_and_restore_distributed(
 def _run_save_and_restore_distributed_fsdp(checkpoint_dir):
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        nn.Linear.DefaultSharding(dist.ParallelConfig.FSDP()),
-        nn.Linear.DefaultSharding(dist.ParallelConfig.FSDP()),
+        dist.ParallelConfig.FSDP(),
+        dist.ParallelConfig.FSDP(),
     )
 
 
@@ -85,8 +87,8 @@ def _run_save_and_restore_distributed_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        nn.Linear.DefaultSharding(dist.ParallelConfig.HSDP(2)),
-        nn.Linear.DefaultSharding(dist.ParallelConfig.HSDP(2)),
+        dist.ParallelConfig.HSDP(2),
+        dist.ParallelConfig.HSDP(2),
     )
 
 
@@ -101,8 +103,8 @@ def _run_save_and_restore_distributed_fsdp_to_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        nn.Linear.DefaultSharding(dist.ParallelConfig.FSDP()),
-        nn.Linear.DefaultSharding(dist.ParallelConfig.HSDP(2)),
+        dist.ParallelConfig.FSDP(),
+        dist.ParallelConfig.HSDP(2),
     )
 
 
