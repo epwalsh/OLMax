@@ -1,6 +1,6 @@
 import jax
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import ParallelConfig, TPLinearStyle
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import linear
 from .init import truncated_normal

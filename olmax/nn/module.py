@@ -27,7 +27,7 @@ class Module(eqx.Module):
             self.parallel_config is not None
             and (dp_sharding := self.parallel_config.get_data_sharding()) is not None
         ):
-            # Default data-parallel implementation (like FSDP or DDP)
+            # Default data-parallel implementation for FSDP, DDP, HSDP...
             args = jax.lax.with_sharding_constraint(args, dp_sharding)
             kwargs = jax.lax.with_sharding_constraint(kwargs, dp_sharding)
             out = jax.vmap(self.forward)(*args, **kwargs)

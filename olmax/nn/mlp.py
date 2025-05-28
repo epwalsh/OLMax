@@ -3,7 +3,7 @@ from typing import Callable
 import equinox as eqx
 import jax
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import ParallelConfig, TPLinearStyle
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
@@ -32,7 +32,7 @@ class GatedMLP(Module):
             key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,  # TODO: handle TP
+            parallel_config=parallel_config,  # TODO: handle TP, colwise
         )
         self.w2 = Linear(
             hidden_size,
@@ -40,7 +40,7 @@ class GatedMLP(Module):
             key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,  # TODO: handle TP
+            parallel_config=parallel_config,  # TODO: handle TP, rowwise
         )
         self.w3 = Linear(
             d_model,
@@ -48,7 +48,7 @@ class GatedMLP(Module):
             key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,  # TODO: handle TP
+            parallel_config=parallel_config,  # TODO: handle TP, colwise
         )
         self.activation = activation
 

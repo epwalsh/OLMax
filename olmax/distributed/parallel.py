@@ -1,6 +1,7 @@
 import dataclasses
 import functools as ft
 from dataclasses import dataclass
+from enum import StrEnum
 
 import jax
 from jax.sharding import Mesh, NamedSharding
@@ -8,6 +9,11 @@ from jax.sharding import PartitionSpec as P
 from typing_extensions import Self
 
 from . import utils as dist_utils
+
+
+class TPLinearStyle(StrEnum):
+    colwise = "colwise"
+    rowwise = "rowwise"
 
 
 class MeshAxisNames:
