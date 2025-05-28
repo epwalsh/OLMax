@@ -1,9 +1,8 @@
-import functools as ft
 import logging
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax.sharding import PartitionSpec as P
 
 import olmax.distributed as dist
 import olmax.nn as nn
@@ -12,7 +11,7 @@ from olmax.testing.utils import allclose
 from olmax.types import Array, PRNGKeyArray
 
 
-def get_batch(
+def _get_batch(
     key: PRNGKeyArray, batch_size: int, in_size: int, out_size: int
 ) -> tuple[Array, Array]:
     inputs_key, targets_key = jax.random.split(key)
@@ -21,50 +20,54 @@ def get_batch(
     )
 
 
+def _get_loss(model: nn.Linear, batch: tuple[Array, Array]) -> Array:
+    inputs, targets = batch
+    predictions = model(inputs)
+    return jnp.mean(jnp.sum((predictions - targets) ** 2, axis=-1))
+
+
+@jax.jit
+@eqx.filter_value_and_grad
+def _get_loss_and_grads(model: nn.Linear, batch: tuple[Array, Array]) -> Array:
+    return _get_loss(model, batch)
+
+
+def test_linear():
+    key = jax.random.PRNGKey(0)
+    key, batch_key = jax.random.split(key)
+    batch = _get_batch(batch_key, 2, 4, 4)
+    linear = nn.Linear(4, 4, key=key)
+    loss, grads = _get_loss_and_grads(linear, batch)
+    assert loss is not None
+    assert grads is not None
+
+
 def _run_linear_with_fsdp():
     key = jax.random.PRNGKey(0)
 
     parallel_config = dist.ParallelConfig.FSDP()
     shard_axis = parallel_config.get_data_sharding_axis_name()
     assert shard_axis is not None
-    mesh = parallel_config.get_data_mesh()
 
     key, batch_key = jax.random.split(key)
-    full_batch = get_batch(batch_key, 2, 4, 4)
+    full_batch = _get_batch(batch_key, 2, 4, 4)
     fsdp_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
 
     full_linear = nn.Linear(4, 4, key=key)
-    fsdp_linear = nn.Linear(
-        4, 4, key=key, sharding=nn.Linear.DefaultSharding(parallel_config)
-    )
+    fsdp_linear = nn.Linear(4, 4, key=key, parallel_config=parallel_config)
 
     assert allclose(full_linear.weight, fsdp_linear.weight)
     assert allclose(full_linear.bias, fsdp_linear.bias)
 
-    def get_local_loss(model: nn.Linear, batch: tuple[Array, Array]):
-        inputs, targets = batch
-        predictions = jax.vmap(model)(inputs)
-        return jnp.mean(jnp.sum((predictions - targets) ** 2, axis=-1))
-
-    def get_full_loss(model: nn.Linear, batch: tuple[Array, Array]):
-        return get_local_loss(model, batch)
-
-    @ft.partial(jax.shard_map, mesh=mesh, in_specs=P(shard_axis), out_specs=P())
-    def get_fsdp_loss(model: nn.Linear, batch: tuple[Array, Array]):
-        local_loss = get_local_loss(model, batch)
-        return jax.lax.pmean(local_loss, shard_axis)
-
-    full_loss = get_full_loss(full_linear, full_batch)
-    fsdp_loss = get_fsdp_loss(fsdp_linear, fsdp_batch)  # pyright: ignore
+    full_loss, full_grads = _get_loss_and_grads(full_linear, full_batch)
+    fsdp_loss, fsdp_grads = _get_loss_and_grads(fsdp_linear, fsdp_batch)
     assert allclose(full_loss, fsdp_loss)
-
-    full_grads = jax.jit(jax.grad(get_full_loss))(full_linear, full_batch)
-    fsdp_grads = jax.jit(jax.grad(get_fsdp_loss))(fsdp_linear, fsdp_batch)
-    assert allclose(full_grads, fsdp_grads)
+    assert allclose(full_grads.weight, fsdp_grads.weight)
+    assert allclose(full_grads.bias, fsdp_grads.bias)
 
 
 def test_linear_with_fsdp():
-    run_distributed_test(_run_linear_with_fsdp)
+    run_distributed_test(_run_linear_with_fsdp, num_processes=1, devices_per_process=2)
 
 
 if __name__ == "__main__":

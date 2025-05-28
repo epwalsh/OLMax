@@ -1,40 +1,13 @@
-from abc import abstractmethod
-from dataclasses import dataclass
 from typing import Sequence
 
 import equinox as eqx
 import jax
-from jax.sharding import NamedSharding
 
 from ..distributed.parallel import ParallelConfig
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import layer_norm, rms_norm
 from .init import ones, zeros
-from .module import Module, ModuleSharding
-
-
-@dataclass
-class NormSharding(ModuleSharding):
-    @property
-    @abstractmethod
-    def weight_sharding(self) -> NamedSharding:
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def bias_sharding(self) -> NamedSharding:
-        raise NotImplementedError
-
-
-@dataclass
-class DefaultNormSharding(NormSharding):
-    @property
-    def weight_sharding(self) -> NamedSharding:
-        return self.global_config.get_dp_param_sharding()
-
-    @property
-    def bias_sharding(self) -> NamedSharding:
-        return self.global_config.get_dp_param_sharding()
+from .module import Module
 
 
 class LayerNorm(Module):
@@ -51,8 +24,9 @@ class LayerNorm(Module):
         elementwise_affine: bool = True,
         bias: bool = True,
         dtype: DTypeLike = float,
-        sharding: NamedSharding | None = None,
+        parallel_config: ParallelConfig | None = None,
     ):
+        super().__init__()
         if isinstance(shape, int):
             shape = (shape,)
         else:
@@ -65,12 +39,26 @@ class LayerNorm(Module):
         self.weight = (
             None
             if not elementwise_affine
-            else ones(wkey, shape, dtype=dtype, sharding=sharding)
+            else ones(
+                wkey,
+                shape,
+                dtype=dtype,
+                sharding=None
+                if parallel_config is None
+                else parallel_config.get_dp_param_sharding(),
+            )
         )
         self.bias = (
             None
             if not (elementwise_affine and bias)
-            else zeros(bkey, shape, dtype=dtype, sharding=sharding)
+            else zeros(
+                bkey,
+                shape,
+                dtype=dtype,
+                sharding=None
+                if parallel_config is None
+                else parallel_config.get_dp_param_sharding(),
+            )
         )
 
     @jax.named_scope("olmax.nn.LayerNorm")
@@ -83,10 +71,6 @@ class LayerNorm(Module):
             )
 
         return layer_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
-
-    @classmethod
-    def DefaultSharding(cls, global_config: ParallelConfig) -> DefaultNormSharding:
-        return DefaultNormSharding(global_config)
 
 
 class RMSNorm(Module):
@@ -103,8 +87,9 @@ class RMSNorm(Module):
         elementwise_affine: bool = True,
         bias: bool = True,
         dtype: DTypeLike = float,
-        sharding: NamedSharding | None = None,
+        parallel_config: ParallelConfig | None = None,
     ):
+        super().__init__()
         if isinstance(shape, int):
             shape = (shape,)
         else:
@@ -117,12 +102,26 @@ class RMSNorm(Module):
         self.weight = (
             None
             if not elementwise_affine
-            else ones(wkey, shape, dtype=dtype, sharding=sharding)
+            else ones(
+                wkey,
+                shape,
+                dtype=dtype,
+                sharding=None
+                if parallel_config is None
+                else parallel_config.get_dp_param_sharding(),
+            )
         )
         self.bias = (
             None
             if not (elementwise_affine and bias)
-            else zeros(bkey, shape, dtype=dtype, sharding=sharding)
+            else zeros(
+                bkey,
+                shape,
+                dtype=dtype,
+                sharding=None
+                if parallel_config is None
+                else parallel_config.get_dp_param_sharding(),
+            )
         )
 
     @jax.named_scope("olmax.nn.RMSNorm")
@@ -135,7 +134,3 @@ class RMSNorm(Module):
             )
 
         return rms_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
-
-    @classmethod
-    def DefaultSharding(cls, global_config: ParallelConfig) -> DefaultNormSharding:
-        return DefaultNormSharding(global_config)

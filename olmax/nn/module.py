@@ -1,19 +1,9 @@
 from abc import abstractmethod
-from dataclasses import dataclass
+from typing import Callable
 
 import equinox as eqx
+import jax
 from typing_extensions import Self
-
-from ..distributed.parallel import ParallelConfig
-
-
-@dataclass
-class ModuleSharding:
-    """
-    Defines how a module should be sharded.
-    """
-
-    global_config: ParallelConfig
 
 
 class Module(eqx.Module):
@@ -21,8 +11,19 @@ class Module(eqx.Module):
     Abstract base class for ``nn`` modules. This is just an extension of :class:`equinox.Module`.
     """
 
+    forward_batch: Callable | None = eqx.field(static=True, repr=False)
+
+    def __init__(self):
+        self.forward_batch = None
+        #  self.forward_batch = lambda self_, *args, **kwargs: jax.vmap(self_.forward)(
+        #      *args, **kwargs
+        #  )
+
     def __call__(self, *args, **kwargs):
-        return self.forward(*args, **kwargs)
+        if self.forward_batch is not None:
+            return self.forward_batch(self, *args, **kwargs)
+        else:
+            return jax.vmap(self.forward)(*args, **kwargs)
 
     @abstractmethod
     def forward(self, *args, **kwargs):

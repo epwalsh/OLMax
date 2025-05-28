@@ -57,15 +57,19 @@ def _find_open_port(host: str = "127.0.0.1") -> int:
 def _init_process(
     *,
     process_rank: int,
-    world_size: int,
+    num_processes: int,
     log_from_all_ranks: bool,
     func: Callable,
     func_args: Optional[tuple[Any, ...]] = None,
     func_kwargs: Optional[dict[str, Any]] = None,
     primary_addr: str = "127.0.0.1",
     primary_port: int = 29500,
+    devices_per_process: int | None = None,
 ):
-    assert world_size > 1
+    if devices_per_process is not None:
+        os.environ[
+            "XLA_FLAGS"
+        ] = f"--xla_force_host_platform_device_count={devices_per_process}"
 
     os.environ[
         dist.SHARED_FS_DIRS_ENV_VAR
@@ -87,14 +91,15 @@ def _init_process(
     logging.setLogRecordFactory(log_record_factory)
 
     if log_from_all_ranks or process_rank == 0:
-        logging.basicConfig(level=logging.DEBUG, handlers=[handler], force=True)
+        logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
 
-    log.info("Initializing distributed backend...")
-    dist.init_distributed(
-        coordinator_address=f"{primary_addr}:{primary_port}",
-        num_processes=world_size,
-        process_id=process_rank,
-    )
+    if num_processes > 1:
+        log.info("Initializing distributed backend...")
+        dist.init_distributed(
+            coordinator_address=f"{primary_addr}:{primary_port}",
+            num_processes=num_processes,
+            process_id=process_rank,
+        )
 
     log.info("Starting test...")
     try:
@@ -103,12 +108,14 @@ def _init_process(
         log.exception(f"{e}")
         raise
     finally:
-        dist.teardown_distributed()
+        if num_processes > 1:
+            dist.teardown_distributed()
 
 
 def run_distributed_test(
     func: Callable,
-    world_size: int = 2,
+    num_processes: int = 2,
+    devices_per_process: int | None = None,
     log_from_all_ranks: bool = False,
     start_method: Optional[str] = "spawn",
     args: Optional[tuple[Any, ...]] = None,
@@ -123,8 +130,8 @@ def run_distributed_test(
     if backend is None:
         backend = jax.default_backend()
 
-    if backend != "cpu" and jax.device_count(backend) < world_size:
-        pytest.skip(f"Requires at least {world_size} {backend} devices")
+    if backend != "cpu" and jax.device_count(backend) < num_processes:
+        pytest.skip(f"Requires at least {num_processes} {backend} devices")
 
     ctx = mp.get_context(method=start_method)
 
@@ -133,15 +140,16 @@ def run_distributed_test(
 
     log.info(f"Running distributed test on port {primary_port}...")
 
-    with ctx.Pool(processes=world_size) as pool:
+    with ctx.Pool(processes=num_processes) as pool:
         results = []
-        for rank in range(world_size):
+        for rank in range(num_processes):
             result = pool.apply_async(
                 _init_process,
                 [],
                 dict(
                     process_rank=rank,
-                    world_size=world_size,
+                    num_processes=num_processes,
+                    devices_per_process=devices_per_process,
                     log_from_all_ranks=log_from_all_ranks,
                     func=func,
                     func_args=args,

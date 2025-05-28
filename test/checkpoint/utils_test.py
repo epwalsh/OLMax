@@ -78,9 +78,7 @@ def _run_save_and_restore_distributed_fsdp(checkpoint_dir):
 
 def test_save_and_restore_distributed_fsdp(tmp_path):
     checkpoint_dir = tmp_path / "checkpoint"
-    run_distributed_test(
-        _run_save_and_restore_distributed_fsdp, world_size=2, args=(checkpoint_dir,)
-    )
+    run_distributed_test(_run_save_and_restore_distributed_fsdp, args=(checkpoint_dir,))
 
 
 def _run_save_and_restore_distributed_hsdp(checkpoint_dir):
@@ -95,7 +93,7 @@ def _run_save_and_restore_distributed_hsdp(checkpoint_dir):
 def test_save_and_restore_distributed_hsdp(tmp_path):
     checkpoint_dir = tmp_path / "checkpoint"
     run_distributed_test(
-        _run_save_and_restore_distributed_hsdp, world_size=4, args=(checkpoint_dir,)
+        _run_save_and_restore_distributed_hsdp, num_processes=4, args=(checkpoint_dir,)
     )
 
 
@@ -112,6 +110,6 @@ def test_save_and_restore_distributed_fsdp_to_hsdp(tmp_path):
     checkpoint_dir = tmp_path / "checkpoint"
     run_distributed_test(
         _run_save_and_restore_distributed_fsdp_to_hsdp,
-        world_size=4,
+        num_processes=4,
         args=(checkpoint_dir,),
     )

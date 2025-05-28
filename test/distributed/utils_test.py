@@ -2,7 +2,7 @@ import olmax.distributed.utils as dist_utils
 from olmax.testing.distributed import run_distributed_test
 
 
-def run_test_utils():
+def _run_test_utils_mp():
     dist_utils.barrier("test init")
     assert dist_utils.is_distributed()
     assert dist_utils.get_process_world_size() > 1
@@ -29,12 +29,22 @@ def run_test_utils():
     assert dist_utils.get_process_filesystem_rank(".") == dist_utils.get_process_rank()
 
 
-def test_utils():
-    run_distributed_test(run_test_utils, world_size=2)
+def test_utils_mp():
+    run_distributed_test(_run_test_utils_mp)
+
+
+def _run_test_utils_sp():
+    assert dist_utils.get_process_world_size() == 1
+    assert dist_utils.get_global_device_count() > 1
+    assert dist_utils.get_local_device_count() == dist_utils.get_global_device_count()
+
+
+def test_utils_sp():
+    run_distributed_test(_run_test_utils_sp, num_processes=1, devices_per_process=2)
 
 
 if __name__ == "__main__":
     import logging
 
     logging.basicConfig(level=logging.INFO)
-    test_utils()
+    test_utils_mp()
