@@ -4,3 +4,4 @@ equinox
 optax
 orbax-checkpoint
 typing-extensions
+pytest
