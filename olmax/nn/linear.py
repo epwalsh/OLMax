@@ -1,10 +1,4 @@
-import functools as ft
-from typing import Callable
-
-import equinox as eqx
 import jax
-from jax.sharding import PartitionSpec as P
-from typing_extensions import Self
 
 from ..distributed.parallel import ParallelConfig
 from ..types import Array, DTypeLike, PRNGKeyArray
@@ -16,11 +10,6 @@ from .module import Module
 class Linear(Module):
     weight: Array
     bias: Array | None
-    linear_fn: Callable[[Array, Array, Array | None], Array] = eqx.field(
-        static=True,
-        repr=False,
-        default=linear,
-    )
 
     def __init__(
         self,
@@ -39,7 +28,7 @@ class Linear(Module):
             (out_size, in_size),
             sharding=None
             if parallel_config is None
-            else parallel_config.get_dp_sharding(),
+            else parallel_config.get_param_sharding(),
             dtype=dtype,
         )
         self.bias = (
@@ -50,42 +39,11 @@ class Linear(Module):
                 (out_size,),
                 sharding=None
                 if parallel_config is None
-                else parallel_config.get_dp_sharding(),
+                else parallel_config.get_param_sharding(),
                 dtype=dtype,
             )
         )
-        self.linear_fn = linear
-
-        if (
-            parallel_config is not None
-            and (dp_sharding_axis := parallel_config.get_dp_sharding_axis()) is not None
-        ):
-            mesh = parallel_config.get_param_mesh()
-
-            def all_gather(p: Array) -> Array:
-                return jax.lax.all_gather(p, dp_sharding_axis, tiled=True)
-
-            @ft.partial(
-                jax.remat,  # pyright: ignore
-                policy=lambda op, *_, **__: str(op) != "all_gather",  # pyright: ignore
-            )
-            def linear_fsdp(x: Array, weight: Array, bias: Array | None) -> Array:
-                weight = all_gather(weight)
-                bias = None if bias is None else all_gather(bias)
-                return linear(x, weight, bias)
-
-            @ft.partial(
-                jax.shard_map,
-                mesh=mesh,
-                in_specs=P(dp_sharding_axis),
-                out_specs=P(dp_sharding_axis),
-            )
-            def batch_linear_fsdp(self_: Self, x: Array) -> Array:
-                return jax.vmap(self_.forward)(x)
-
-            self.linear_fn = linear_fsdp
-            self.forward_batch = batch_linear_fsdp
 
     @jax.named_scope("olmax.nn.Linear")
     def forward(self, x: Array) -> Array:
-        return self.linear_fn(x, self.weight, self.bias)
+        return linear(x, self.weight, self.bias)

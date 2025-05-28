@@ -13,19 +13,26 @@ class Module(eqx.Module):
     Abstract base class for ``nn`` modules. This is just an extension of :class:`equinox.Module`.
     """
 
-    parallel_config: ParallelConfig | None = eqx.field(status=True, repr=False)
+    parallel_config: ParallelConfig | None = eqx.field(static=True, repr=False)
     forward_batch: Callable | None = eqx.field(static=True, repr=False)
 
     def __init__(self, parallel_config: ParallelConfig | None = None):
         self.parallel_config = parallel_config
         self.forward_batch = None
-        #  self.forward_batch = lambda self_, *args, **kwargs: jax.vmap(self_.forward)(
-        #      *args, **kwargs
-        #  )
 
     def __call__(self, *args, **kwargs):
         if self.forward_batch is not None:
             return self.forward_batch(self, *args, **kwargs)
+        elif (
+            self.parallel_config is not None
+            and (dp_sharding := self.parallel_config.get_data_sharding()) is not None
+        ):
+            # Default data-parallel implementation (like FSDP or DDP)
+            args = jax.lax.with_sharding_constraint(args, dp_sharding)
+            kwargs = jax.lax.with_sharding_constraint(kwargs, dp_sharding)
+            out = jax.vmap(self.forward)(*args, **kwargs)
+            out = jax.lax.with_sharding_constraint(out, dp_sharding)
+            return out
         else:
             return jax.vmap(self.forward)(*args, **kwargs)
 

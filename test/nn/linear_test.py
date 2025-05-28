@@ -3,6 +3,7 @@ import logging
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import pytest
 
 import olmax.distributed as dist
 import olmax.nn as nn
@@ -42,30 +43,46 @@ def test_linear():
     assert grads is not None
 
 
-def _run_linear_with_fsdp():
+def _run_linear_with_fsdp(parallel_config: dist.ParallelConfig):
+    in_size, out_size, batch_size = (
+        2 * dist.get_global_device_count(),
+        2 * dist.get_global_device_count(),
+        2 * dist.get_global_device_count(),
+    )
     key = jax.random.PRNGKey(0)
 
-    parallel_config = dist.ParallelConfig.FSDP()
-
     key, batch_key = jax.random.split(key)
-    full_batch = _get_batch(batch_key, 2, 4, 4)
-    fsdp_batch = jax.device_put(full_batch, parallel_config.get_dp_sharding())
+    full_batch = _get_batch(batch_key, batch_size, in_size, out_size)
+    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
 
-    full_linear = nn.Linear(4, 4, key=key)
-    fsdp_linear = nn.Linear(4, 4, key=key, parallel_config=parallel_config)
+    full_linear = nn.Linear(in_size, out_size, key=key)
+    dist_linear = nn.Linear(in_size, out_size, key=key, parallel_config=parallel_config)
 
-    assert allclose(full_linear.weight, fsdp_linear.weight)
-    assert allclose(full_linear.bias, fsdp_linear.bias)
+    assert allclose(full_linear.weight, dist_linear.weight)
+    assert allclose(full_linear.bias, dist_linear.bias)
 
     full_loss, full_grads = _get_loss_and_grads(full_linear, full_batch)
-    fsdp_loss, fsdp_grads = _get_loss_and_grads(fsdp_linear, fsdp_batch)
-    assert allclose(full_loss, fsdp_loss)
-    assert allclose(full_grads.weight, fsdp_grads.weight)
-    assert allclose(full_grads.bias, fsdp_grads.bias)
+    dist_loss, dist_grads = _get_loss_and_grads(dist_linear, dist_batch)
+    assert allclose(full_loss, dist_loss)
+    assert allclose(full_grads.weight, dist_grads.weight)
+    assert allclose(full_grads.bias, dist_grads.bias)
 
 
-def test_linear_with_fsdp():
-    run_distributed_test(_run_linear_with_fsdp, num_processes=1, devices_per_process=2)
+@pytest.mark.parametrize(
+    "parallel_config",
+    [
+        pytest.param(dist.ParallelConfig.FSDP(), id="FSDP"),
+        pytest.param(dist.ParallelConfig.DDP(), id="DDP"),
+        pytest.param(dist.ParallelConfig.HSDP(2), id="HSDP"),
+    ],
+)
+def test_linear_data_parallel(parallel_config: dist.ParallelConfig):
+    run_distributed_test(
+        _run_linear_with_fsdp,
+        num_processes=1,
+        devices_per_process=parallel_config.get_min_device_count(),
+        args=(parallel_config,),
+    )
 
 
 if __name__ == "__main__":
