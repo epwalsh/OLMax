@@ -1,5 +1,3 @@
-import logging
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -41,7 +39,7 @@ def test_mlp(d_model: int = 4, hidden_size: int = 8, batch_size: int = 2):
     assert grads is not None
 
 
-def _run_mlp_data_parallel(parallel_config: dist.ParallelConfig):
+def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
     d_model, hidden_size, batch_size = (
         2 * dist.get_global_device_count(),
         4 * dist.get_global_device_count(),
@@ -79,13 +77,28 @@ def _run_mlp_data_parallel(parallel_config: dist.ParallelConfig):
 )
 def test_mlp_data_parallel(parallel_config: dist.ParallelConfig):
     run_distributed_test(
-        _run_mlp_data_parallel,
+        _run_mlp_parallel,
         num_processes=1,
         devices_per_process=parallel_config.get_min_device_count(),
         args=(parallel_config,),
     )
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    run_distributed_test(_run_mlp_data_parallel)
+@pytest.mark.parametrize(
+    "parallel_config",
+    [
+        pytest.param(
+            dist.ParallelConfig(
+                dp=dist.DataParallelConfig.FSDP(), tp=dist.TensorParallelConfig(2)
+            ),
+            id="FSDP+TP",
+        ),
+    ],
+)
+def test_mlp_tensor_parallel(parallel_config: dist.ParallelConfig):
+    run_distributed_test(
+        _run_mlp_parallel,
+        num_processes=1,
+        devices_per_process=parallel_config.get_min_device_count(),
+        args=(parallel_config,),
+    )

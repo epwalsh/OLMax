@@ -40,6 +40,6 @@ def test_parallel_config_tp_with_fsdp():
         (2, 2),
         (
             MeshAxisNames.DP.shard,
-            MeshAxisNames.TP.split,
+            MeshAxisNames.TP.shard,
         ),
     )

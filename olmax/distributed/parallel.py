@@ -11,7 +11,7 @@ from typing_extensions import Self
 from . import utils as dist_utils
 
 
-class TPLinearStyle(StrEnum):
+class TPStyle(StrEnum):
     colwise = "colwise"
     rowwise = "rowwise"
 
@@ -22,13 +22,13 @@ class MeshAxisNames:
         shard = "dp_shard"
 
     class PP:
-        split = "pp_split"
+        shard = "pp_split"
 
     class CP:
-        split = "cp_split"
+        shard = "cp_split"
 
     class TP:
-        split = "tp_split"
+        shard = "tp_split"
 
 
 @dataclass(frozen=True)
@@ -101,12 +101,37 @@ class ParallelConfig:
             devices *= d if d > 0 else 2
         return devices
 
-    def get_param_sharding(self, sharding_axis: int = 0) -> NamedSharding:
+    def get_param_sharding(
+        self, dp_sharding_axis: int | None = 0, tp_sharding_axis: int | None = None
+    ) -> NamedSharding:
+        if tp_sharding_axis is not None and self.tp is None:
+            raise ValueError(
+                "'tp_sharding_axis' is only valid when tensor parallelism is enabled"
+            )
+
         mesh = self.get_param_mesh()
-        partitions: list[str | None] = []
-        if (axis := MeshAxisNames.DP.shard) in mesh.shape:
-            partitions.extend([None] * sharding_axis)
-            partitions.append(axis)
+        partitions: list[str | tuple[str, ...] | None] = []
+        if tp_sharding_axis is not None:
+            assert MeshAxisNames.TP.shard in mesh.shape
+            if dp_sharding_axis is not None and MeshAxisNames.DP.shard in mesh.shape:
+                partitions.extend(
+                    [None] * (max(dp_sharding_axis, tp_sharding_axis) + 1)
+                )
+                if dp_sharding_axis == tp_sharding_axis:
+                    partitions[dp_sharding_axis] = (
+                        MeshAxisNames.DP.shard,
+                        MeshAxisNames.TP.shard,
+                    )
+                else:
+                    partitions[dp_sharding_axis] = MeshAxisNames.DP.shard
+                    partitions[tp_sharding_axis] = MeshAxisNames.TP.shard
+            else:
+                partitions.extend([None] * tp_sharding_axis)
+                partitions.append(MeshAxisNames.TP.shard)
+        elif dp_sharding_axis is not None and MeshAxisNames.DP.shard in mesh.shape:
+            partitions.extend([None] * dp_sharding_axis)
+            partitions.append(MeshAxisNames.DP.shard)
+
         return NamedSharding(mesh, P(*partitions))
 
     def get_data_sharding(self, sharding_axis: int = 0) -> NamedSharding:
@@ -195,7 +220,7 @@ class ParallelConfig:
         # Tensor parallel, the inner-most axis.
         if self.tp is not None:
             axis_shapes.append(self.tp.degree)
-            axis_names.append(MeshAxisNames.TP.split)
+            axis_names.append(MeshAxisNames.TP.shard)
 
         return tuple(axis_shapes), tuple(axis_names)
 
