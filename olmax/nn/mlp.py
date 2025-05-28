@@ -1,5 +1,6 @@
 from typing import Callable
 
+import equinox as eqx
 import jax
 
 from ..distributed.parallel import ParallelConfig
@@ -12,7 +13,7 @@ class GatedMLP(Module):
     w1: Linear
     w2: Linear
     w3: Linear
-    activation: Callable[[Array], Array]
+    activation: Callable[[Array], Array] = eqx.field(static=True)
 
     def __init__(
         self,
@@ -53,4 +54,6 @@ class GatedMLP(Module):
 
     @jax.named_scope("olmax.nn.GatedMLP")
     def forward(self, x: Array) -> Array:
-        return self.w2(self.activation(self.w1(x)) * self.w3(x))
+        return self.w2.forward(
+            self.activation(self.w1.forward(x)) * self.w3.forward(x),
+        )

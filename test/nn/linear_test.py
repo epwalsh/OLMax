@@ -43,7 +43,7 @@ def test_linear():
     assert grads is not None
 
 
-def _run_linear_with_fsdp(parallel_config: dist.ParallelConfig):
+def _run_linear_data_parallel(parallel_config: dist.ParallelConfig):
     in_size, out_size, batch_size = (
         2 * dist.get_global_device_count(),
         2 * dist.get_global_device_count(),
@@ -78,7 +78,7 @@ def _run_linear_with_fsdp(parallel_config: dist.ParallelConfig):
 )
 def test_linear_data_parallel(parallel_config: dist.ParallelConfig):
     run_distributed_test(
-        _run_linear_with_fsdp,
+        _run_linear_data_parallel,
         num_processes=1,
         devices_per_process=parallel_config.get_min_device_count(),
         args=(parallel_config,),
@@ -87,4 +87,4 @@ def test_linear_data_parallel(parallel_config: dist.ParallelConfig):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    run_distributed_test(_run_linear_with_fsdp)
+    run_distributed_test(_run_linear_data_parallel)
