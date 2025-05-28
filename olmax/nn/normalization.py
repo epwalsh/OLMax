@@ -26,7 +26,7 @@ class LayerNorm(Module):
         dtype: DTypeLike = float,
         parallel_config: ParallelConfig | None = None,
     ):
-        super().__init__()
+        super().__init__(parallel_config)
         if isinstance(shape, int):
             shape = (shape,)
         else:

@@ -31,7 +31,7 @@ class Linear(Module):
         dtype: DTypeLike = float,
         parallel_config: ParallelConfig | None = None,
     ):
-        super().__init__()
+        super().__init__(parallel_config)
 
         wkey, bkey = jax.random.split(key)
         self.weight = truncated_normal(

@@ -24,7 +24,7 @@ class GatedMLP(Module):
         dtype: DTypeLike = float,
         parallel_config: ParallelConfig | None = None,
     ):
-        super().__init__()
+        super().__init__(parallel_config)
         self.w1 = Linear(
             d_model,
             hidden_size,
