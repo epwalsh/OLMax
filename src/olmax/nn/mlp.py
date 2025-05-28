@@ -27,10 +27,11 @@ class GatedMLP(Module):
     ):
         super().__init__(parallel_config)
         tp_enabled = parallel_config is not None and parallel_config.tp is not None
+        w1_key, w2_key, w3_key = jax.random.split(key, 3)
         self.w1 = Linear(
             d_model,
             hidden_size,
-            key,
+            w1_key,
             bias=bias,
             dtype=dtype,
             parallel_config=parallel_config,
@@ -39,7 +40,7 @@ class GatedMLP(Module):
         self.w2 = Linear(
             hidden_size,
             d_model,
-            key,
+            w2_key,
             bias=bias,
             dtype=dtype,
             parallel_config=parallel_config,
@@ -48,7 +49,7 @@ class GatedMLP(Module):
         self.w3 = Linear(
             d_model,
             hidden_size,
-            key,
+            w3_key,
             bias=bias,
             dtype=dtype,
             parallel_config=parallel_config,
