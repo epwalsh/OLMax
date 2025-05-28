@@ -23,4 +23,6 @@ def _run_truncated_normal_distributed():
 
 
 def test_truncated_normal_distributed():
-    run_distributed_test(_run_truncated_normal_distributed)
+    run_distributed_test(
+        _run_truncated_normal_distributed, num_processes=2, devices_per_process=1
+    )
