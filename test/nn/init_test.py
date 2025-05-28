@@ -12,7 +12,7 @@ def test_truncated_normal():
     assert x.shape == (2, 4)
 
 
-def _run_truncated_normal_distributed():
+def _run_truncated_normal_mp():
     # given the same key, should get same result regardless of how we shard
     key = jax.random.PRNGKey(0)
     x_full = nn.init.truncated_normal(key, (4, 8))
@@ -22,7 +22,7 @@ def _run_truncated_normal_distributed():
     assert allclose(x_full, x_sharded)
 
 
-def test_truncated_normal_distributed():
+def test_truncated_normal_mp():
     run_distributed_test(
-        _run_truncated_normal_distributed, num_processes=2, devices_per_process=1
+        _run_truncated_normal_mp, num_processes=2, devices_per_process=1
     )
