@@ -83,7 +83,7 @@ def _run_norm_data_parallel(parallel_config: dist.ParallelConfig, norm_type: str
     [
         pytest.param(dist.ParallelConfig.FSDP(), id="FSDP"),
         pytest.param(dist.ParallelConfig.DDP(), id="DDP"),
-        pytest.param(dist.ParallelConfig.HSDP(2), id="HSDP"),
+        pytest.param(dist.ParallelConfig.HSDP(2, 2), id="HSDP"),
     ],
 )
 @pytest.mark.parametrize("norm_type", ["LayerNorm", "RMSNorm"])

@@ -41,10 +41,10 @@ class DataParallelConfig:
         return cls(replicate_degree=0, shard_degree=-1)
 
     @classmethod
-    def HSDP(cls, shard_degree: int) -> Self:
+    def HSDP(cls, shard_degree: int, replicate_degree: int = -1) -> Self:
         if shard_degree < 1:
             raise ValueError("expected 'shard_degree' > 1")
-        return cls(replicate_degree=-1, shard_degree=shard_degree)
+        return cls(replicate_degree=replicate_degree, shard_degree=shard_degree)
 
     @classmethod
     def DDP(cls) -> Self:
@@ -84,8 +84,10 @@ class ParallelConfig:
         return cls(dp=DataParallelConfig.FSDP())
 
     @classmethod
-    def HSDP(cls, shard_degree: int) -> Self:
-        return cls(dp=DataParallelConfig.HSDP(shard_degree))
+    def HSDP(cls, shard_degree: int, replicate_degree: int = -1) -> Self:
+        return cls(
+            dp=DataParallelConfig.HSDP(shard_degree, replicate_degree=replicate_degree)
+        )
 
     @classmethod
     def DDP(cls) -> Self:

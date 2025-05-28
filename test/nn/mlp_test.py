@@ -72,7 +72,7 @@ def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
     [
         pytest.param(dist.ParallelConfig.FSDP(), id="FSDP"),
         pytest.param(dist.ParallelConfig.DDP(), id="DDP"),
-        pytest.param(dist.ParallelConfig.HSDP(2), id="HSDP"),
+        pytest.param(dist.ParallelConfig.HSDP(2, 2), id="HSDP"),
     ],
 )
 def test_mlp_data_parallel(parallel_config: dist.ParallelConfig):
