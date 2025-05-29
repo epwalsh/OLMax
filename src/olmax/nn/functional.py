@@ -1,10 +1,13 @@
+import functools as ft
+from typing import Literal
+
 import jax
 import jax.numpy as jnp
-import optax
 
 from ..types import Array
 
 
+@jax.jit
 def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
     x = weight @ x
     if bias is not None:
@@ -13,6 +16,7 @@ def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
     return x
 
 
+@jax.jit
 def layer_norm(
     x: Array, weight: Array | None = None, bias: Array | None = None, eps: float = 1e-5
 ) -> Array:
@@ -35,6 +39,7 @@ def layer_norm(
     return out.astype(orig_dtype)
 
 
+@jax.jit
 def rms_norm(
     x: Array, weight: Array | None = None, bias: Array | None = None, eps: float = 1e-5
 ) -> Array:
@@ -54,7 +59,26 @@ def rms_norm(
     return out.astype(orig_dtype)
 
 
-def cross_entropy_loss(logits: Array, labels: Array) -> Array:
+@ft.partial(jax.jit, static_argnames=("reduction",))
+def cross_entropy_loss(
+    logits: Array,
+    labels: Array,
+    *,
+    ignore_index: int = -100,
+    reduction: Literal["sum", "mean", "none"] = "mean",
+) -> Array:
     n_classes = logits.shape[-1]
-    loss = optax.softmax_cross_entropy(logits, jax.nn.one_hot(labels, n_classes)).mean()
-    return loss
+    labels_one_hot = jax.nn.one_hot(labels, n_classes)
+    where = labels == ignore_index
+
+    log_probs = jax.nn.log_softmax(logits, -1, where)
+    loss = (labels_one_hot * log_probs).sum(-1, where=where)
+
+    if reduction == "sum":
+        return loss.sum()
+    elif reduction == "mean":
+        return loss.mean()
+    elif reduction == "none":
+        return loss  # pyright: ignore
+    else:
+        raise ValueError(reduction)
