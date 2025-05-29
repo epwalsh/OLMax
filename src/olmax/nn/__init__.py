@@ -6,6 +6,7 @@ from .mlp import GatedMLP
 from .module import Module
 from .normalization import LayerNorm, RMSNorm
 from .rope import RotaryPositionalEmbedding
+from .transformer.block import ReorderedNormTransformerBlock, TransformerBlock
 
 __all__ = [
     # Base classes.
@@ -23,6 +24,9 @@ __all__ = [
     "MultiheadSelfAttention",
     # RoPE.
     "RotaryPositionalEmbedding",
+    # Transformer layers.
+    "TransformerBlock",
+    "ReorderedNormTransformerBlock",
     # Functional module.
     "functional",
     # Initialization module.
