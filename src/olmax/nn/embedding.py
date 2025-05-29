@@ -15,10 +15,10 @@ class Embedding(Module):
 
     def __init__(
         self,
-        *,
         d_model: int,
         num_embeddings: int,
         key: PRNGKeyArray,
+        *,
         dtype: DTypeLike = float,
         parallel_config: ParallelConfig | None = None,
     ):

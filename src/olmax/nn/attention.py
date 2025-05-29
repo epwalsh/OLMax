@@ -26,9 +26,9 @@ class MultiheadSelfAttentionConfig:
 
     def build(
         self,
-        *,
         d_model: int,
         key: PRNGKeyArray,
+        *,
         n_heads: int | None = None,
         rope: RotaryPositionalEmbeddingConfig | None = None,
         qk_norm: LayerNormConfig | None = None,
@@ -169,6 +169,6 @@ class MultiheadSelfAttention(Module):
         att = att.reshape(-1, self.n_heads * self.head_dim)
 
         # shape: (seq_len, d_model)
-        out = jax.vmap(self.w_out)(att)
+        out = jax.vmap(self.w_out.forward)(att)
 
         return out

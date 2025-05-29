@@ -1,3 +1,5 @@
+from jax.sharding import AxisType
+
 from olmax.distributed.parallel import (
     DataParallelConfig,
     MeshAxisNames,
@@ -12,6 +14,7 @@ def test_parallel_config_fsdp():
     assert config._get_param_mesh_axes(4) == (
         (4,),
         (MeshAxisNames.DP.shard,),
+        (AxisType.Auto,),
     )
 
 
@@ -21,6 +24,7 @@ def test_parallel_config_hsdp():
     assert config._get_param_mesh_axes(4) == (
         (2, 2),
         (MeshAxisNames.DP.replicate, MeshAxisNames.DP.shard),
+        (AxisType.Auto, AxisType.Auto),
     )
 
 
@@ -30,6 +34,7 @@ def test_parallel_config_ddp():
     assert config._get_param_mesh_axes(4) == (
         (4,),
         (MeshAxisNames.DP.replicate,),
+        (AxisType.Auto,),
     )
 
 
@@ -39,6 +44,7 @@ def test_parallel_config_tp():
     assert config._get_param_mesh_axes(2) == (
         (2,),
         (MeshAxisNames.TP.shard,),
+        (AxisType.Auto,),
     )
 
 
@@ -51,4 +57,5 @@ def test_parallel_config_tp_with_fsdp():
             MeshAxisNames.DP.shard,
             MeshAxisNames.TP.shard,
         ),
+        (AxisType.Auto, AxisType.Auto),
     )

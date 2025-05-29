@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import optax
 
 from ..types import Array
 
@@ -8,6 +9,7 @@ def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
     x = weight @ x
     if bias is not None:
         x = x + bias
+    #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("linear out:", s))
     return x
 
 
@@ -50,3 +52,9 @@ def rms_norm(
         out = out + bias.astype(dtype)
 
     return out.astype(orig_dtype)
+
+
+def cross_entropy_loss(logits: Array, labels: Array) -> Array:
+    n_classes = logits.shape[-1]
+    loss = optax.softmax_cross_entropy(logits, jax.nn.one_hot(labels, n_classes)).mean()
+    return loss

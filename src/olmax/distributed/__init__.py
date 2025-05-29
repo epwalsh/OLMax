@@ -7,12 +7,6 @@ from .parallel import (
     PipelineParallelConfig,
     TensorParallelConfig,
     TPStyle,
-    get_ddp_mesh,
-    get_ddp_sharding,
-    get_fsdp_mesh,
-    get_fsdp_sharding,
-    get_hsdp_mesh,
-    get_hsdp_sharding,
 )
 from .utils import (
     SHARED_FS_DIRS_ENV_VAR,
@@ -49,11 +43,5 @@ __all__ = [
     "PipelineParallelConfig",
     "ExpertParallelConfig",
     "TPStyle",
-    "get_fsdp_mesh",
-    "get_fsdp_sharding",
-    "get_hsdp_mesh",
-    "get_hsdp_sharding",
-    "get_ddp_mesh",
-    "get_ddp_sharding",
     "SHARED_FS_DIRS_ENV_VAR",
 ]

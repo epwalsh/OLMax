@@ -69,9 +69,10 @@ def _init_process(
 ):
     if devices_per_process is not None:
         if backend == "cpu":
-            os.environ[
-                "XLA_FLAGS"
-            ] = f"--xla_force_host_platform_device_count={devices_per_process}"
+            #  os.environ[
+            #      "XLA_FLAGS"
+            #  ] = f"--xla_force_host_platform_device_count={devices_per_process}"
+            jax.config.update("jax_num_cpu_devices", devices_per_process)
             os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = ""
         elif backend == "gpu":
