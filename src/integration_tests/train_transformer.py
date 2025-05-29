@@ -50,6 +50,12 @@ def main():
     print("initializing model...")
     model = MODEL_CONFIG.build(model_key, parallel_config=parallel_config)
     print(model)
+    num_params = sum(p.size for p in model.parameters())
+    num_non_embedding_prams = num_params - model.embedding.weight.size
+    print(
+        f"Build model with {num_params:,d} total parameters, {num_non_embedding_prams:,d} non-embedding parameters"
+    )
+
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
