@@ -1,3 +1,5 @@
+import time
+
 import equinox as eqx
 import jax
 import optax
@@ -47,6 +49,7 @@ def main():
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         logits = model(input_ids)
+        optax.softmax_cross_entropy
         return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit
@@ -58,20 +61,35 @@ def main():
         model = eqx.apply_updates(model, updates)
         return loss, model, opt_state
 
+    per_device_batch_size_tokens = BATCH_SIZE // dist.get_global_device_count()
+    per_process_batch_size_tokens = BATCH_SIZE // dist.get_process_world_size()
+    per_process_batch_size_instances = per_process_batch_size_tokens // SEQUENCE_LENGTH
+
     print("starting training...")
+    start_time: float | None = None
+    start_step: int = 0
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
             local_data_parallel_rank=0,
             vocab_size=VOCAB_SIZE,
             sequence_length=SEQUENCE_LENGTH,
-            num_local_instances=(BATCH_SIZE // SEQUENCE_LENGTH) // dist.get_global_device_count(),
+            num_local_instances=per_process_batch_size_instances,
             total_batches=TRAIN_STEPS,
             parallel_config=parallel_config,
         )
     ):
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        print(f"step={step}, loss={loss.item():.5f}")
+        tokens_per_second_per_device: int | str = "N/A"
+        if start_time is None:
+            start_time = time.monotonic()
+            start_step = step
+        else:
+            elapsed_time = time.monotonic() - start_time
+            avg_time_per_batch = elapsed_time / (step - start_step)
+            batches_per_second = 1 / avg_time_per_batch
+            tokens_per_second_per_device = int(batches_per_second * per_device_batch_size_tokens)
+        print(f"step={step+1}, loss={loss.item():.5f}, TPS={tokens_per_second_per_device}")
 
     print("done.")
 
