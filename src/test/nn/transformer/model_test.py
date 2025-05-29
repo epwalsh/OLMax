@@ -113,7 +113,7 @@ def _run_transformer_parallel(
     full_loss, full_grads = _get_loss_and_grads(full_model, full_batch)
     dist_loss, dist_grads = _get_loss_and_grads(dist_model, dist_batch)
     assert allclose(full_loss, dist_loss)
-    assert allclose(full_grads.embedding.weight, dist_grads.embedding.weight)
+    assert allclose(full_grads.blocks[0].mlp.w1.weight, dist_grads.blocks[0].mlp.w1.weight)
     assert allclose(full_grads.lm_head.w_out.weight, dist_grads.lm_head.w_out.weight)
 
 
