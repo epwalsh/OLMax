@@ -26,16 +26,16 @@ COMPUTE_DTYPE = jax.dtypes.bfloat16
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
     vocab_size=VOCAB_SIZE,
-    #  d_model=1024,
-    #  hidden_size=2816,
-    #  num_layers=16,
-    d_model=4096,
-    hidden_size=11008,
-    num_layers=32,
+    d_model=1024,
+    hidden_size=2816,
+    num_layers=16,
+    #  d_model=4096,
+    #  hidden_size=11008,
+    #  num_layers=32,
     block=nn.TransformerBlock.Config(
         attention=nn.MultiheadSelfAttention.Config(
-            #  n_heads=8,
-            n_heads=32,
+            n_heads=8,
+            #  n_heads=32,
             rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
             bias=False,
             dtype=PARAM_DTYPE,
@@ -57,13 +57,13 @@ def main():
 
     print("initializing model...")
     model = MODEL_CONFIG.build(model_key, parallel_config=parallel_config)
-    #  print(model)
-    #  num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
-    #  num_non_embedding_prams = num_params - model.embedding.weight.size
-    #  print(
-    #      f"Build model with {num_params:,d} total parameters, "
-    #      f"{num_non_embedding_prams:,d} non-embedding parameters"
-    #  )
+    print(model)
+    num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
+    num_non_embedding_prams = num_params - model.embedding.weight.size
+    print(
+        f"Build model with {num_params:,d} total parameters, "
+        f"{num_non_embedding_prams:,d} non-embedding parameters"
+    )
 
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
@@ -75,7 +75,7 @@ def main():
         optax.softmax_cross_entropy
         return F.cross_entropy_loss(logits, labels)
 
-    @eqx.filter_jit
+    @eqx.filter_jit(donate="all")
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
