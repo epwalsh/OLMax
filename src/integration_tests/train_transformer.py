@@ -72,7 +72,7 @@ def main():
         )
     ):
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        print(f"step={step}, loss={loss}")
+        print(f"step={step}, loss={loss.item():.5f}")
 
     print("done.")
 
