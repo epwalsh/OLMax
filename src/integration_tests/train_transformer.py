@@ -10,13 +10,14 @@ import olmax.nn.functional as F
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.types import Array
 
-VOCAB_SIZE = 32_000
+VOCAB_SIZE = 50_304
 SEQUENCE_LENGTH = 1024
 BATCH_SIZE = SEQUENCE_LENGTH * 32
 LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
 
-NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
+DTYPE = float
+NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False, dtype=DTYPE)
 MODEL_CONFIG = nn.Transformer.Config(
     d_model=1024,
     hidden_size=2816,
@@ -27,11 +28,14 @@ MODEL_CONFIG = nn.Transformer.Config(
             n_heads=8,
             rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
             bias=False,
+            dtype=DTYPE,
         ),
         norm=NORM_CONFIG,
         bias=False,
+        dtype=DTYPE,
     ),
-    lm_head=nn.LMHead.Config(norm=NORM_CONFIG, bias=False),
+    lm_head=nn.LMHead.Config(norm=NORM_CONFIG, bias=False, dtype=DTYPE),
+    dtype=DTYPE,
 )
 
 LOG_INTERVAL = 5

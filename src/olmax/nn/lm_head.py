@@ -68,4 +68,4 @@ class LMHead(Module):
     def forward(self, x: Array) -> Array:
         if self.norm is not None:
             x = self.norm.forward(x)
-        return self.w_out.forward(x)
+        return self.w_out.forward(x).astype(float)
