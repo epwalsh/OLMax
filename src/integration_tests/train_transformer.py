@@ -16,7 +16,7 @@ BATCH_SIZE = SEQUENCE_LENGTH * 32
 LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
 
-DTYPE = float
+DTYPE = jax.dtypes.bfloat16
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False, dtype=DTYPE)
 MODEL_CONFIG = nn.Transformer.Config(
     d_model=1024,
