@@ -13,6 +13,7 @@ from olmax.types import Array
 
 VOCAB_SIZE = 50_304
 SEQUENCE_LENGTH = 1024
+BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 16
 BATCH_SIZE = SEQUENCE_LENGTH * 32
 LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
@@ -92,9 +93,9 @@ def main():
 
         return loss, model, opt_state
 
-    per_device_batch_size_tokens = BATCH_SIZE // dist.get_global_device_count()
-    per_process_batch_size_tokens = BATCH_SIZE // dist.get_process_world_size()
-    per_process_batch_size_instances = per_process_batch_size_tokens // SEQUENCE_LENGTH
+    global_batch_size = BATCH_SIZE_PER_DEVICE * dist.get_global_device_count()
+    per_process_batch_size = global_batch_size // dist.get_process_world_size()
+    per_process_batch_size_instances = per_process_batch_size // SEQUENCE_LENGTH
 
     print("starting training...")
     batch_start = time.monotonic()
@@ -115,7 +116,7 @@ def main():
         # Log progress.
         metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
         batch_end = time.monotonic()
-        metrics["TPS"] = f"{int(per_device_batch_size_tokens / (batch_end - batch_start)):,d}"
+        metrics["TPS"] = f"{int(BATCH_SIZE_PER_DEVICE / (batch_end - batch_start)):,d}"
         batch_start = batch_end
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
 
