@@ -49,6 +49,7 @@ def main():
 
     print("initializing model...")
     model = MODEL_CONFIG.build(model_key, parallel_config=parallel_config)
+    print(model)
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
