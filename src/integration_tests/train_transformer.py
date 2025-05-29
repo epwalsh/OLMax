@@ -9,8 +9,8 @@ from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.types import Array
 
 VOCAB_SIZE = 32_000
-SEQUENCE_LENGTH = 2048
-BATCH_SIZE = SEQUENCE_LENGTH * 16
+SEQUENCE_LENGTH = 1024
+BATCH_SIZE = SEQUENCE_LENGTH * 32
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
     d_model=1024,
@@ -33,11 +33,14 @@ TRAIN_STEPS = 100
 
 
 def main():
+    print("========================= train integration test starting... =========================")
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
     parallel_config = dist.ParallelConfig.FSDP()
 
+    print("initializing model...")
     model = MODEL_CONFIG.build(model_key, parallel_config=parallel_config)
+    print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
 
@@ -55,19 +58,22 @@ def main():
         model = eqx.apply_updates(model, updates)
         return loss, model, opt_state
 
+    print("starting training...")
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
             local_data_parallel_rank=0,
             vocab_size=VOCAB_SIZE,
             sequence_length=SEQUENCE_LENGTH,
-            num_local_instances=BATCH_SIZE // SEQUENCE_LENGTH,
+            num_local_instances=(BATCH_SIZE // SEQUENCE_LENGTH) // dist.get_global_device_count(),
             total_batches=TRAIN_STEPS,
             parallel_config=parallel_config,
         )
     ):
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
         print(f"step={step}, loss={loss}")
+
+    print("done.")
 
 
 if __name__ == "__main__":
