@@ -12,7 +12,11 @@ def test_mhsa(
     key, batch_key = jax.random.split(key)
     batch = jax.random.normal(batch_key, (batch_size, seq_len, d_model))
     mhsa = nn.MultiheadSelfAttention(
-        d_model=d_model, n_heads=n_heads, n_kv_heads=n_kv_heads, key=key
+        d_model=d_model,
+        n_heads=n_heads,
+        n_kv_heads=n_kv_heads,
+        key=key,
+        rope=nn.RotaryPositionalEmbedding.Config(),
     )
     out = mhsa(batch)
     assert out.shape == (batch_size, seq_len, d_model)

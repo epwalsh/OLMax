@@ -7,6 +7,7 @@ from ..distributed.parallel import ParallelConfig
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
+from .rope import RotaryPositionalEmbedding, RotaryPositionalEmbeddingConfig
 
 
 class MultiheadSelfAttention(Module):
@@ -16,6 +17,8 @@ class MultiheadSelfAttention(Module):
     w_k: Linear
     w_v: Linear
     w_out: Linear
+
+    rope: RotaryPositionalEmbedding | None
 
     n_heads: int = eqx.field(static=True)
     n_kv_heads: int = eqx.field(static=True)
@@ -28,6 +31,7 @@ class MultiheadSelfAttention(Module):
         d_model: int,
         n_heads: int,
         key: PRNGKeyArray,
+        rope: RotaryPositionalEmbeddingConfig | None = None,
         n_kv_heads: int | None = None,
         bias: bool = True,
         window_size: int | tuple[int, int] | None = None,
@@ -40,7 +44,7 @@ class MultiheadSelfAttention(Module):
         self.head_dim = d_model // n_heads
         self.window_size = window_size
 
-        w_q_key, w_k_key, w_v_key, w_out_key = jax.random.split(key, 4)
+        w_q_key, w_k_key, w_v_key, w_out_key, rope_key = jax.random.split(key, 5)
         self.w_q = Linear(
             d_model,
             d_model,
@@ -73,21 +77,32 @@ class MultiheadSelfAttention(Module):
             dtype=dtype,
             parallel_config=parallel_config,
         )
+        self.rope = None if rope is None else rope.build(head_dim=self.head_dim, key=rope_key)
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
     def forward(self, x: Array) -> Array:
         assert x.ndim == 2  # (seq_len, d_model)
 
-        # shape: (seq_len, n_heads, head_dim)
-        q = jax.vmap(self.w_q.forward)(x).reshape(-1, self.n_heads, self.head_dim)
-        # shape: (seq_len, n_kv_heads, head_dim)
-        k = jax.vmap(self.w_k.forward)(x).reshape(-1, self.n_kv_heads, self.head_dim)
-        # shape: (seq_len, n_kv_heads, head_dim)
-        v = jax.vmap(self.w_v.forward)(x).reshape(-1, self.n_kv_heads, self.head_dim)
+        # shape: (seq_len, n_heads * head_dim)
+        q = jax.vmap(self.w_q.forward)(x)
+        # shape: (seq_len, n_kv_heads * head_dim)
+        k = jax.vmap(self.w_k.forward)(x)
+        # shape: (seq_len, n_kv_heads * head_dim)
+        v = jax.vmap(self.w_v.forward)(x)
 
         # TODO: clip QKV
         # TODO: QK-norm
-        # TODO: RoPE
+
+        # shape: (seq_len, n_heads, head_dim)
+        q = q.reshape(-1, self.n_heads, self.head_dim)
+        # shape: (seq_len, n_kv_heads, head_dim)
+        k = k.reshape(-1, self.n_kv_heads, self.head_dim)
+        # shape: (seq_len, n_kv_heads, head_dim)
+        v = v.reshape(-1, self.n_kv_heads, self.head_dim)
+
+        if self.rope is not None:
+            q = jax.vmap(self.rope.forward, 1, 1)(q)
+            k = jax.vmap(self.rope.forward, 1, 1)(k)
 
         # shape: (seq_len, n_heads, head_dim)
         att = jax.nn.dot_product_attention(

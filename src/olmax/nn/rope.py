@@ -1,4 +1,7 @@
-from typing import ClassVar
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import ClassVar, Type
 
 import equinox as eqx
 import jax
@@ -13,25 +16,47 @@ internal_rope_embedding_cache: dict[tuple[int, DTypeLike], tuple[Array, Array]] 
 cache_clears.append(internal_rope_embedding_cache.clear)
 
 
+@dataclass
+class RotaryPositionalEmbeddingConfig:
+    theta: float = 10_000.0
+    dtype: DTypeLike = float
+
+    def build(
+        self,
+        *,
+        head_dim: int,
+        key: PRNGKeyArray,
+        theta: float | None = None,
+        dtype: DTypeLike | None = None,
+    ) -> RotaryPositionalEmbedding:
+        return RotaryPositionalEmbedding(
+            head_dim=head_dim,
+            key=key,
+            theta=theta if theta is not None else self.theta,
+            dtype=dtype if dtype is not None else self.dtype,
+        )
+
+
 class RotaryPositionalEmbedding(Module):
+    Config: ClassVar[Type[RotaryPositionalEmbeddingConfig]] = RotaryPositionalEmbeddingConfig
     keepdims: ClassVar[int] = 2
 
-    d_model: int = eqx.field(static=True)
+    head_dim: int = eqx.field(static=True)
     theta: float = eqx.field(static=True, default=10_000.0)
     dtype: DTypeLike = eqx.field(static=True, default=float)
 
     def __init__(
         self,
         *,
-        d_model: int,
-        theta: float = 10_000.0,
+        head_dim: int,
         key: PRNGKeyArray,
+        theta: float = 10_000.0,
         dtype: DTypeLike = float,
         parallel_config: ParallelConfig | None = None,
     ):
         del key  # unused
         super().__init__(parallel_config)
-        self.d_model = d_model
+        self.head_dim = head_dim
         self.theta = theta
         self.dtype = dtype
 
@@ -42,9 +67,9 @@ class RotaryPositionalEmbedding(Module):
 
     @staticmethod
     def precompute_freqs_cis(
-        d_model: int, end: int, theta: float, dtype: DTypeLike
+        head_dim: int, end: int, theta: float, dtype: DTypeLike
     ) -> tuple[Array, Array]:
-        freqs = 1.0 / (theta ** (jnp.arange(0.0, d_model, 2)[jnp.newaxis, :] / d_model))
+        freqs = 1.0 / (theta ** (jnp.arange(0.0, head_dim, 2)[jnp.newaxis, :] / head_dim))
 
         t = jnp.arange(float(end))
         freqs_outer = jnp.outer(t, freqs)
@@ -54,27 +79,27 @@ class RotaryPositionalEmbedding(Module):
 
     @jax.named_scope("olmax.nn.RotaryPositionalEmbedding")
     def forward(self, x: Array) -> Array:
-        seq_len, d_model = x.shape
+        seq_len, head_dim = x.shape
         og_dtype = x.dtype
-        if d_model != self.d_model:
+        if head_dim != self.head_dim:
             raise ValueError(
-                f"x.shape[-1] must match self.d_model, but {x.shape[-1]} != {self.d_model}"
+                f"x.shape[-1] must match self.head_dim, but {x.shape[-1]} != {self.head_dim}"
             )
 
         x = x.astype(self.dtype)
 
         with jax.ensure_compile_time_eval():
-            cache_key = (d_model, self.dtype)
+            cache_key = (head_dim, self.dtype)
             if cache_key not in internal_rope_embedding_cache:
                 internal_rope_embedding_cache[cache_key] = self.precompute_freqs_cis(
-                    d_model, seq_len, self.theta, self.dtype
+                    head_dim, seq_len, self.theta, self.dtype
                 )
 
             freqs_cos, freqs_sin = internal_rope_embedding_cache[cache_key]
             freqs_seq_len, _ = freqs_cos.shape
             if seq_len > freqs_seq_len:
                 internal_rope_embedding_cache[cache_key] = self.precompute_freqs_cis(
-                    d_model, seq_len, self.theta, self.dtype
+                    head_dim, seq_len, self.theta, self.dtype
                 )
                 freqs_cos, freqs_sin = internal_rope_embedding_cache[cache_key]
 
