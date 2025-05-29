@@ -68,6 +68,7 @@ def main():
     print("starting training...")
     start_time: float | None = None
     start_step: int = 0
+    first_batch: bool = True
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
@@ -79,17 +80,25 @@ def main():
             parallel_config=parallel_config,
         )
     ):
-        loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        tokens_per_second_per_device: int | str = "N/A"
-        if start_time is None:
+        # Bookkeeping.
+        if not first_batch:
             start_time = time.monotonic()
             start_step = step
-        else:
+
+        # Do a step.
+        loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
+
+        # Calculate throughput.
+        tokens_per_second_per_device: int | str = "N/A"
+        if start_time is not None:
             elapsed_time = time.monotonic() - start_time
             avg_time_per_batch = elapsed_time / (step - start_step)
             batches_per_second = 1 / avg_time_per_batch
             tokens_per_second_per_device = int(batches_per_second * per_device_batch_size_tokens)
+
+        # Log progress.
         print(f"step={step+1}, loss={loss.item():.5f}, TPS={tokens_per_second_per_device}")
+        first_batch = False
 
     print("done.")
 
