@@ -51,7 +51,7 @@ def main():
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
         loss, grads = compute_loss(model, input_ids, labels)
-        updates, opt_state = optim.update(grads, opt_state)
+        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
         return loss, model, opt_state
 
