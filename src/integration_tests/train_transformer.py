@@ -34,6 +34,8 @@ MODEL_CONFIG = nn.Transformer.Config(
     lm_head=nn.LMHead.Config(norm=NORM_CONFIG, bias=False),
 )
 
+LOG_INTERVAL = 5
+
 
 def main():
     print("========================= train integration test starting... =========================")
@@ -83,7 +85,7 @@ def main():
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
         # Log progress.
-        metrics = {"step": step + 1, "loss": f"{loss.item():.4f}"}
+        metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
         batch_end = time.monotonic()
         metrics["TPS"] = f"{int(per_device_batch_size_tokens / (batch_end - batch_start)):,d}"
         batch_start = batch_end
