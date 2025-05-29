@@ -1,4 +1,7 @@
-from typing import ClassVar
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import ClassVar, Type
 
 import equinox as eqx
 import jax
@@ -11,7 +14,46 @@ from .normalization import LayerNorm, LayerNormConfig
 from .rope import RotaryPositionalEmbedding, RotaryPositionalEmbeddingConfig
 
 
+@dataclass
+class MultiheadSelfAttentionConfig:
+    n_heads: int
+    n_kv_heads: int | None = None
+    rope: RotaryPositionalEmbeddingConfig | None = None
+    qk_norm: LayerNormConfig | None = None
+    bias: bool = True
+    window_size: int | tuple[int, int] | None = None
+    dtype: DTypeLike = float
+
+    def build(
+        self,
+        *,
+        d_model: int,
+        key: PRNGKeyArray,
+        n_heads: int | None = None,
+        rope: RotaryPositionalEmbeddingConfig | None = None,
+        qk_norm: LayerNormConfig | None = None,
+        n_kv_heads: int | None = None,
+        bias: bool | None = None,
+        window_size: int | tuple[int, int] | None = None,
+        dtype: DTypeLike | None = None,
+        parallel_config: ParallelConfig | None = None,
+    ) -> MultiheadSelfAttention:
+        return MultiheadSelfAttention(
+            d_model=d_model,
+            key=key,
+            n_heads=n_heads if n_heads is not None else self.n_heads,
+            n_kv_heads=n_kv_heads if n_kv_heads is not None else self.n_kv_heads,
+            rope=rope if rope is not None else self.rope,
+            qk_norm=qk_norm if qk_norm is not None else self.qk_norm,
+            bias=bias if bias is not None else self.bias,
+            window_size=window_size if window_size is not None else self.window_size,
+            dtype=dtype if dtype is not None else self.dtype,
+            parallel_config=parallel_config,
+        )
+
+
 class MultiheadSelfAttention(Module):
+    Config: ClassVar[Type[MultiheadSelfAttentionConfig]] = MultiheadSelfAttentionConfig
     keepdims: ClassVar[int] = 2
 
     w_q: Linear
