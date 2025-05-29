@@ -57,13 +57,13 @@ def main():
 
     print("initializing model...")
     model = MODEL_CONFIG.build(model_key, parallel_config=parallel_config)
-    print(model)
-    num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
-    num_non_embedding_prams = num_params - model.embedding.weight.size
-    print(
-        f"Build model with {num_params:,d} total parameters, "
-        f"{num_non_embedding_prams:,d} non-embedding parameters"
-    )
+    #  print(model)
+    #  num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
+    #  num_non_embedding_prams = num_params - model.embedding.weight.size
+    #  print(
+    #      f"Build model with {num_params:,d} total parameters, "
+    #      f"{num_non_embedding_prams:,d} non-embedding parameters"
+    #  )
 
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
@@ -71,11 +71,7 @@ def main():
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
-        jax.debug.inspect_array_sharding(
-            model.embedding.weight, callback=lambda s: print("embedding:", s)
-        )
         logits = model(input_ids)
-        optax.softmax_cross_entropy
         return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
