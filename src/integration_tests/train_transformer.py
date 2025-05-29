@@ -8,6 +8,7 @@ import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
 from olmax.data.utils import generate_batches_of_sequential_tokens
+from olmax.jax_utils import cast_tree
 from olmax.types import Array
 
 VOCAB_SIZE = 50_304
@@ -16,7 +17,9 @@ BATCH_SIZE = SEQUENCE_LENGTH * 32
 LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
 
-DTYPE = float
+PARAM_DTYPE = float
+COMPUTE_DTYPE = jax.dtypes.bfloat16
+
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
     d_model=1024,
@@ -28,14 +31,14 @@ MODEL_CONFIG = nn.Transformer.Config(
             n_heads=8,
             rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
             bias=False,
-            dtype=DTYPE,
+            dtype=PARAM_DTYPE,
         ),
         norm=NORM_CONFIG,
         bias=False,
-        dtype=DTYPE,
+        dtype=PARAM_DTYPE,
     ),
-    lm_head=nn.LMHead.Config(norm=NORM_CONFIG, bias=False, dtype=DTYPE),
-    dtype=DTYPE,
+    lm_head=nn.LMHead.Config(norm=NORM_CONFIG, bias=False, dtype=PARAM_DTYPE),
+    dtype=PARAM_DTYPE,
 )
 
 LOG_INTERVAL = 5
@@ -70,11 +73,23 @@ def main():
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
-        model_bf16 = jax.tree.map(lambda x: x.astype(jax.dtypes.bfloat16), model)
-        loss, grads_bf16 = compute_loss(model_bf16, input_ids, labels)
-        grads = jax.tree.map(lambda x: x.astype(float), grads_bf16)
+        # Cast model to lower precision compute dtype.
+        if COMPUTE_DTYPE != PARAM_DTYPE:
+            model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
+        else:
+            model_with_compute_dtype = model
+
+        # Calculate loss and gradients.
+        loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+
+        # Cast grads back to param dtype.
+        if COMPUTE_DTYPE != PARAM_DTYPE:
+            grads = cast_tree(grads, PARAM_DTYPE)
+
+        # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
+
         return loss, model, opt_state
 
     per_device_batch_size_tokens = BATCH_SIZE // dist.get_global_device_count()
