@@ -25,8 +25,8 @@ class TransformerConfig:
 
     def build(
         self,
-        *,
         key: PRNGKeyArray,
+        *,
         d_model: int | None = None,
         vocab_size: int | None = None,
         hidden_size: int | None = None,

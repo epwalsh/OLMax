@@ -6,6 +6,7 @@ from typing import ClassVar, Sequence, Type
 
 import equinox as eqx
 import jax
+from typing_extensions import Self
 
 from ..distributed.parallel import ParallelConfig
 from ..types import Array, DTypeLike, PRNGKeyArray
@@ -34,6 +35,10 @@ class LayerNormConfig:
     dtype: DTypeLike = float
     elementwise_affine: bool = True
     bias: bool = True
+
+    @classmethod
+    def rms_norm(cls, **kwargs) -> Self:
+        return cls(name=LayerNormType.rms, **kwargs)
 
     def build(
         self,
