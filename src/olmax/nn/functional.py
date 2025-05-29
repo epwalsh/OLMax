@@ -69,7 +69,7 @@ def cross_entropy_loss(
 ) -> Array:
     n_classes = logits.shape[-1]
     labels_one_hot = jax.nn.one_hot(labels, n_classes)
-    where = labels == ignore_index
+    where = jnp.expand_dims(labels == ignore_index, -1)
 
     log_probs = jax.nn.log_softmax(logits, -1, where)
     loss = (labels_one_hot * log_probs).sum(-1, where=where)
