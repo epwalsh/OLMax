@@ -16,7 +16,7 @@ BATCH_SIZE = SEQUENCE_LENGTH * 32
 LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
 
-DTYPE = jax.dtypes.bfloat16
+DTYPE = float
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
     d_model=1024,
@@ -70,7 +70,9 @@ def main():
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
-        loss, grads = compute_loss(model, input_ids, labels)
+        model_bf16 = jax.tree.map(lambda x: x.astype(jax.dtypes.bfloat16), model)
+        loss, grads_bf16 = compute_loss(model_bf16, input_ids, labels)
+        grads = jax.tree.map(lambda x: x.astype(float), grads_bf16)
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
         return loss, model, opt_state
