@@ -19,7 +19,7 @@ def _randomize_start_offsets(
     sharding: NamedSharding | None,
 ) -> tuple[Array, Array]:
     num_instances, sequence_length = batch.shape
-    start_offsets = random.randint(key, (num_instances, 1), 0, vocab_size - sequence_length)
+    start_offsets = random.randint(key, (num_instances, 1), 0, vocab_size - sequence_length - 1)
     inputs = batch + start_offsets
     targets = inputs + 1
     if sharding is not None:

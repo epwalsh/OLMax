@@ -47,6 +47,7 @@ def main():
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         logits = model(input_ids)
+        print(logits, labels)
         return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit
