@@ -7,6 +7,7 @@ from typing_extensions import Self
 
 from ..distributed.parallel import ParallelConfig
 from ..jax_utils import vmap_multiple
+from ..types import Array
 
 
 class Module(eqx.Module):
@@ -65,3 +66,6 @@ class Module(eqx.Module):
             Unlike the equivalent in Pytorch this does not modify the module in-place!
         """
         return eqx.nn.inference_mode(self, value=False)
+
+    def parameters(self) -> list[Array]:
+        return jax.tree.flatten(self)[0]
