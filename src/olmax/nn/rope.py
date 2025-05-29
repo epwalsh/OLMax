@@ -3,7 +3,6 @@ from typing import ClassVar
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax._src.dtypes import TypePromotionError
 
 from ..caches import cache_clears
 from ..distributed.parallel import ParallelConfig
@@ -50,16 +49,19 @@ class RotaryPositionalEmbedding(Module):
         t = jnp.arange(float(end))
         freqs_outer = jnp.outer(t, freqs)
 
-        # we assign the type at the very end to minimize the loss of precision
+        # Assign the type at the very end to minimize the loss of precision.
         return jnp.cos(freqs_outer).astype(dtype), jnp.sin(freqs_outer).astype(dtype)
 
     @jax.named_scope("olmax.nn.RotaryPositionalEmbedding")
     def forward(self, x: Array) -> Array:
         seq_len, d_model = x.shape
+        og_dtype = x.dtype
         if d_model != self.d_model:
             raise ValueError(
-                f"x.shape[-1] must match self.d_model, " f"but {x.shape[-1]} != {self.d_model}"
+                f"x.shape[-1] must match self.d_model, but {x.shape[-1]} != {self.d_model}"
             )
+
+        x = x.astype(self.dtype)
 
         with jax.ensure_compile_time_eval():
             cache_key = (d_model, self.dtype)
@@ -83,17 +85,6 @@ class RotaryPositionalEmbedding(Module):
         freqs_sin = jnp.tile(freqs_sin, (1, 2))
 
         rotate_x = self.rotate_half(x)
-        try:
-            x_rope = (x * freqs_cos) + (rotate_x * freqs_sin)
-        except TypePromotionError as e:
-            inp_dtype = jnp.dtype(x.dtype)
-            rope_dtype = jnp.dtype(self.dtype)
-            raise TypePromotionError(
-                f"The type of the passed value differs from the type "
-                f"of the rotary embeddings ({inp_dtype} != {rope_dtype}), thus leading "
-                f"to a conflict when numpy_dtype_promotion is set to strict. To avoid "
-                f"this error, either initialiaze RoPE module with {inp_dtype} "
-                f"dtype, or explicitly cast the input argument to {rope_dtype}."
-            ) from e
+        x_rope = (x * freqs_cos) + (rotate_x * freqs_sin)
 
-        return x_rope.astype(x.dtype)
+        return x_rope.astype(og_dtype)

@@ -1,5 +1,6 @@
 from . import functional, init
 from .attention import MultiheadSelfAttention
+from .embedding import Embedding
 from .linear import Linear
 from .mlp import GatedMLP
 from .module import Module
@@ -11,6 +12,8 @@ __all__ = [
     "Module",
     # Linear layers.
     "Linear",
+    # Embedding (look-up table) layers.
+    "Embedding",
     # Normalization layers.
     "LayerNorm",
     "RMSNorm",
