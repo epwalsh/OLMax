@@ -130,8 +130,16 @@ class MultiheadSelfAttention(Module):
             if rope is None
             else rope.build(head_dim=self.head_dim, key=rope_key, parallel_config=parallel_config)
         )
-        self.q_norm = None if qk_norm is None else qk_norm.build(d_model, q_norm_key)
-        self.k_norm = None if qk_norm is None else qk_norm.build(d_model, k_norm_key)
+        self.q_norm = (
+            None
+            if qk_norm is None
+            else qk_norm.build(d_model, q_norm_key, parallel_config=parallel_config)
+        )
+        self.k_norm = (
+            None
+            if qk_norm is None
+            else qk_norm.build(d_model, k_norm_key, parallel_config=parallel_config)
+        )
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
     def forward(self, x: Array) -> Array:
