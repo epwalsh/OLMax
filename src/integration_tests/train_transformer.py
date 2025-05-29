@@ -14,7 +14,6 @@ from olmax.types import Array
 VOCAB_SIZE = 50_304
 SEQUENCE_LENGTH = 1024
 BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 16
-BATCH_SIZE = SEQUENCE_LENGTH * 32
 LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
 
@@ -57,7 +56,8 @@ def main():
     num_params = sum(p.size for p in model.parameters())
     num_non_embedding_prams = num_params - model.embedding.weight.size
     print(
-        f"Build model with {num_params:,d} total parameters, {num_non_embedding_prams:,d} non-embedding parameters"
+        f"Build model with {num_params:,d} total parameters, "
+        f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
     print("initializing optimizer...")
