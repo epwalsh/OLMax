@@ -83,10 +83,11 @@ def main():
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
         # Log progress.
-        metrics = {"step": step + 1, "loss": loss.item()}
-        metrics["TPS"] = per_device_batch_size_tokens / (time.monotonic() - batch_start)
+        metrics = {"step": step + 1, "loss": f"{loss.item():.4f}"}
+        batch_end = time.monotonic()
+        metrics["TPS"] = f"{int(per_device_batch_size_tokens / (batch_end - batch_start)):,d}"
+        batch_start = batch_end
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
-        batch_start = time.monotonic()
 
     print("done.")
 
