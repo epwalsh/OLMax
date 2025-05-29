@@ -71,6 +71,9 @@ def main():
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+        jax.debug.inspect_array_sharding(
+            model.embedding.weight, callback=lambda s: print("embedding:", s)
+        )
         logits = model(input_ids)
         optax.softmax_cross_entropy
         return F.cross_entropy_loss(logits, labels)
