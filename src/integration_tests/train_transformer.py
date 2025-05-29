@@ -67,8 +67,7 @@ def main():
     per_process_batch_size_instances = per_process_batch_size_tokens // SEQUENCE_LENGTH
 
     print("starting training...")
-    start_time: float | None = None
-    start_step: int = 0
+    batch_start = time.monotonic()
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
@@ -82,21 +81,12 @@ def main():
     ):
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        loss_float = loss.item()
-
-        # Calculate throughput.
-        tokens_per_second_per_device: int | str = "N/A"
-        if start_time is None:
-            start_time = time.monotonic()
-            start_step = step
-        else:
-            elapsed_time = time.monotonic() - start_time
-            avg_time_per_batch = elapsed_time / (step - start_step)
-            batches_per_second = 1 / avg_time_per_batch
-            tokens_per_second_per_device = int(batches_per_second * per_device_batch_size_tokens)
 
         # Log progress.
-        print(f"step={step+1}, loss={loss_float:.5f}, TPS={tokens_per_second_per_device}")
+        metrics = {"step": step + 1, "loss": loss.item()}
+        metrics["TPS"] = per_device_batch_size_tokens / (time.monotonic() - batch_start)
+        print(", ".join(f"{name}={value}" for name, value in metrics.items()))
+        batch_start = time.monotonic()
 
     print("done.")
 
