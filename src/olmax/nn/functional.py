@@ -72,7 +72,7 @@ def cross_entropy_loss(
     where = jnp.expand_dims(labels != ignore_index, -1)
 
     log_probs = jax.nn.log_softmax(logits, -1, where)
-    loss = (labels_one_hot * log_probs).sum(-1, where=where)
+    loss = -(labels_one_hot * log_probs).sum(-1, where=where)
 
     if reduction == "sum":
         return loss.sum()
