@@ -23,17 +23,19 @@ class RotaryPositionalEmbeddingConfig:
 
     def build(
         self,
-        *,
         head_dim: int,
         key: PRNGKeyArray,
+        *,
         theta: float | None = None,
         dtype: DTypeLike | None = None,
+        parallel_config: ParallelConfig | None = None,
     ) -> RotaryPositionalEmbedding:
         return RotaryPositionalEmbedding(
             head_dim=head_dim,
             key=key,
             theta=theta if theta is not None else self.theta,
             dtype=dtype if dtype is not None else self.dtype,
+            parallel_config=parallel_config,
         )
 
 
@@ -47,9 +49,9 @@ class RotaryPositionalEmbedding(Module):
 
     def __init__(
         self,
-        *,
         head_dim: int,
         key: PRNGKeyArray,
+        *,
         theta: float = 10_000.0,
         dtype: DTypeLike = float,
         parallel_config: ParallelConfig | None = None,

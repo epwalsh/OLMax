@@ -17,6 +17,7 @@ def test_mhsa(
         n_kv_heads=n_kv_heads,
         key=key,
         rope=nn.RotaryPositionalEmbedding.Config(),
+        qk_norm=nn.LayerNorm.Config(),
     )
     out = mhsa(batch)
     assert out.shape == (batch_size, seq_len, d_model)

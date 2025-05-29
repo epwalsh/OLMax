@@ -7,6 +7,7 @@ from ..distributed.parallel import ParallelConfig
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
+from .normalization import LayerNorm, LayerNormConfig
 from .rope import RotaryPositionalEmbedding, RotaryPositionalEmbeddingConfig
 
 
@@ -19,6 +20,8 @@ class MultiheadSelfAttention(Module):
     w_out: Linear
 
     rope: RotaryPositionalEmbedding | None
+    q_norm: LayerNorm | None
+    k_norm: LayerNorm | None
 
     n_heads: int = eqx.field(static=True)
     n_kv_heads: int = eqx.field(static=True)
@@ -32,6 +35,7 @@ class MultiheadSelfAttention(Module):
         n_heads: int,
         key: PRNGKeyArray,
         rope: RotaryPositionalEmbeddingConfig | None = None,
+        qk_norm: LayerNormConfig | None = None,
         n_kv_heads: int | None = None,
         bias: bool = True,
         window_size: int | tuple[int, int] | None = None,
@@ -44,7 +48,9 @@ class MultiheadSelfAttention(Module):
         self.head_dim = d_model // n_heads
         self.window_size = window_size
 
-        w_q_key, w_k_key, w_v_key, w_out_key, rope_key = jax.random.split(key, 5)
+        w_q_key, w_k_key, w_v_key, w_out_key, rope_key, q_norm_key, k_norm_key = jax.random.split(
+            key, 7
+        )
         self.w_q = Linear(
             d_model,
             d_model,
@@ -77,7 +83,13 @@ class MultiheadSelfAttention(Module):
             dtype=dtype,
             parallel_config=parallel_config,
         )
-        self.rope = None if rope is None else rope.build(head_dim=self.head_dim, key=rope_key)
+        self.rope = (
+            None
+            if rope is None
+            else rope.build(head_dim=self.head_dim, key=rope_key, parallel_config=parallel_config)
+        )
+        self.q_norm = None if qk_norm is None else qk_norm.build(d_model, q_norm_key)
+        self.k_norm = None if qk_norm is None else qk_norm.build(d_model, k_norm_key)
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
     def forward(self, x: Array) -> Array:
@@ -90,8 +102,10 @@ class MultiheadSelfAttention(Module):
         # shape: (seq_len, n_kv_heads * head_dim)
         v = jax.vmap(self.w_v.forward)(x)
 
-        # TODO: clip QKV
-        # TODO: QK-norm
+        if self.q_norm is not None:
+            q = jax.vmap(self.q_norm.forward)(q)
+        if self.k_norm is not None:
+            k = jax.vmap(self.k_norm.forward)(k)
 
         # shape: (seq_len, n_heads, head_dim)
         q = q.reshape(-1, self.n_heads, self.head_dim)
