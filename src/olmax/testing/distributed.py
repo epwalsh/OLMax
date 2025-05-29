@@ -65,19 +65,18 @@ def _init_process(
     primary_addr: str = "127.0.0.1",
     primary_port: int = 29500,
     backend: Literal["gpu", "tpu", "cpu"] | str | None = None,
-    devices_per_process: int | None = None,
+    devices_per_process: int = 1,
 ):
-    if devices_per_process is not None:
-        if backend == "cpu":
-            #  os.environ[
-            #      "XLA_FLAGS"
-            #  ] = f"--xla_force_host_platform_device_count={devices_per_process}"
-            jax.config.update("jax_num_cpu_devices", devices_per_process)
-            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-        elif backend == "gpu":
-            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-            os.environ["CUDA_VISIBLE_DEVICES"] = f"{process_rank}"
+    if backend == "cpu":
+        #  os.environ[
+        #      "XLA_FLAGS"
+        #  ] = f"--xla_force_host_platform_device_count={devices_per_process}"
+        jax.config.update("jax_num_cpu_devices", devices_per_process)
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    elif backend == "gpu":
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"] = f"{process_rank}"
 
     os.environ[
         dist.SHARED_FS_DIRS_ENV_VAR
@@ -123,7 +122,7 @@ def _init_process(
 def run_distributed_test(
     func: Callable,
     num_processes: int = 2,
-    devices_per_process: int | None = None,
+    devices_per_process: int = 1,
     log_from_all_ranks: bool = False,
     start_method: Optional[str] = "spawn",
     args: Optional[tuple[Any, ...]] = None,
@@ -139,16 +138,12 @@ def run_distributed_test(
     if backend is None:
         backend = jax.default_backend()
 
-    total_devices_needed = num_processes
-    if devices_per_process is not None:
-        total_devices_needed *= devices_per_process
+    total_devices_needed = num_processes * devices_per_process
     if backend != "cpu" and jax.device_count(backend) < total_devices_needed:
         pytest.skip(f"Requires at least {total_devices_needed} {backend} devices")
 
     # Check if we can run the test directly.
-    if num_processes == 1 and (
-        devices_per_process is None or devices_per_process == jax.device_count()
-    ):
+    if num_processes == 1 and devices_per_process == jax.device_count():
         func(*(args or []), **(kwargs or {}))
         return
 
