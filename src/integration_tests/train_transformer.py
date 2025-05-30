@@ -26,7 +26,6 @@ LEARNING_RATE = 1e-3
 TRAIN_STEPS = 100
 
 PARAM_DTYPE = float
-#  PARAM_DTYPE = jax.dtypes.bfloat16
 COMPUTE_DTYPE = jax.dtypes.bfloat16
 
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
@@ -77,11 +76,9 @@ def main():
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
-    #  jax.debug.inspect_array_sharding(
-    #      opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
-    #  )
 
     @eqx.filter_value_and_grad
+    @eqx.filter_jit(donate="all")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
@@ -96,39 +93,23 @@ def main():
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
-        #  opt_state = jax.lax.with_sharding_constraint(
-        #      opt_state, parallel_config.get_param_sharding()
-        #  )
 
         # Cast model to lower precision compute dtype.
-        if COMPUTE_DTYPE != PARAM_DTYPE:
-            model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
-        else:
-            model_with_compute_dtype = model
+        model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
+        jax.debug.print("Got grads!")
 
         # Cast grads back to param dtype.
-        if COMPUTE_DTYPE != PARAM_DTYPE:
-            grads = cast_tree(grads, PARAM_DTYPE)
+        grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        #  jax.debug.inspect_array_sharding(
-        #      opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
-        #  )
         model = eqx.apply_updates(model, updates)
-        #  jax.debug.inspect_array_sharding(
-        #      model.embedding, callback=lambda s: print("model state:", s)
-        #  )
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
-        #  opt_state = jax.lax.with_sharding_constraint(
-        #      opt_state, parallel_config.get_param_sharding()
-        #  )
-
         return loss, model, opt_state
 
     global_batch_size = BATCH_SIZE_PER_DEVICE * dist.get_global_device_count()
