@@ -98,7 +98,8 @@ class Transformer(Module):
         # shape: (seq_len, d_model)
         h = self.embedding(x)
 
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
+            print(f"computing block {i}...")
             # shape: (seq_len, d_model)
             h = block(h)
 
