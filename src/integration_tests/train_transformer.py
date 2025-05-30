@@ -29,7 +29,7 @@ LEARNING_RATE = 1e-3
 #  LEARNING_RATE = 1e-4
 TRAIN_STEPS = 100
 
-PARAM_DTYPE = float
+PARAM_DTYPE = jax.dtypes.bfloat16
 COMPUTE_DTYPE = jax.dtypes.bfloat16
 
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
@@ -82,7 +82,6 @@ def main():
     opt_state = optim.init(model)  # pyright: ignore
 
     @eqx.filter_value_and_grad
-    @eqx.filter_jit(donate="all")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
@@ -101,14 +100,18 @@ def main():
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
 
         # Cast model to lower precision compute dtype.
-        model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
+        if COMPUTE_DTYPE != PARAM_DTYPE:
+            model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
+        else:
+            model_with_compute_dtype = model
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
 
         # Cast grads back to param dtype.
-        grads = cast_tree(grads, PARAM_DTYPE)
+        if COMPUTE_DTYPE != PARAM_DTYPE:
+            grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
