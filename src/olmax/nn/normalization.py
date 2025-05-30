@@ -65,7 +65,7 @@ class LayerNormConfig:
 
 
 class LayerNorm(Module):
-    keepdims: ClassVar[int] = 2
+    keepdims: ClassVar[int] = 1
     Config: ClassVar[Type[LayerNormConfig]] = LayerNormConfig
 
     shape: tuple[int, ...] = eqx.field(static=True)
@@ -117,18 +117,10 @@ class LayerNorm(Module):
 
     @jax.named_scope("olmax.nn.LayerNorm")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 2
-        return jax.vmap(
-            lambda xi: layer_norm(xi, weight=self.weight, bias=self.bias, eps=self.eps)
-        )(x)
+        return layer_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
 
 
 class RMSNorm(LayerNorm):
-    keepdims: ClassVar[int] = 2
-
     @jax.named_scope("olmax.nn.RMSNorm")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 2
-        return jax.vmap(lambda xi: rms_norm(xi, weight=self.weight, bias=self.bias, eps=self.eps))(
-            x
-        )
+        return rms_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
