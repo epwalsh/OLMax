@@ -55,7 +55,7 @@ def main(
     model_key, data_key = jax.random.split(key)
     parallel_config = dist.ParallelConfig.FSDP()
 
-    print("Iinitializing model...")
+    print("Initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
     print(model)
     num_params = count_params(model)
