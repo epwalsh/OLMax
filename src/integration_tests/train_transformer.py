@@ -115,7 +115,7 @@ def main():
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         #  model = eqx.apply_updates(model, updates)
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
