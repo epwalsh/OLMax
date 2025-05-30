@@ -3,7 +3,7 @@ import gc
 import os
 import time
 
-DEBUG = False
+DEBUG = True
 if DEBUG:
     #  os.environ["EQX_ON_ERROR"] = "breakpoint"
     #  os.environ["JAX_DISABLE_JIT"] = "1"
