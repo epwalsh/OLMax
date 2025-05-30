@@ -24,7 +24,7 @@ def main(
     instances_per_device: int | None = None,
     vocab_size: int = 50_304,
     param_dtype: DTypeLike = float,
-    compute_dtype: DTypeLike = "bfloat16",
+    compute_dtype: DTypeLike = jax.dtypes.bfloat16,
     learning_rate: float = 1e-3,
     train_steps: int = 100,
 ):
@@ -52,7 +52,7 @@ def main(
 
     print("initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
-    #  print(model)
+    print(model)
     num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     print(
@@ -63,7 +63,6 @@ def main(
     print("initializing optimizer...")
     optim = optax.adamw(learning_rate)
     opt_state = optim.init(model)  # pyright: ignore
-    #  opt_state = {}
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
