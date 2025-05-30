@@ -94,6 +94,9 @@ def main(
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+        opt_state = with_optional_sharding_contraint(
+            opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
+        )
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
