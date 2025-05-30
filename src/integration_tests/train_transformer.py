@@ -78,7 +78,7 @@ def main():
     #  )
 
     print("initializing optimizer...")
-    optim = optax.sgd(LEARNING_RATE)
+    optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
     #  opt_state = {}
 
