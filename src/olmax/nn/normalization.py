@@ -65,6 +65,7 @@ class LayerNormConfig:
 
 
 class LayerNorm(Module):
+    keepdims: ClassVar[int] = 2
     Config: ClassVar[Type[LayerNormConfig]] = LayerNormConfig
 
     shape: tuple[int, ...] = eqx.field(static=True)
@@ -116,24 +117,18 @@ class LayerNorm(Module):
 
     @jax.named_scope("olmax.nn.LayerNorm")
     def forward(self, x: Array) -> Array:
-        if x.shape != self.shape:
-            raise ValueError(
-                "`LayerNorm(shape)(x)` must satisfy the invariant `shape == x.shape`.\n"
-                f"Received `shape={self.shape} and `x.shape={x.shape}`. You might need "
-                "to replace `layer_norm(x)` with `jax.vmap(layer_norm)(x)`.\n"
-            )
-
-        return layer_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
+        assert x.ndim == 2
+        return jax.vmap(
+            lambda xi: layer_norm(xi, weight=self.weight, bias=self.bias, eps=self.eps)
+        )(x)
 
 
 class RMSNorm(LayerNorm):
+    keepdims: ClassVar[int] = 2
+
     @jax.named_scope("olmax.nn.RMSNorm")
     def forward(self, x: Array) -> Array:
-        if x.shape != self.shape:
-            raise ValueError(
-                "`RMSNorm(shape)(x)` must satisfy the invariant `shape == x.shape`.\n"
-                f"Received `shape={self.shape} and `x.shape={x.shape}`. You might need "
-                "to replace `rms_norm(x)` with `jax.vmap(rms_norm)(x)`.\n"
-            )
-
-        return rms_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
+        assert x.ndim == 2
+        return jax.vmap(lambda xi: rms_norm(xi, weight=self.weight, bias=self.bias, eps=self.eps))(
+            x
+        )

@@ -54,7 +54,7 @@ class MultiheadSelfAttentionConfig:
 
 class MultiheadSelfAttention(Module):
     Config: ClassVar[Type[MultiheadSelfAttentionConfig]] = MultiheadSelfAttentionConfig
-    keepdims: ClassVar[int] = 2
+    keepdims: ClassVar[int] = -1
 
     w_q: Linear
     w_k: Linear
@@ -143,40 +143,41 @@ class MultiheadSelfAttention(Module):
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 2  # (seq_len, d_model)
+        assert x.ndim == 3  # (batch_size, seq_len, d_model)
+        B, S, _ = x.shape
 
-        # shape: (seq_len, n_heads * head_dim)
-        q = jax.vmap(self.w_q.forward)(x)
-        # shape: (seq_len, n_kv_heads * head_dim)
-        k = jax.vmap(self.w_k.forward)(x)
-        # shape: (seq_len, n_kv_heads * head_dim)
-        v = jax.vmap(self.w_v.forward)(x)
+        # shape: (batch_size, seq_len, n_heads * head_dim)
+        q = self.w_q(x)
+        # shape: (batch_size, seq_len, n_kv_heads * head_dim)
+        k = self.w_k(x)
+        # shape: (batch_size, seq_len, n_kv_heads * head_dim)
+        v = self.w_v(x)
 
         if self.q_norm is not None:
-            q = jax.vmap(self.q_norm.forward)(q)
+            q = self.q_norm(q)
         if self.k_norm is not None:
-            k = jax.vmap(self.k_norm.forward)(k)
+            k = self.k_norm(k)
 
-        # shape: (seq_len, n_heads, head_dim)
-        q = q.reshape(-1, self.n_heads, self.head_dim)
-        # shape: (seq_len, n_kv_heads, head_dim)
-        k = k.reshape(-1, self.n_kv_heads, self.head_dim)
-        # shape: (seq_len, n_kv_heads, head_dim)
-        v = v.reshape(-1, self.n_kv_heads, self.head_dim)
+        # shape: (batch_size, seq_len, n_heads, head_dim)
+        q = q.reshape(B, S, self.n_heads, self.head_dim)
+        # shape: (batch_size, seq_len, n_kv_heads, head_dim)
+        k = k.reshape(B, S, self.n_kv_heads, self.head_dim)
+        # shape: (batch_size, seq_len, n_kv_heads, head_dim)
+        v = v.reshape(B, S, self.n_kv_heads, self.head_dim)
 
         if self.rope is not None:
-            q = jax.vmap(self.rope.forward, 1, 1)(q)
-            k = jax.vmap(self.rope.forward, 1, 1)(k)
+            q = jax.vmap(self.rope.forward, 2, 2)(q)
+            k = jax.vmap(self.rope.forward, 2, 2)(k)
 
-        # shape: (seq_len, n_heads, head_dim)
+        # shape: (batch_size, seq_len, n_heads, head_dim)
         att = jax.nn.dot_product_attention(
             q, k, v, is_causal=True, local_window_size=self.window_size
         )
 
-        # shape: (seq_len, d_model)
-        att = att.reshape(-1, self.n_heads * self.head_dim)
+        # shape: (batch_size, seq_len, d_model)
+        att = att.reshape(B, S, self.n_heads * self.head_dim)
 
-        # shape: (seq_len, d_model)
-        out = jax.vmap(self.w_out.forward)(att)
+        # shape: (batch_size, seq_len, d_model)
+        out = self.w_out(att)
 
         return out

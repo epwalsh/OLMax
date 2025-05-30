@@ -41,7 +41,7 @@ class RotaryPositionalEmbeddingConfig:
 
 class RotaryPositionalEmbedding(Module):
     Config: ClassVar[Type[RotaryPositionalEmbeddingConfig]] = RotaryPositionalEmbeddingConfig
-    keepdims: ClassVar[int] = 2
+    keepdims: ClassVar[int] = -1
 
     head_dim: int = eqx.field(static=True)
     theta: float = eqx.field(static=True, default=10_000.0)
@@ -81,9 +81,9 @@ class RotaryPositionalEmbedding(Module):
 
     @jax.named_scope("olmax.nn.RotaryPositionalEmbedding")
     def forward(self, x: Array) -> Array:
-        seq_len, head_dim = x.shape
+        _, S, H = x.shape
         og_dtype = x.dtype
-        if head_dim != self.head_dim:
+        if H != self.head_dim:
             raise ValueError(
                 f"x.shape[-1] must match self.head_dim, but {x.shape[-1]} != {self.head_dim}"
             )
@@ -91,25 +91,25 @@ class RotaryPositionalEmbedding(Module):
         x = x.astype(self.dtype)
 
         with jax.ensure_compile_time_eval():
-            cache_key = (head_dim, self.dtype)
+            cache_key = (H, self.dtype)
             if cache_key not in internal_rope_embedding_cache:
                 internal_rope_embedding_cache[cache_key] = self.precompute_freqs_cis(
-                    head_dim, seq_len, self.theta, self.dtype
+                    H, S, self.theta, self.dtype
                 )
 
             freqs_cos, freqs_sin = internal_rope_embedding_cache[cache_key]
             freqs_seq_len, _ = freqs_cos.shape
-            if seq_len > freqs_seq_len:
+            if S > freqs_seq_len:
                 internal_rope_embedding_cache[cache_key] = self.precompute_freqs_cis(
-                    head_dim, seq_len, self.theta, self.dtype
+                    H, S, self.theta, self.dtype
                 )
                 freqs_cos, freqs_sin = internal_rope_embedding_cache[cache_key]
 
-            freqs_cos = freqs_cos[:seq_len]
-            freqs_sin = freqs_sin[:seq_len]
+            freqs_cos = freqs_cos[:, :S]
+            freqs_sin = freqs_sin[:, :S]
 
-        freqs_cos = jnp.tile(freqs_cos, (1, 2))
-        freqs_sin = jnp.tile(freqs_sin, (1, 2))
+        freqs_cos = jnp.tile(jnp.expand_dims(freqs_cos, 0), (1, 2))
+        freqs_sin = jnp.tile(jnp.expand_dims(freqs_sin, 0), (1, 2))
 
         rotate_x = self.rotate_half(x)
         x_rope = (x * freqs_cos) + (rotate_x * freqs_sin)

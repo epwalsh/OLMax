@@ -51,7 +51,7 @@ class TransformerConfig:
 
 class Transformer(Module):
     Config: ClassVar[Type[TransformerConfig]] = TransformerConfig
-    keepdims: ClassVar[int] = 1
+    keepdims: ClassVar[int] = -1
 
     embedding: Embedding
     blocks: list[TransformerBlock]
@@ -93,15 +93,15 @@ class Transformer(Module):
 
     @jax.named_scope("olmax.nn.Transformer")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 1  # shape: (seq_len,)
+        assert x.ndim == 2  # shape: (batch_size, seq_len)
 
         # shape: (seq_len, d_model)
-        h = jax.vmap(self.embedding.forward)(x)
+        h = self.embedding(x)
 
         for block in self.blocks:
             # shape: (seq_len, d_model)
-            h = block.forward(h)
+            h = block(h)
 
         # shape: (seq_len, vocab_size)
-        out = jax.vmap(self.lm_head.forward)(h)
+        out = self.lm_head(h)
         return out

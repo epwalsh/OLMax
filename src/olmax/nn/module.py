@@ -30,20 +30,23 @@ class Module(eqx.Module):
         ndims = 1
         if args and isinstance(args[0], jax.Array):
             ndims = args[0].ndim
+        keepdims = self.keepdims
+        if keepdims < 0:
+            keepdims = ndims
 
         if (
             self.parallel_config is not None
             and (dp_sharding := self.parallel_config.get_data_sharding()) is not None
+            and ndims > 1
         ):
             # Default data-parallel implementation for FSDP, DDP, HSDP...
-            assert ndims > 1
             args = jax.lax.with_sharding_constraint(args, dp_sharding)
             kwargs = jax.lax.with_sharding_constraint(kwargs, dp_sharding)
-            out = vmap_multiple(self.forward, ndims - self.keepdims)(*args, **kwargs)
+            out = vmap_multiple(self.forward, ndims - keepdims)(*args, **kwargs)
             out = jax.lax.with_sharding_constraint(out, dp_sharding)
             return out
         else:
-            return vmap_multiple(self.forward, ndims - self.keepdims)(*args, **kwargs)
+            return vmap_multiple(self.forward, ndims - keepdims)(*args, **kwargs)
 
     @abstractmethod
     def forward(self, *args, **kwargs):

@@ -45,7 +45,7 @@ class TransformerBlockConfig:
 
 class TransformerBlock(Module):
     Config: ClassVar[Type[TransformerBlockConfig]] = TransformerBlockConfig
-    keepdims: ClassVar[int] = 2
+    keepdims: ClassVar[int] = -1
 
     mlp: GatedMLP
     mlp_norm: LayerNorm
@@ -93,16 +93,16 @@ class TransformerBlock(Module):
 
     @jax.named_scope("olmax.nn.TransformerBlock")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 2
-        h = x + self.attention.forward(jax.vmap(self.attention_norm.forward)(x))
-        h = h + jax.vmap(self.mlp.forward)(jax.vmap(self.mlp_norm.forward)(h))
+        assert x.ndim == 3
+        h = x + self.attention(self.attention_norm(x))
+        h = h + self.mlp(self.mlp_norm(h))
         return h
 
 
 class ReorderedNormTransformerBlock(TransformerBlock):
     @jax.named_scope("olmax.nn.ReorderedTransformerBlock")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 2
-        h = x + jax.vmap(self.attention_norm.forward)(self.attention.forward(x))
-        h = h + jax.vmap(self.mlp_norm.forward)(jax.vmap(self.mlp.forward)(h))
+        assert x.ndim == 3
+        h = x + self.attention_norm(self.attention(x))
+        h = h + self.mlp_norm(self.mlp(h))
         return h

@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 import equinox as eqx
 import jax
 
@@ -9,6 +11,8 @@ from .module import Module
 
 
 class Linear(Module):
+    keepdims: ClassVar[int] = 1
+
     weight: Array
     bias: Array | None
     tp_style: TPStyle | None = eqx.field(static=True)

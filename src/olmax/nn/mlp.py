@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, ClassVar
 
 import equinox as eqx
 import jax
@@ -10,6 +10,8 @@ from .module import Module
 
 
 class GatedMLP(Module):
+    keepdims: ClassVar[int] = -1
+
     w1: Linear
     w2: Linear
     w3: Linear
@@ -59,6 +61,6 @@ class GatedMLP(Module):
 
     @jax.named_scope("olmax.nn.GatedMLP")
     def forward(self, x: Array) -> Array:
-        return self.w2.forward(
-            self.activation(self.w1.forward(x)) * self.w3.forward(x),
+        return self.w2(
+            jax.vmap(self.activation)(self.w1(x)) * self.w3(x),
         )

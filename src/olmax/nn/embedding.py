@@ -9,7 +9,7 @@ from .module import Module
 
 
 class Embedding(Module):
-    keepdims: ClassVar[int] = 1
+    keepdims: ClassVar[int] = -1
 
     weight: Array
 
@@ -32,4 +32,4 @@ class Embedding(Module):
 
     @jax.named_scope("olmax.nn.Embedding")
     def forward(self, x: Array) -> Array:
-        return self.weight[x]
+        return jax.vmap(lambda idx: self.weight[idx])(x)
