@@ -15,7 +15,7 @@ import olmax.nn as nn
 import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree, count_params
+from olmax.jax_utils import cast_tree, count_params, with_optional_sharding_contraint
 from olmax.types import Array, DTypeLike
 
 
@@ -113,6 +113,10 @@ def main(
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         updates = jax.lax.with_sharding_constraint(updates, parallel_config.get_param_sharding())
+        opt_state = with_optional_sharding_contraint(
+            opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
+        )
+
         model = eqx.apply_updates(model, updates)
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
 
