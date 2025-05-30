@@ -55,17 +55,17 @@ def main(
     model_key, data_key = jax.random.split(key)
     parallel_config = dist.ParallelConfig.FSDP()
 
-    print("initializing model...")
+    print("Iinitializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
     print(model)
     num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     print(
-        f"Build model with {num_params:,d} total parameters, "
+        f"Built model with {num_params:,d} total parameters, "
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
-    print("initializing optimizer...")
+    print("Initializing optimizer...")
     optim = optax.adamw(learning_rate)
     opt_state = optim.init(model)  # pyright: ignore
 
@@ -111,7 +111,7 @@ def main(
     per_process_batch_size = global_batch_size // dist.get_process_world_size()
     per_process_batch_size_instances = per_process_batch_size // sequence_length
 
-    print("starting training...")
+    print("Starting training...")
     gc.collect()
     batch_start = time.monotonic()
     for step, (input_ids, labels) in enumerate(
@@ -135,7 +135,7 @@ def main(
         batch_start = batch_end
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
 
-    print("done.")
+    print("Done.")
 
 
 if __name__ == "__main__":
