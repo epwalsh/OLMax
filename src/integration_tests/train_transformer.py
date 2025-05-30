@@ -12,12 +12,12 @@ from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
 from olmax.types import Array
 
-TRACE = False
-PROFILE = False
+#  TRACE = False
+#  PROFILE = False
 DEBUG = True
 
-VOCAB_SIZE = 16_000 if PROFILE else 50_304
-SEQUENCE_LENGTH = 64 if PROFILE else 1024
+VOCAB_SIZE = 50_304
+SEQUENCE_LENGTH = 1024
 #  SEQUENCE_LENGTH = 4096
 BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 16
 #  BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 2
@@ -32,9 +32,9 @@ COMPUTE_DTYPE = float
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
     vocab_size=VOCAB_SIZE,
-    d_model=128 if PROFILE else 1024,
-    hidden_size=256 if PROFILE else 2816,
-    num_layers=4 if PROFILE else 16,
+    d_model=1024,
+    hidden_size=2816,
+    num_layers=16,
     #  d_model=4096,
     #  hidden_size=11008,
     #  num_layers=32,
@@ -57,8 +57,8 @@ MODEL_CONFIG = nn.Transformer.Config(
 
 def main():
     print("========================= train integration test starting... =========================")
-    if TRACE:
-        jax.profiler.start_trace("/net/nfs2.allennlp/petew/trace")
+    #  if TRACE:
+    #      jax.profiler.start_trace("/net/nfs2.allennlp/petew/trace")
 
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
@@ -149,18 +149,18 @@ def main():
             parallel_config=parallel_config,
         )
     ):
-        if TRACE:
-            input_ids.block_until_ready()
-            jax.profiler.stop_trace()
-            return
+        #  if TRACE:
+        #      input_ids.block_until_ready()
+        #      jax.profiler.stop_trace()
+        #      return
 
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
-        if PROFILE:
-            loss.block_until_ready()
-            jax.profiler.save_device_memory_profile("traces/memory.prof")
-            return
+        #  if PROFILE:
+        #      loss.block_until_ready()
+        #      jax.profiler.save_device_memory_profile("traces/memory.prof")
+        #      return
 
         # Log progress.
         metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
