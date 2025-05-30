@@ -5,6 +5,7 @@ from typing import ClassVar, Type
 
 import jax
 
+from ...debug import inspect
 from ...distributed.parallel import ParallelConfig
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
@@ -95,7 +96,9 @@ class TransformerBlock(Module):
     def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention(self.attention_norm(x))
+        inspect(h, "h1")
         h = h + self.mlp(self.mlp_norm(h))
+        inspect(h, "h2")
         return h
 
 

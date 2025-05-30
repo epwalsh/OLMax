@@ -5,6 +5,7 @@ from typing import ClassVar, Type
 
 import jax
 
+from ...debug import inspect
 from ...distributed.parallel import ParallelConfig
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
@@ -97,6 +98,7 @@ class Transformer(Module):
 
         # shape: (seq_len, d_model)
         h = self.embedding(x)
+        inspect(h, "h")
 
         for i, block in enumerate(self.blocks):
             print(f"computing block {i}...")
