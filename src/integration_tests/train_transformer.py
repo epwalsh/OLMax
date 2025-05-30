@@ -7,7 +7,8 @@ DEBUG = True
 if DEBUG:
     #  os.environ["EQX_ON_ERROR"] = "breakpoint"
     #  os.environ["JAX_DISABLE_JIT"] = "1"
-    os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.95"
+    #  os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import equinox as eqx
 import jax
@@ -18,7 +19,8 @@ import olmax.nn as nn
 import olmax.nn.functional as F
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
-from olmax.optim.sgd import sgd_step
+
+#  from olmax.optim.sgd import sgd_step
 from olmax.types import Array
 
 VOCAB_SIZE = 50_304
@@ -76,9 +78,9 @@ def main():
     #  )
 
     print("initializing optimizer...")
-    #  optim = optax.sgd(LEARNING_RATE)
-    #  opt_state = optim.init(model)  # pyright: ignore
-    opt_state = {}
+    optim = optax.sgd(LEARNING_RATE)
+    opt_state = optim.init(model)  # pyright: ignore
+    #  opt_state = {}
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -112,9 +114,9 @@ def main():
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        model = sgd_step(model, grads, lr=LEARNING_RATE)
-        #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        #  model = eqx.apply_updates(model, updates)
+        #  model = sgd_step(model, grads, lr=LEARNING_RATE)
+        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        model = eqx.apply_updates(model, updates)
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
