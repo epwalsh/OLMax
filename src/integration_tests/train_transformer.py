@@ -115,11 +115,11 @@ def main():
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         #  jax.debug.inspect_array_sharding(
         #      opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
         #  )
-        #  model = eqx.apply_updates(model, updates)
+        model = eqx.apply_updates(model, updates)
         #  jax.debug.inspect_array_sharding(
         #      model.embedding, callback=lambda s: print("model state:", s)
         #  )
