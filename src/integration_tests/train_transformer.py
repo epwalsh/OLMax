@@ -51,13 +51,13 @@ def main(
 
     print("initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
-    #  print(model)
-    #  num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
-    #  num_non_embedding_prams = num_params - model.embedding.weight.size
-    #  print(
-    #      f"Build model with {num_params:,d} total parameters, "
-    #      f"{num_non_embedding_prams:,d} non-embedding parameters"
-    #  )
+    print(model)
+    num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
+    num_non_embedding_prams = num_params - model.embedding.weight.size
+    print(
+        f"Build model with {num_params:,d} total parameters, "
+        f"{num_non_embedding_prams:,d} non-embedding parameters"
+    )
 
     print("initializing optimizer...")
     optim = optax.adamw(learning_rate)
@@ -139,8 +139,8 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--no-jit", action="store_true")
     parser.add_argument("--xla-mem-frac", type=str, default="0.95")
+    parser.add_argument("--batch-size", type=int)
     opts = parser.parse_args()
-
     if opts.no_jit:
         jax.config.update("jax_disable_jit", True)
 
@@ -151,4 +151,4 @@ if __name__ == "__main__":
         jax.config.update("jax_compiler_enable_remat_pass", False)
         os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
 
-    main(opts.recipe)
+    main(opts.recipe, instances_per_device=opts.batch_size)
