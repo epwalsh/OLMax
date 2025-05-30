@@ -1,5 +1,12 @@
 import gc
+import os
 import time
+
+DEBUG = True
+if DEBUG:
+    os.environ["EQX_ON_ERROR"] = "breakpoint"
+    os.environ["JAX_DISABLE_JIT"] = "1"
+    os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import equinox as eqx
 import jax
@@ -11,10 +18,6 @@ import olmax.nn.functional as F
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
 from olmax.types import Array
-
-#  TRACE = False
-#  PROFILE = False
-DEBUG = True
 
 VOCAB_SIZE = 50_304
 SEQUENCE_LENGTH = 1024
@@ -85,7 +88,6 @@ def main():
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
         loss = F.cross_entropy_loss(logits, labels)
-        print("Got loss!")
         return loss
 
     @eqx.filter_jit(donate="all")
@@ -102,7 +104,6 @@ def main():
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
-        print("Got grads!")
 
         # Cast grads back to param dtype.
         grads = cast_tree(grads, PARAM_DTYPE)
@@ -157,10 +158,4 @@ def main():
 
 
 if __name__ == "__main__":
-    if DEBUG:
-        import os
-
-        os.environ["EQX_ON_ERROR"] = "breakpoint"
-        os.environ["JAX_DISABLE_JIT"] = "1"
-        os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     main()
