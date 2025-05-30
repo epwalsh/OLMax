@@ -73,6 +73,8 @@ def main():
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+        input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
+        labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
         return F.cross_entropy_loss(logits, labels)
