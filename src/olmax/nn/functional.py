@@ -4,12 +4,16 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 
+from ..debug import inspect
 from ..types import Array
 
 
 @jax.jit
 def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
+    inspect(x, "x")
+    inspect(weight, "weight")
     x = weight @ x
+    inspect(x, "weight @ x")
     if bias is not None:
         x = x + bias
     return x

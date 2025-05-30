@@ -82,10 +82,11 @@ def main(
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
-        loss = F.cross_entropy_loss(logits, labels)
-        return loss
+
+        return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
     def train_step(
