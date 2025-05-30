@@ -102,7 +102,7 @@ class Transformer(Module):
         h = self.embedding(x)
         if self.parallel_config is not None:
             h = jax.lax.with_sharding_constraint(h, self.parallel_config.get_data_sharding())
-        inspect(h, "h")
+            inspect(h, "h")
 
         for i, block in enumerate(self.blocks):
             print(f"computing block {i}...")
