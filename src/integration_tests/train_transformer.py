@@ -74,12 +74,16 @@ def main():
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         logits = model(input_ids)
+        logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
         return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
+        input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
+        labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+
         # Cast model to lower precision compute dtype.
         if COMPUTE_DTYPE != PARAM_DTYPE:
             model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
