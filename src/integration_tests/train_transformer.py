@@ -1,5 +1,4 @@
 # ruff: noqa: E402
-import gc
 import os
 import time
 
@@ -125,7 +124,6 @@ def main():
     per_process_batch_size_instances = per_process_batch_size // SEQUENCE_LENGTH
 
     print("starting training...")
-    gc.collect()
     batch_start = time.monotonic()
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
@@ -147,7 +145,6 @@ def main():
         metrics["TPS"] = f"{int(BATCH_SIZE_PER_DEVICE / (batch_end - batch_start)):,d}"
         batch_start = batch_end
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
-        gc.collect()
 
     print("done.")
 
