@@ -69,13 +69,17 @@ def cross_entropy_loss(
     reduction: Literal["sum", "mean", "none"] = "mean",
 ) -> Array:
     debug.inspect(logits, "logits")
-    debug.inspect(labels, "logits")
+    debug.inspect(labels, "labels")
     n_classes = logits.shape[-1]
     labels_one_hot = jax.nn.one_hot(labels, n_classes)
+    debug.inspect(labels_one_hot, "labels_one_hot")
     where = jnp.expand_dims(labels != ignore_index, -1)
+    debug.inspect(where, "where")
 
     log_probs = jax.nn.log_softmax(logits, -1, where)
+    debug.inspect(log_probs, "log_probs")
     loss = -(labels_one_hot * log_probs).sum(-1, where=where)
+    debug.inspect(loss, "loss")
 
     if reduction == "sum":
         return loss.sum()
