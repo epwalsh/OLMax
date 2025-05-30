@@ -86,9 +86,9 @@ def main():
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
-        opt_state = jax.lax.with_sharding_constraint(
-            opt_state, parallel_config.get_param_sharding()
-        )
+        #  opt_state = jax.lax.with_sharding_constraint(
+        #      opt_state, parallel_config.get_param_sharding()
+        #  )
 
         # Cast model to lower precision compute dtype.
         if COMPUTE_DTYPE != PARAM_DTYPE:
@@ -107,6 +107,11 @@ def main():
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
+
+        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+        #  opt_state = jax.lax.with_sharding_constraint(
+        #      opt_state, parallel_config.get_param_sharding()
+        #  )
 
         return loss, model, opt_state
 
