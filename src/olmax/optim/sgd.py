@@ -4,6 +4,7 @@ from typing import TypeVar
 import equinox as eqx
 import jax
 
+from ..debug import inspect
 from ..types import Array, PyTree
 
 T = TypeVar("T", bound=PyTree)
@@ -15,4 +16,8 @@ def sgd_step(model: T, grads: T, *, lr: float) -> T:
 
 
 def _sgd_single(p: Array, g: Array, *, lr: float) -> Array:
-    return p - lr * g
+    inspect(p, "p")
+    inspect(g, "g")
+    p = p - lr * g
+    inspect(p, "new p")
+    return p
