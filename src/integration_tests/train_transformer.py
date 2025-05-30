@@ -90,9 +90,9 @@ def main(
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
-        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
-        input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
-        labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+        #  model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+        #  input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
+        #  labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -102,7 +102,7 @@ def main(
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-        grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
+        #  grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
@@ -112,7 +112,7 @@ def main(
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
 
-        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+        #  model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
 
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
