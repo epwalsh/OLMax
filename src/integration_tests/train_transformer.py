@@ -52,12 +52,12 @@ def main(
     print("initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
     #  print(model)
-    num_params = count_params(model)
-    num_non_embedding_prams = num_params - model.embedding.weight.size
-    print(
-        f"Build model with {num_params:,d} total parameters, "
-        f"{num_non_embedding_prams:,d} non-embedding parameters"
-    )
+    #  num_params = count_params(model)
+    #  num_non_embedding_prams = num_params - model.embedding.weight.size
+    #  print(
+    #      f"Build model with {num_params:,d} total parameters, "
+    #      f"{num_non_embedding_prams:,d} non-embedding parameters"
+    #  )
 
     print("initializing optimizer...")
     optim = optax.adamw(learning_rate)
