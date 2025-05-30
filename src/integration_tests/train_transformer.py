@@ -83,8 +83,12 @@ def main():
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
+        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+        opt_state = jax.lax.with_sharding_constraint(
+            opt_state, parallel_config.get_param_sharding()
+        )
 
         # Cast model to lower precision compute dtype.
         if COMPUTE_DTYPE != PARAM_DTYPE:
