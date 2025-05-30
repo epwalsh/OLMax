@@ -4,7 +4,6 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 
-from .. import debug
 from ..types import Array
 
 
@@ -13,7 +12,6 @@ def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
     x = weight @ x
     if bias is not None:
         x = x + bias
-    #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("linear out:", s))
     return x
 
 
@@ -68,18 +66,12 @@ def cross_entropy_loss(
     ignore_index: int = -100,
     reduction: Literal["sum", "mean", "none"] = "mean",
 ) -> Array:
-    debug.inspect(logits, "logits")
-    debug.inspect(labels, "labels")
     n_classes = logits.shape[-1]
     labels_one_hot = jax.nn.one_hot(labels, n_classes)
-    debug.inspect(labels_one_hot, "labels_one_hot")
     where = jnp.expand_dims(labels != ignore_index, -1)
-    debug.inspect(where, "where")
 
     log_probs = jax.nn.log_softmax(logits, -1, where)
-    debug.inspect(log_probs, "log_probs")
     loss = -(labels_one_hot * log_probs).sum(-1, where=where)
-    debug.inspect(loss, "loss")
 
     if reduction == "sum":
         return loss.sum()
