@@ -3,6 +3,7 @@ from typing import Callable, ClassVar
 import equinox as eqx
 import jax
 
+from ..debug import inspect
 from ..distributed.parallel import ParallelConfig, TPStyle
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
@@ -61,6 +62,8 @@ class GatedMLP(Module):
 
     @jax.named_scope("olmax.nn.GatedMLP")
     def forward(self, x: Array) -> Array:
-        return self.w2(
-            jax.vmap(self.activation)(self.w1(x)) * self.w3(x),
-        )
+        h = jax.vmap(self.activation)(self.w1(x)) * self.w3(x)
+        inspect(h, "h1")
+        h = self.w2(h)
+        inspect(h, "h2")
+        return h
