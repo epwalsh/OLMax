@@ -19,6 +19,7 @@ import olmax.nn as nn
 import olmax.nn.functional as F
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
+from olmax.optim.sgd import sgd_step
 from olmax.types import Array
 
 VOCAB_SIZE = 50_304
@@ -79,8 +80,9 @@ def main():
     #  )
 
     print("initializing optimizer...")
-    optim = optax.sgd(LEARNING_RATE)
-    opt_state = optim.init(model)  # pyright: ignore
+    #  optim = optax.sgd(LEARNING_RATE)
+    #  opt_state = optim.init(model)  # pyright: ignore
+    opt_state = {}
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -108,15 +110,15 @@ def main():
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
-        debug.inspect(grads.embedding.weight, "grads.embedding.weight")
 
         # Cast grads back to param dtype.
         if COMPUTE_DTYPE != PARAM_DTYPE:
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        model = eqx.apply_updates(model, updates)
+        model = sgd_step(model, grads, lr=LEARNING_RATE)
+        #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        #  model = eqx.apply_updates(model, updates)
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
