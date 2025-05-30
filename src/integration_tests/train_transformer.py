@@ -79,6 +79,7 @@ def main(
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
         logits = model(input_ids)
@@ -90,9 +91,9 @@ def main(
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
-        #  model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
-        #  input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
-        #  labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+        input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
+        labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -112,7 +113,7 @@ def main(
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
 
-        #  model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
 
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
@@ -125,7 +126,7 @@ def main(
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
-            local_data_parallel_rank=0,
+            local_data_parallel_rank=dist.get_process_rank(),
             vocab_size=vocab_size,
             sequence_length=sequence_length,
             num_local_instances=per_process_batch_size_instances,
