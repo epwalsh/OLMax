@@ -95,16 +95,24 @@ class Transformer(Module):
     @jax.named_scope("olmax.nn.Transformer")
     def forward(self, x: Array) -> Array:
         assert x.ndim == 2  # shape: (batch_size, seq_len)
+        if self.parallel_config is not None:
+            x = jax.lax.with_sharding_constraint(x, self.parallel_config.get_data_sharding())
 
         # shape: (seq_len, d_model)
         h = self.embedding(x)
+        if self.parallel_config is not None:
+            h = jax.lax.with_sharding_constraint(h, self.parallel_config.get_data_sharding())
         inspect(h, "h")
 
         for i, block in enumerate(self.blocks):
             print(f"computing block {i}...")
             # shape: (seq_len, d_model)
             h = block(h)
+            if self.parallel_config is not None:
+                h = jax.lax.with_sharding_constraint(h, self.parallel_config.get_data_sharding())
 
         # shape: (seq_len, vocab_size)
         out = self.lm_head(h)
+        if self.parallel_config is not None:
+            out = jax.lax.with_sharding_constraint(h, self.parallel_config.get_data_sharding())
         return out
