@@ -5,7 +5,6 @@ from typing import ClassVar, Type
 
 import jax
 
-from ...debug import inspect
 from ...distributed.parallel import ParallelConfig
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig

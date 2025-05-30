@@ -46,7 +46,7 @@ MODEL_CONFIG = nn.Transformer.Config(
         attention=nn.MultiheadSelfAttention.Config(
             n_heads=8,
             #  n_heads=32,
-            #  rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
+            rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
             bias=False,
             dtype=PARAM_DTYPE,
         ),
@@ -61,9 +61,6 @@ MODEL_CONFIG = nn.Transformer.Config(
 
 def main():
     print("========================= train integration test starting... =========================")
-    #  if TRACE:
-    #      jax.profiler.start_trace("/net/nfs2.allennlp/petew/trace")
-
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
     parallel_config = dist.ParallelConfig.FSDP()
@@ -140,9 +137,6 @@ def main():
             parallel_config=parallel_config,
         )
     ):
-        compiled = train_step.lower(model, input_ids, labels, opt_state).compile()
-        print(compiled.memory_analysis())
-
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
