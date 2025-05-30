@@ -77,7 +77,7 @@ def cross_entropy_loss(
     if reduction == "sum":
         return loss.sum()
     elif reduction == "mean":
-        return loss.mean()
+        return loss.mean(where=where.squeeze(-1))
     elif reduction == "none":
         return loss  # pyright: ignore
     else:
