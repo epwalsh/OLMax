@@ -14,6 +14,7 @@ from olmax.types import Array
 
 TRACE = False
 PROFILE = False
+DEBUG = True
 
 VOCAB_SIZE = 16_000 if PROFILE else 50_304
 SEQUENCE_LENGTH = 64 if PROFILE else 1024
@@ -114,7 +115,7 @@ def main():
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         #  jax.debug.inspect_array_sharding(
         #      opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
         #  )
@@ -173,4 +174,10 @@ def main():
 
 
 if __name__ == "__main__":
+    if DEBUG:
+        import os
+
+        os.environ["EQX_ON_ERROR"] = "breakpoint"
+        os.environ["JAX_DISABLE_JIT"] = "1"
+        os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     main()
