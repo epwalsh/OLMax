@@ -100,11 +100,8 @@ class Transformer(Module):
 
         for block in self.blocks:
             # shape: (seq_len, d_model)
-            jax.debug.inspect_array_sharding(h, callback=lambda s: print("h pre-block:", s))
             h = block(h)
-            jax.debug.inspect_array_sharding(h, callback=lambda s: print("h post-block:", s))
 
         # shape: (seq_len, vocab_size)
         out = self.lm_head(h)
-        jax.debug.inspect_array_sharding(out, callback=lambda s: print("final out:", s))
         return out
