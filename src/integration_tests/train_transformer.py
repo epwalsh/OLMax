@@ -88,7 +88,6 @@ def main():
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
         loss = F.cross_entropy_loss(logits, labels)
-        jax.debug.breakpoint()
         return loss
 
     @eqx.filter_jit(donate="all")
@@ -114,8 +113,8 @@ def main():
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        model = eqx.apply_updates(model, updates)
+        #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        #  model = eqx.apply_updates(model, updates)
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
