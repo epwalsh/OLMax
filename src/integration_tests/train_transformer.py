@@ -29,7 +29,7 @@ LEARNING_RATE = 1e-3
 #  LEARNING_RATE = 1e-4
 TRAIN_STEPS = 100
 
-PARAM_DTYPE = jax.dtypes.bfloat16
+PARAM_DTYPE = float
 COMPUTE_DTYPE = jax.dtypes.bfloat16
 
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
