@@ -94,6 +94,7 @@ def main():
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+        grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
 
         # Cast grads back to param dtype.
         if COMPUTE_DTYPE != PARAM_DTYPE:
