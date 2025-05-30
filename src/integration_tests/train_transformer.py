@@ -12,6 +12,8 @@ from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
 from olmax.types import Array
 
+TRACE = True
+
 VOCAB_SIZE = 50_304
 SEQUENCE_LENGTH = 1024
 #  SEQUENCE_LENGTH = 4096
@@ -53,6 +55,9 @@ MODEL_CONFIG = nn.Transformer.Config(
 
 def main():
     print("========================= train integration test starting... =========================")
+    if TRACE:
+        jax.profiler.start_trace("/net/nfs.allennlp/petew/trace")
+
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
     parallel_config = dist.ParallelConfig.FSDP()
@@ -70,9 +75,9 @@ def main():
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
-    jax.debug.inspect_array_sharding(
-        opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
-    )
+    #  jax.debug.inspect_array_sharding(
+    #      opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
+    #  )
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -109,13 +114,13 @@ def main():
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        jax.debug.inspect_array_sharding(
-            opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
-        )
+        #  jax.debug.inspect_array_sharding(
+        #      opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
+        #  )
         model = eqx.apply_updates(model, updates)
-        jax.debug.inspect_array_sharding(
-            model.embedding, callback=lambda s: print("model state:", s)
-        )
+        #  jax.debug.inspect_array_sharding(
+        #      model.embedding, callback=lambda s: print("model state:", s)
+        #  )
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         #  opt_state = jax.lax.with_sharding_constraint(
@@ -142,6 +147,11 @@ def main():
             parallel_config=parallel_config,
         )
     ):
+        if TRACE:
+            input_ids.block_until_ready()
+            jax.profiler.stop_trace()
+            return
+
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
