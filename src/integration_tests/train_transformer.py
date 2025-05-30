@@ -4,6 +4,7 @@ import argparse
 import gc
 import os
 import time
+from typing import Literal
 
 import equinox as eqx
 import jax
@@ -28,10 +29,14 @@ def main(
     learning_rate: float = 1e-3,
     train_steps: int = 100,
     attn_window_size: int | tuple[int, int] | None = None,
+    attn_implementation: Literal["xla", "cudnn"] | None = None,
 ):
     if recipe == "271M":
         model_config = recipes.llama_like_271M(
-            vocab_size, param_dtype=param_dtype, attn_window_size=attn_window_size
+            vocab_size,
+            param_dtype=param_dtype,
+            attn_window_size=attn_window_size,
+            attn_implementation=attn_implementation,
         )
         if sequence_length is None:
             sequence_length = 1024
@@ -39,7 +44,10 @@ def main(
             instances_per_device = 16
     elif recipe == "7B":
         model_config = recipes.llama_like_7B(
-            vocab_size, param_dtype=param_dtype, attn_window_size=attn_window_size
+            vocab_size,
+            param_dtype=param_dtype,
+            attn_window_size=attn_window_size,
+            attn_implementation=attn_implementation,
         )
         if sequence_length is None:
             sequence_length = 4096
@@ -147,6 +155,7 @@ if __name__ == "__main__":
     parser.add_argument("--xla-mem-frac", type=str, default="0.95")
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--attn-window-size", type=int)
+    parser.add_argument("--attn-implementation", choices=["xla", "cudnn"], default="xla")
     opts = parser.parse_args()
 
     if opts.no_jit:
@@ -161,4 +170,9 @@ if __name__ == "__main__":
     else:
         os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
 
-    main(opts.recipe, instances_per_device=opts.batch_size, attn_window_size=opts.attn_window_size)
+    main(
+        opts.recipe,
+        instances_per_device=opts.batch_size,
+        attn_window_size=opts.attn_window_size,
+        attn_implementation=opts.attn_implementation,
+    )

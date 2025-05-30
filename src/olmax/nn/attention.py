@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Type
+from typing import ClassVar, Literal, Type
 
 import equinox as eqx
 import jax
@@ -22,6 +22,7 @@ class MultiheadSelfAttentionConfig:
     qk_norm: LayerNormConfig | None = None
     bias: bool = True
     window_size: int | tuple[int, int] | None = None
+    implementation: Literal["xla", "cudnn"] | None = None
     dtype: DTypeLike = float
 
     def build(
@@ -36,6 +37,7 @@ class MultiheadSelfAttentionConfig:
         bias: bool | None = None,
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike | None = None,
+        implementation: Literal["xla", "cudnn"] | None = None,
         parallel_config: ParallelConfig | None = None,
     ) -> MultiheadSelfAttention:
         return MultiheadSelfAttention(
@@ -48,6 +50,7 @@ class MultiheadSelfAttentionConfig:
             bias=bias if bias is not None else self.bias,
             window_size=window_size if window_size is not None else self.window_size,
             dtype=dtype if dtype is not None else self.dtype,
+            implementation=implementation if implementation is not None else self.implementation,
             parallel_config=parallel_config,
         )
 
@@ -69,6 +72,7 @@ class MultiheadSelfAttention(Module):
     n_kv_heads: int = eqx.field(static=True)
     head_dim: int = eqx.field(static=True)
     window_size: int | tuple[int, int] | None = eqx.field(static=True)
+    implementation: Literal["xla", "cudnn"] | None = eqx.field(static=True)
 
     def __init__(
         self,
@@ -82,6 +86,7 @@ class MultiheadSelfAttention(Module):
         bias: bool = True,
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike = float,
+        implementation: Literal["xla", "cudnn"] | None = None,
         parallel_config: ParallelConfig | None = None,
     ):
         super().__init__(parallel_config)
@@ -89,6 +94,7 @@ class MultiheadSelfAttention(Module):
         self.n_kv_heads = n_kv_heads or n_heads
         self.head_dim = d_model // n_heads
         self.window_size = window_size
+        self.implementation = implementation
 
         w_q_key, w_k_key, w_v_key, w_out_key, rope_key, q_norm_key, k_norm_key = jax.random.split(
             key, 7
@@ -171,7 +177,12 @@ class MultiheadSelfAttention(Module):
 
         # shape: (batch_size, seq_len, n_heads, head_dim)
         att = jax.nn.dot_product_attention(
-            q, k, v, is_causal=True, local_window_size=self.window_size
+            q,
+            k,
+            v,
+            is_causal=True,
+            local_window_size=self.window_size,
+            implementation=self.implementation,
         )
 
         # shape: (batch_size, seq_len, d_model)

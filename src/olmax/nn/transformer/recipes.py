@@ -1,3 +1,5 @@
+from typing import Literal
+
 from ...types import DTypeLike
 from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
@@ -11,6 +13,7 @@ def llama_like_271M(
     vocab_size: int,
     param_dtype: DTypeLike = float,
     attn_window_size: int | tuple[int, int] | None = None,
+    attn_implementation: Literal["xla", "cudnn"] | None = None,
 ) -> TransformerConfig:
     norm = LayerNormConfig.rms_norm(bias=False)
     return TransformerConfig(
@@ -25,6 +28,7 @@ def llama_like_271M(
                 bias=False,
                 dtype=param_dtype,
                 window_size=attn_window_size,
+                implementation=attn_implementation,
             ),
             norm=norm,
             bias=False,
@@ -39,6 +43,7 @@ def llama_like_7B(
     vocab_size: int,
     param_dtype: DTypeLike = float,
     attn_window_size: int | tuple[int, int] | None = None,
+    attn_implementation: Literal["xla", "cudnn"] | None = None,
 ) -> TransformerConfig:
     norm = LayerNormConfig.rms_norm(bias=False)
     return TransformerConfig(
@@ -53,6 +58,7 @@ def llama_like_7B(
                 bias=False,
                 dtype=param_dtype,
                 window_size=attn_window_size,
+                implementation=attn_implementation,
             ),
             norm=norm,
             bias=False,
