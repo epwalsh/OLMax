@@ -14,7 +14,6 @@ def sgd_step(model: T, grads: T, *, lr: float) -> T:
     return jax.tree.map(ft.partial(_sgd_single, lr=lr), model, grads)
 
 
-@eqx.filter_jit(donate="all")
 def _sgd_single(p: Array, g: Array, *, lr: float) -> Array:
     p = p - lr * g
     return p
