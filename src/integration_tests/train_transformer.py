@@ -13,7 +13,7 @@ import olmax.nn as nn
 import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree
+from olmax.jax_utils import cast_tree, count_params
 from olmax.types import Array, DTypeLike
 
 
@@ -38,7 +38,7 @@ def main(
         if sequence_length is None:
             sequence_length = 4096
         if instances_per_device is None:
-            instances_per_device = 2
+            instances_per_device = 1
     else:
         raise ValueError(recipe)
 
@@ -52,7 +52,7 @@ def main(
     print("initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
     #  print(model)
-    num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
+    num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     print(
         f"Build model with {num_params:,d} total parameters, "
