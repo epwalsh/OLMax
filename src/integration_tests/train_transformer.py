@@ -51,7 +51,7 @@ def main(
 
     print("initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
-    print(model)
+    #  print(model)
     num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     print(
