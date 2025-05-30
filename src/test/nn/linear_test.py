@@ -1,5 +1,3 @@
-import logging
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -7,6 +5,7 @@ import pytest
 
 import olmax.distributed as dist
 import olmax.nn as nn
+from olmax.debug import inspect
 from olmax.testing.distributed import run_distributed_test
 from olmax.testing.utils import allclose
 from olmax.types import Array, PRNGKeyArray
@@ -96,5 +95,19 @@ def test_linear_data_parallel(parallel_config: dist.ParallelConfig):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
-    run_distributed_test(_run_linear_data_parallel)
+    jax.config.update("jax_num_cpu_devices", 2)
+    jax.config.update("jax_disable_jit", True)
+
+    parallel_config = dist.ParallelConfig.FSDP()
+
+    key = jax.random.PRNGKey(0)
+    in_size, out_size, batch_size = 4, 12, 4
+
+    key, batch_key = jax.random.split(key)
+    batch = _get_batch(batch_key, batch_size, in_size, out_size)
+    batch = jax.device_put(batch, parallel_config.get_data_sharding())
+
+    model = nn.Linear(in_size, out_size, key=key, parallel_config=parallel_config)
+    loss, grads = _get_loss_and_grads(model, batch)
+    inspect(loss, "loss")
+    print(loss)

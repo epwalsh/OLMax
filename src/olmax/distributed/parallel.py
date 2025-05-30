@@ -157,7 +157,7 @@ class ParallelConfig:
             ),
         )
 
-    def get_data_sharding(self, sharding_axis: int = 0) -> NamedSharding:
+    def get_data_partition(self, sharding_axis: int = 0) -> P:
         mesh = self.get_data_mesh()
         partitions: list[str | tuple[str, ...] | None] = []
         if MeshAxisNames.DP.replicate in mesh.shape and MeshAxisNames.DP.shard in mesh.shape:
@@ -169,7 +169,11 @@ class ParallelConfig:
         elif MeshAxisNames.DP.shard in mesh.shape:
             partitions.extend([None] * sharding_axis)
             partitions.append(MeshAxisNames.DP.shard)
-        return NamedSharding(mesh, P(*partitions))
+        return P(*partitions)
+
+    def get_data_sharding(self, sharding_axis: int = 0) -> NamedSharding:
+        mesh = self.get_data_mesh()
+        return NamedSharding(mesh, self.get_data_partition(sharding_axis=sharding_axis))
 
     def _validate_dp_degrees(self, dp_device_ws: int) -> tuple[int, int]:
         dp_replicate_degree = self.dp.replicate_degree or 1
