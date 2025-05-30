@@ -56,7 +56,7 @@ MODEL_CONFIG = nn.Transformer.Config(
 def main():
     print("========================= train integration test starting... =========================")
     if TRACE:
-        jax.profiler.start_trace("/net/nfs.allennlp/petew/trace")
+        jax.profiler.start_trace("/net/nfs2.allennlp/petew/trace")
 
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
