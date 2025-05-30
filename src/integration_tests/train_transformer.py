@@ -141,6 +141,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("train_transformer")
     parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--xla-mem-frac", type=str, default="0.95")
     opts = parser.parse_args()
 
     if opts.debug:
@@ -148,6 +149,6 @@ if __name__ == "__main__":
         os.environ["JAX_DISABLE_JIT"] = "1"
         os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     else:
-        os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.95"
+        os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
 
     main(opts.recipe)
