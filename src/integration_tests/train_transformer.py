@@ -138,17 +138,21 @@ if __name__ == "__main__":
     parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--no-jit", action="store_true")
+    parser.add_argument("--no-remat", action="store_true")
     parser.add_argument("--xla-mem-frac", type=str, default="0.95")
     parser.add_argument("--batch-size", type=int)
     opts = parser.parse_args()
+
     if opts.no_jit:
         jax.config.update("jax_disable_jit", True)
+
+    if opts.no_remat:
+        jax.config.update("jax_compiler_enable_remat_pass", False)
 
     if opts.debug:
         os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
         os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
     else:
-        jax.config.update("jax_compiler_enable_remat_pass", False)
         os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
 
     main(opts.recipe, instances_per_device=opts.batch_size)
