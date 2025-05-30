@@ -27,7 +27,7 @@ TRAIN_STEPS = 100
 
 PARAM_DTYPE = float
 #  PARAM_DTYPE = jax.dtypes.bfloat16
-COMPUTE_DTYPE = float
+COMPUTE_DTYPE = jax.dtypes.bfloat16
 
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
@@ -82,7 +82,6 @@ def main():
     #  )
 
     @eqx.filter_value_and_grad
-    @eqx.filter_jit(donate="all")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
