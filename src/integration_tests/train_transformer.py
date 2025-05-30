@@ -3,10 +3,18 @@ from __future__ import annotations
 import argparse
 import os
 import time
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from olmax.types import DTypeLike
+import equinox as eqx
+import jax
+import optax
+
+import olmax.distributed as dist
+import olmax.nn as nn
+import olmax.nn.functional as F
+import olmax.nn.transformer.recipes as recipes
+from olmax.data.utils import generate_batches_of_sequential_tokens
+from olmax.jax_utils import cast_tree
+from olmax.types import Array, DTypeLike
 
 
 def main(
@@ -19,18 +27,6 @@ def main(
     learning_rate: float = 1e-3,
     train_steps: int = 100,
 ):
-    import equinox as eqx
-    import jax
-    import optax
-
-    import olmax.distributed as dist
-    import olmax.nn as nn
-    import olmax.nn.functional as F
-    import olmax.nn.transformer.recipes as recipes
-    from olmax.data.utils import generate_batches_of_sequential_tokens
-    from olmax.jax_utils import cast_tree
-    from olmax.types import Array
-
     if recipe == "271M":
         model_config = recipes.llama_like_271M(vocab_size, param_dtype)
         if sequence_length is None:
@@ -146,9 +142,10 @@ if __name__ == "__main__":
 
     if opts.debug:
         os.environ["EQX_ON_ERROR"] = "breakpoint"
-        os.environ["JAX_DISABLE_JIT"] = "1"
+        jax.config.update("jax_disable_jit", True)
         os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     else:
+        jax.config.update("jax_compiler_enable_remat_pass", False)
         os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
 
     main(opts.recipe)
