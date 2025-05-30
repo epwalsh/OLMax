@@ -1,11 +1,12 @@
+# ruff: noqa: E402
 import gc
 import os
 import time
 
 DEBUG = True
 if DEBUG:
-    os.environ["EQX_ON_ERROR"] = "breakpoint"
-    os.environ["JAX_DISABLE_JIT"] = "1"
+    #  os.environ["EQX_ON_ERROR"] = "breakpoint"
+    #  os.environ["JAX_DISABLE_JIT"] = "1"
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import equinox as eqx
@@ -88,6 +89,7 @@ def main():
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
         loss = F.cross_entropy_loss(logits, labels)
+        jax.debug.breakpoint()
         return loss
 
     @eqx.filter_jit(donate="all")
