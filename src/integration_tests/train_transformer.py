@@ -6,7 +6,7 @@ import time
 DEBUG = True
 if DEBUG:
     #  os.environ["EQX_ON_ERROR"] = "breakpoint"
-    os.environ["JAX_DISABLE_JIT"] = "1"
+    #  os.environ["JAX_DISABLE_JIT"] = "1"
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import equinox as eqx
