@@ -4,6 +4,7 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 
+from .. import debug
 from ..types import Array
 
 
@@ -67,6 +68,8 @@ def cross_entropy_loss(
     ignore_index: int = -100,
     reduction: Literal["sum", "mean", "none"] = "mean",
 ) -> Array:
+    debug.inspect(logits, "logits")
+    debug.inspect(labels, "logits")
     n_classes = logits.shape[-1]
     labels_one_hot = jax.nn.one_hot(labels, n_classes)
     where = jnp.expand_dims(labels != ignore_index, -1)
