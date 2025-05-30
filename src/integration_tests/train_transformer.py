@@ -1,13 +1,6 @@
-# ruff: noqa: E402
+import argparse
 import os
 import time
-
-DEBUG = True
-if DEBUG:
-    #  os.environ["EQX_ON_ERROR"] = "breakpoint"
-    #  os.environ["JAX_DISABLE_JIT"] = "1"
-    os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.95"
-    #  os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 import equinox as eqx
 import jax
@@ -19,38 +12,43 @@ import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
-
-#  from olmax.optim.sgd import sgd_step
-from olmax.types import Array
-
-VOCAB_SIZE = 50_304
-PARAM_DTYPE = float
-COMPUTE_DTYPE = jax.dtypes.bfloat16
-MODEL_SIZE = "7B"
-
-if MODEL_SIZE == "271M":
-    SEQUENCE_LENGTH = 1024
-    BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 16
-    MODEL_CONFIG = recipes.llama_like_271M(VOCAB_SIZE, PARAM_DTYPE)
-elif MODEL_SIZE == "7B":
-    SEQUENCE_LENGTH = 4096
-    BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 1
-    MODEL_CONFIG = recipes.llama_like_7B(VOCAB_SIZE, PARAM_DTYPE)
-else:
-    raise ValueError(MODEL_SIZE)
-
-LEARNING_RATE = 1e-3
-TRAIN_STEPS = 100
+from olmax.types import Array, DTypeLike
 
 
-def main():
+def main(
+    recipe: str,
+    sequence_length: int | None = None,
+    instances_per_device: int | None = None,
+    vocab_size: int = 50_304,
+    param_dtype: DTypeLike = float,
+    compute_dtype: DTypeLike = jax.dtypes.bfloat16,
+    learning_rate: float = 1e-3,
+    train_steps: int = 100,
+):
+    if recipe == "271M":
+        model_config = recipes.llama_like_271M(vocab_size, param_dtype)
+        if sequence_length is None:
+            sequence_length = 1024
+        if instances_per_device is None:
+            instances_per_device = 16
+    elif recipe == "7B":
+        model_config = recipes.llama_like_7B(vocab_size, param_dtype)
+        if sequence_length is None:
+            sequence_length = 4096
+        if instances_per_device is None:
+            instances_per_device = 2
+    else:
+        raise ValueError(recipe)
+
+    batch_size_per_device = sequence_length * instances_per_device
+
     print("========================= train integration test starting... =========================")
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
     parallel_config = dist.ParallelConfig.FSDP()
 
     print("initializing model...")
-    model = MODEL_CONFIG.build(model_key, parallel_config=parallel_config)
+    model = model_config.build(model_key, parallel_config=parallel_config)
     #  print(model)
     #  num_params = jax.tree.reduce(lambda c, p: c + p.size, model, 0)
     #  num_non_embedding_prams = num_params - model.embedding.weight.size
@@ -60,7 +58,7 @@ def main():
     #  )
 
     print("initializing optimizer...")
-    optim = optax.adamw(LEARNING_RATE)
+    optim = optax.adamw(learning_rate)
     opt_state = optim.init(model)  # pyright: ignore
     #  opt_state = {}
 
@@ -82,8 +80,8 @@ def main():
         labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
 
         # Cast model to lower precision compute dtype.
-        if COMPUTE_DTYPE != PARAM_DTYPE:
-            model_with_compute_dtype = cast_tree(model, COMPUTE_DTYPE)
+        if compute_dtype != param_dtype:
+            model_with_compute_dtype = cast_tree(model, compute_dtype)
         else:
             model_with_compute_dtype = model
 
@@ -92,8 +90,8 @@ def main():
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
 
         # Cast grads back to param dtype.
-        if COMPUTE_DTYPE != PARAM_DTYPE:
-            grads = cast_tree(grads, PARAM_DTYPE)
+        if compute_dtype != param_dtype:
+            grads = cast_tree(grads, param_dtype)
 
         # Take optimizer step.
         #  model = sgd_step(model, grads, lr=LEARNING_RATE)
@@ -103,9 +101,9 @@ def main():
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
 
-    global_batch_size = BATCH_SIZE_PER_DEVICE * dist.get_global_device_count()
+    global_batch_size = batch_size_per_device * dist.get_global_device_count()
     per_process_batch_size = global_batch_size // dist.get_process_world_size()
-    per_process_batch_size_instances = per_process_batch_size // SEQUENCE_LENGTH
+    per_process_batch_size_instances = per_process_batch_size // sequence_length
 
     print("starting training...")
     batch_start = time.monotonic()
@@ -113,10 +111,10 @@ def main():
         generate_batches_of_sequential_tokens(
             data_key,
             local_data_parallel_rank=0,
-            vocab_size=VOCAB_SIZE,
-            sequence_length=SEQUENCE_LENGTH,
+            vocab_size=vocab_size,
+            sequence_length=sequence_length,
             num_local_instances=per_process_batch_size_instances,
-            total_batches=TRAIN_STEPS,
+            total_batches=train_steps,
             parallel_config=parallel_config,
         )
     ):
@@ -126,7 +124,7 @@ def main():
         # Log progress.
         metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
         batch_end = time.monotonic()
-        metrics["TPS"] = f"{int(BATCH_SIZE_PER_DEVICE / (batch_end - batch_start)):,d}"
+        metrics["TPS"] = f"{int(batch_size_per_device / (batch_end - batch_start)):,d}"
         batch_start = batch_end
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
 
@@ -134,4 +132,16 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser("train_transformer")
+    parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
+    parser.add_argument("--debug", action="store_true")
+    opts = parser.parse_args()
+
+    if opts.debug:
+        os.environ["EQX_ON_ERROR"] = "breakpoint"
+        os.environ["JAX_DISABLE_JIT"] = "1"
+        os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    else:
+        os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.95"
+
+    main(opts.recipe)
