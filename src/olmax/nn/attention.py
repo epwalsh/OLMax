@@ -6,6 +6,7 @@ from typing import ClassVar, Type
 import equinox as eqx
 import jax
 
+from ..debug import inspect
 from ..distributed.parallel import ParallelConfig
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
@@ -169,15 +170,23 @@ class MultiheadSelfAttention(Module):
             q = jax.vmap(self.rope.forward, 2, 2)(q)
             k = jax.vmap(self.rope.forward, 2, 2)(k)
 
+        inspect(q, "q")
+        inspect(k, "k")
+        inspect(v, "v")
+
         # shape: (batch_size, seq_len, n_heads, head_dim)
         att = jax.nn.dot_product_attention(
             q, k, v, is_causal=True, local_window_size=self.window_size
         )
+
+        inspect(att, "att")
 
         # shape: (batch_size, seq_len, d_model)
         att = att.reshape(B, S, self.n_heads * self.head_dim)
 
         # shape: (batch_size, seq_len, d_model)
         out = self.w_out(att)
+
+        inspect(out, "out")
 
         return out
