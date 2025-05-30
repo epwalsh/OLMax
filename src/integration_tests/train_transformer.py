@@ -13,7 +13,6 @@ import equinox as eqx
 import jax
 import optax
 
-import olmax.debug as debug
 import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
@@ -47,7 +46,7 @@ MODEL_CONFIG = nn.Transformer.Config(
         attention=nn.MultiheadSelfAttention.Config(
             n_heads=8,
             #  n_heads=32,
-            rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
+            #  rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
             bias=False,
             dtype=PARAM_DTYPE,
         ),
@@ -116,7 +115,7 @@ def main():
             grads = cast_tree(grads, PARAM_DTYPE)
 
         # Take optimizer step.
-        #  model = sgd_step(model, grads, lr=LEARNING_RATE)
+        model = sgd_step(model, grads, lr=LEARNING_RATE)
         #  updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         #  model = eqx.apply_updates(model, updates)
 
