@@ -13,6 +13,7 @@ import equinox as eqx
 import jax
 import optax
 
+import olmax.debug as debug
 import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
@@ -107,6 +108,7 @@ def main():
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
+        debug.inspect(grads.embedding.weight, "grads.embedding.weight")
 
         # Cast grads back to param dtype.
         if COMPUTE_DTYPE != PARAM_DTYPE:
