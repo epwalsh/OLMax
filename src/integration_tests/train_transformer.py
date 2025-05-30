@@ -140,18 +140,11 @@ def main():
             parallel_config=parallel_config,
         )
     ):
-        #  if TRACE:
-        #      input_ids.block_until_ready()
-        #      jax.profiler.stop_trace()
-        #      return
+        compiled = train_step.lower(model, input_ids, labels, opt_state).compile()
+        print(compiled.memory_analysis())
 
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-
-        #  if PROFILE:
-        #      loss.block_until_ready()
-        #      jax.profiler.save_device_memory_profile("traces/memory.prof")
-        #      return
 
         # Log progress.
         metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
