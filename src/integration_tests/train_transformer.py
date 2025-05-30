@@ -26,7 +26,7 @@ TRAIN_STEPS = 100
 
 PARAM_DTYPE = float
 #  PARAM_DTYPE = jax.dtypes.bfloat16
-COMPUTE_DTYPE = jax.dtypes.bfloat16
+COMPUTE_DTYPE = float
 
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
