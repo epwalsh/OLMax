@@ -108,13 +108,14 @@ def main(
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
             grads = cast_tree(grads, param_dtype)
+            grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         updates = jax.lax.with_sharding_constraint(updates, parallel_config.get_param_sharding())
         model = eqx.apply_updates(model, updates)
-
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+
         return loss, model, opt_state
 
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
