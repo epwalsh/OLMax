@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import os
 import time
 
@@ -52,12 +53,12 @@ def main(
     print("initializing model...")
     model = model_config.build(model_key, parallel_config=parallel_config)
     #  print(model)
-    #  num_params = count_params(model)
-    #  num_non_embedding_prams = num_params - model.embedding.weight.size
-    #  print(
-    #      f"Build model with {num_params:,d} total parameters, "
-    #      f"{num_non_embedding_prams:,d} non-embedding parameters"
-    #  )
+    num_params = count_params(model)
+    num_non_embedding_prams = num_params - model.embedding.weight.size
+    print(
+        f"Build model with {num_params:,d} total parameters, "
+        f"{num_non_embedding_prams:,d} non-embedding parameters"
+    )
 
     print("initializing optimizer...")
     optim = optax.adamw(learning_rate)
@@ -96,7 +97,6 @@ def main(
             grads = cast_tree(grads, param_dtype)
 
         # Take optimizer step.
-        #  model = sgd_step(model, grads, lr=LEARNING_RATE)
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         model = eqx.apply_updates(model, updates)
 
@@ -108,6 +108,7 @@ def main(
     per_process_batch_size_instances = per_process_batch_size // sequence_length
 
     print("starting training...")
+    gc.collect()
     batch_start = time.monotonic()
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
