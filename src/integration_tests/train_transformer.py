@@ -12,7 +12,8 @@ from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree
 from olmax.types import Array
 
-TRACE = True
+TRACE = False
+PROFILE = True
 
 VOCAB_SIZE = 50_304
 SEQUENCE_LENGTH = 1024
@@ -151,6 +152,9 @@ def main():
             input_ids.block_until_ready()
             jax.profiler.stop_trace()
             return
+        if PROFILE:
+            input_ids.block_until_ready()
+            jax.profiler.save_device_memory_profile("/net/nfs2.allennlp/petew/trace/memory.prof")
 
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
