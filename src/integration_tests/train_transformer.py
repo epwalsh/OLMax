@@ -70,7 +70,7 @@ def main():
     print("initializing optimizer...")
     optim = optax.adamw(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
-    print(opt_state)
+    print(opt_state[0].mu.embedding)
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
