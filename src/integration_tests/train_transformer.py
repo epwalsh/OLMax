@@ -79,7 +79,7 @@ def main():
     #  )
 
     print("initializing optimizer...")
-    optim = optax.adamw(LEARNING_RATE)
+    optim = optax.sgd(LEARNING_RATE)
     opt_state = optim.init(model)  # pyright: ignore
 
     @eqx.filter_value_and_grad
@@ -116,7 +116,7 @@ def main():
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        #  model = eqx.apply_updates(model, updates)
+        model = eqx.apply_updates(model, updates)
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         return loss, model, opt_state
