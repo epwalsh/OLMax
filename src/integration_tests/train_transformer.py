@@ -85,7 +85,7 @@ def main():
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
         loss = F.cross_entropy_loss(logits, labels)
-        jax.debug.print("Got loss!")
+        print("Got loss!")
         return loss
 
     @eqx.filter_jit(donate="all")
@@ -102,7 +102,7 @@ def main():
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
         grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
-        jax.debug.print("Got grads!")
+        print("Got grads!")
 
         # Cast grads back to param dtype.
         grads = cast_tree(grads, PARAM_DTYPE)
