@@ -1,18 +1,12 @@
+from __future__ import annotations
+
 import argparse
 import os
 import time
+from typing import TYPE_CHECKING
 
-import equinox as eqx
-import jax
-import optax
-
-import olmax.distributed as dist
-import olmax.nn as nn
-import olmax.nn.functional as F
-import olmax.nn.transformer.recipes as recipes
-from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree
-from olmax.types import Array, DTypeLike
+if TYPE_CHECKING:
+    from olmax.types import DTypeLike
 
 
 def main(
@@ -21,10 +15,22 @@ def main(
     instances_per_device: int | None = None,
     vocab_size: int = 50_304,
     param_dtype: DTypeLike = float,
-    compute_dtype: DTypeLike = jax.dtypes.bfloat16,
+    compute_dtype: DTypeLike = "bfloat16",
     learning_rate: float = 1e-3,
     train_steps: int = 100,
 ):
+    import equinox as eqx
+    import jax
+    import optax
+
+    import olmax.distributed as dist
+    import olmax.nn as nn
+    import olmax.nn.functional as F
+    import olmax.nn.transformer.recipes as recipes
+    from olmax.data.utils import generate_batches_of_sequential_tokens
+    from olmax.jax_utils import cast_tree
+    from olmax.types import Array
+
     if recipe == "271M":
         model_config = recipes.llama_like_271M(vocab_size, param_dtype)
         if sequence_length is None:
