@@ -8,6 +8,8 @@ if DEBUG:
     #  os.environ["EQX_ON_ERROR"] = "breakpoint"
     #  os.environ["JAX_DISABLE_JIT"] = "1"
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    # Configure JAX to use 8 CPU devices
+    os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=8"
 
 import equinox as eqx
 import jax
@@ -22,13 +24,11 @@ from olmax.optim.sgd import sgd_step
 from olmax.types import Array
 
 VOCAB_SIZE = 50_304
-SEQUENCE_LENGTH = 1024
-#  SEQUENCE_LENGTH = 4096
-BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 16
-#  BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 2
+SEQUENCE_LENGTH = 8
+# Reduced batch size for CPU
+BATCH_SIZE_PER_DEVICE = SEQUENCE_LENGTH * 2
 LEARNING_RATE = 1e-3
-#  LEARNING_RATE = 1e-4
-TRAIN_STEPS = 100
+TRAIN_STEPS = 1
 
 PARAM_DTYPE = float
 COMPUTE_DTYPE = jax.dtypes.bfloat16
@@ -36,16 +36,12 @@ COMPUTE_DTYPE = jax.dtypes.bfloat16
 NORM_CONFIG = nn.LayerNorm.Config.rms_norm(bias=False)
 MODEL_CONFIG = nn.Transformer.Config(
     vocab_size=VOCAB_SIZE,
-    d_model=1024,
-    hidden_size=2816,
-    num_layers=16,
-    #  d_model=4096,
-    #  hidden_size=11008,
-    #  num_layers=32,
+    d_model=128,  # Reduced model size for CPU
+    hidden_size=256,  # Reduced model size for CPU
+    num_layers=2,  # Reduced number of layers for CPU
     block=nn.TransformerBlock.Config(
         attention=nn.MultiheadSelfAttention.Config(
             n_heads=8,
-            #  n_heads=32,
             rope=nn.RotaryPositionalEmbedding.Config(theta=10_000),
             bias=False,
             dtype=PARAM_DTYPE,
@@ -138,8 +134,10 @@ def main():
         )
     ):
         # Do a step.
+        jax.profiler.save_device_memory_profile("before_step.prof")
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-
+        jax.profiler.save_device_memory_profile("after_step.prof")
+        
         # Log progress.
         metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
         batch_end = time.monotonic()
