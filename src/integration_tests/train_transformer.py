@@ -109,7 +109,13 @@ def main():
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        jax.debug.inspect_array_sharding(
+            opt_state[0].mu.embedding, callback=lambda s: print("opt state:", s)
+        )
         model = eqx.apply_updates(model, updates)
+        jax.debug.inspect_array_sharding(
+            model.embedding, callback=lambda s: print("model state:", s)
+        )
 
         model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
         #  opt_state = jax.lax.with_sharding_constraint(
