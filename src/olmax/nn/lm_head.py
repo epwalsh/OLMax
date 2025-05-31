@@ -40,7 +40,6 @@ class LMHeadConfig:
 
 
 class LMHead(Module):
-    keepdims: ClassVar[int] = -1
     Config: ClassVar[Type[LMHeadConfig]] = LMHeadConfig
 
     norm: LayerNorm | None
@@ -66,7 +65,7 @@ class LMHead(Module):
         )
 
     @jax.named_scope("olmax.nn.LMHead")
-    def forward(self, x: Array) -> Array:
+    def __call__(self, x: Array) -> Array:
         if self.norm is not None:
             x = self.norm(x)
         return self.w_out(x).astype(float)

@@ -45,7 +45,6 @@ class TransformerBlockConfig:
 
 class TransformerBlock(Module):
     Config: ClassVar[Type[TransformerBlockConfig]] = TransformerBlockConfig
-    keepdims: ClassVar[int] = -1
 
     mlp: GatedMLP
     mlp_norm: LayerNorm
@@ -92,7 +91,7 @@ class TransformerBlock(Module):
         )
 
     @jax.named_scope("olmax.nn.TransformerBlock")
-    def forward(self, x: Array) -> Array:
+    def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention(self.attention_norm(x))
         h = h + self.mlp(self.mlp_norm(h))
@@ -101,7 +100,7 @@ class TransformerBlock(Module):
 
 class ReorderedNormTransformerBlock(TransformerBlock):
     @jax.named_scope("olmax.nn.ReorderedTransformerBlock")
-    def forward(self, x: Array) -> Array:
+    def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(x))
         h = h + self.mlp_norm(self.mlp(h))

@@ -4,34 +4,30 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 
-from ..distributed.parallel import MeshAxesNames
 from ..jax_utils import vmap_multiple
 from ..types import Array
 
 
 @jax.jit
-def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
+def _linear_single(x: Array, weight: Array, bias: Array | None = None) -> Array:
     x = weight @ x
     if bias is not None:
         x = x + bias
     return x
 
 
-@jax.jit
-def batched_linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
+@ft.partial(jax.jit, static_argnums=(3,), static_argnames=("psum_axis",))
+def linear(
+    x: Array, weight: Array, bias: Array | None = None, psum_axis: str | None = None
+) -> Array:
     #  print(weight.shape)
     #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("x:", s))
     #  jax.debug.inspect_array_sharding(weight, callback=lambda s: print("weight:", s))
     #  jax.debug.visualize_array_sharding(weight)
-    return vmap_multiple(lambda xi: linear(xi, weight, bias), x.ndim - 1)(x)
-
-
-@jax.jit
-def batched_linear_rowwise_tp(
-    x: Array, weight: Array, bias: Array | None = None, tp_axis: str = MeshAxesNames.TP.shard
-) -> Array:
-    out = vmap_multiple(lambda xi: linear(xi, weight, bias), x.ndim - 1)(x)
-    return jax.lax.psum(out, tp_axis)
+    out = vmap_multiple(lambda xi: _linear_single(xi, weight, bias), x.ndim - 1)(x)
+    if psum_axis is not None:
+        out = jax.lax.psum(out, psum_axis)
+    return out
 
 
 @jax.jit
@@ -43,9 +39,8 @@ def layer_norm(
         dtype = jnp.result_type(x.dtype, jnp.float32)
 
     x = x.astype(dtype)
-    mean = jnp.mean(x, keepdims=True)
-    variance = jnp.var(x, keepdims=True)
-    variance = jnp.maximum(0.0, variance)
+    mean = jnp.mean(x, axis=-1, keepdims=True)
+    variance = jnp.var(x, axis=-1, keepdims=True)
     inv = jax.lax.rsqrt(variance + eps)
     out = (x - mean) * inv
 
@@ -66,7 +61,7 @@ def rms_norm(
         dtype = jnp.result_type(x.dtype, jnp.float32)
 
     x = x.astype(dtype)
-    inv_rms = jax.lax.rsqrt(jnp.mean(x**2) + eps)
+    inv_rms = jax.lax.rsqrt(jnp.mean(x**2, axis=-1, keepdims=True) + eps)
     out = inv_rms * x
 
     if weight is not None:

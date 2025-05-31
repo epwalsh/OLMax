@@ -1,4 +1,4 @@
-from typing import Callable, ClassVar
+from typing import Callable
 
 import equinox as eqx
 import jax
@@ -11,8 +11,6 @@ from .module import Module
 
 
 class GatedMLP(Module):
-    keepdims: ClassVar[int] = -1
-
     w1: Linear
     w2: Linear
     w3: Linear

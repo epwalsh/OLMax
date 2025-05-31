@@ -57,7 +57,6 @@ class MultiheadSelfAttentionConfig:
 
 class MultiheadSelfAttention(Module):
     Config: ClassVar[Type[MultiheadSelfAttentionConfig]] = MultiheadSelfAttentionConfig
-    keepdims: ClassVar[int] = -1
 
     w_q: Linear
     w_k: Linear
@@ -148,7 +147,7 @@ class MultiheadSelfAttention(Module):
         )
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
-    def forward(self, x: Array) -> Array:
+    def __call__(self, x: Array) -> Array:
         assert x.ndim == 3  # (batch_size, seq_len, d_model)
         B, S, _ = x.shape
 
@@ -172,8 +171,8 @@ class MultiheadSelfAttention(Module):
         v = v.reshape(B, S, self.n_kv_heads, self.head_dim)
 
         if self.rope is not None:
-            q = jax.vmap(self.rope.forward, 2, 2)(q)
-            k = jax.vmap(self.rope.forward, 2, 2)(k)
+            q = self.rope(q, head_first=False)
+            k = self.rope(k, head_first=False)
 
         # shape: (batch_size, seq_len, n_heads, head_dim)
         att = jax.nn.dot_product_attention(

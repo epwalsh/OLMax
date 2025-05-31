@@ -1,5 +1,3 @@
-from typing import ClassVar
-
 import jax
 
 from ..distributed.parallel import ParallelConfig
@@ -9,8 +7,6 @@ from .module import Module
 
 
 class Embedding(Module):
-    keepdims: ClassVar[int] = -1
-
     weight: Array
 
     def __init__(
@@ -31,5 +27,5 @@ class Embedding(Module):
         )
 
     @jax.named_scope("olmax.nn.Embedding")
-    def forward(self, x: Array) -> Array:
+    def __call__(self, x: Array) -> Array:
         return jax.vmap(lambda idx: self.weight[idx])(x)

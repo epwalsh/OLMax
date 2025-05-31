@@ -1,21 +1,14 @@
-from typing import ClassVar
-
 import equinox as eqx
 import jax
-import jax.numpy as jnp
-from jax.sharding import PartitionSpec as P
 
-from ..distributed.parallel import ParallelConfig, TPStyle
-from ..jax_utils import vmap_multiple
+from ..distributed.parallel import MeshAxesNames, ParallelConfig, TPStyle
 from ..types import Array, DTypeLike, PRNGKeyArray
-from .functional import batched_linear, batched_linear_rowwise_tp, linear
+from .functional import linear
 from .init import truncated_normal
 from .module import Module
 
 
 class Linear(Module):
-    keepdims: ClassVar[int] = 1
-
     weight: Array
     bias: Array | None
     tp_style: TPStyle | None = eqx.field(static=True)
@@ -39,8 +32,9 @@ class Linear(Module):
         #
         # * With colwise we shard weight/bias on dim 0 (output dimension), output is kept sharded
         #   on this dimension, input is assumed to be replicated.
-        # * With rowwise we shard weight on dim 1 (input dimension), input is also sharded on this
-        #   dimension, and output is replicated.
+        # * With rowwise we shard weight on dim 1 (input dimension), input is also sharded on its
+        #   corresponding dimension (it's last dimension), and output is summed over that dimension
+        #   across the TP group and returned replicated.
         self.tp_style = tp_style
 
         wkey, bkey = jax.random.split(key)
@@ -78,17 +72,17 @@ class Linear(Module):
         #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("x:", s))
         #  jax.debug.inspect_array_sharding(self.weight, callback=lambda s: print("weight:", s))
         if (pc := self.parallel_config) is None:
-            out = batched_linear(x, self.weight, self.bias)
+            out = linear(x, self.weight, self.bias)
             return out
         elif self.tp_style is None:
             return pc.shard_map(
-                batched_linear,
+                linear,
                 (pc.get_data_partition_for(x), None, None),
                 pc.get_data_partition_for(x),
             )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.colwise:
             return pc.shard_map(
-                batched_linear,
+                linear,
                 (
                     pc.get_data_partition_for(x),
                     pc.get_param_partition_for(
@@ -104,64 +98,17 @@ class Linear(Module):
             )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.rowwise:
             out = pc.shard_map(
-                batched_linear_rowwise_tp,
+                linear,
                 (
                     pc.get_data_partition_for(x, tp_sharding_axis=-1),
                     pc.get_param_partition_for(
                         self.weight, dp_sharding_axis=None, tp_sharding_axis=1
                     ),
                     None,
+                    None,
                 ),
                 pc.get_data_partition_for(x),
-            )(x, self.weight, self.bias)
+            )(x, self.weight, self.bias, MeshAxesNames.TP.shard)
             return out
         else:
             raise ValueError(self.tp_style)
-
-    @jax.named_scope("olmax.nn.Linear")
-    def forward(self, x: Array) -> Array:
-        #  assert x.ndim == 1
-        weight, bias = self.weight, self.bias
-
-        # Maybe set parameter sharding constraints for tensor parallelism.
-        # Refer to notes above about how the sharding is determined.
-        if self.tp_style is not None:
-            assert self.parallel_config is not None
-            if self.tp_style == TPStyle.colwise:
-                weight = jax.lax.with_sharding_constraint(
-                    weight,
-                    self.parallel_config.get_param_sharding(
-                        dp_sharding_axis=None, tp_sharding_axis=0
-                    ),
-                )
-                bias = jax.lax.with_sharding_constraint(
-                    bias,
-                    self.parallel_config.get_param_sharding(
-                        dp_sharding_axis=None, tp_sharding_axis=0
-                    ),
-                )
-            elif self.tp_style == TPStyle.rowwise:
-                x = jax.lax.with_sharding_constraint(
-                    x,
-                    self.parallel_config.get_param_sharding(tp_sharding_axis=-1, ndim=x.ndim),
-                )
-                weight = jax.lax.with_sharding_constraint(
-                    weight,
-                    self.parallel_config.get_param_sharding(
-                        dp_sharding_axis=None, tp_sharding_axis=1
-                    ),
-                )
-            else:
-                raise ValueError(f"unexpected tp_style '{self.tp_style}'")
-
-        out = linear(x, weight, bias)
-
-        # Maybe set output sharding constraints for tensor parallelism.
-        # Refer to notes above about how the sharding is determined.
-        if self.tp_style == TPStyle.colwise:
-            assert self.parallel_config is not None
-            out = jax.lax.with_sharding_constraint(
-                out, self.parallel_config.get_param_sharding(tp_sharding_axis=-1, ndim=out.ndim)
-            )
-
-        return out

@@ -41,8 +41,6 @@ class RotaryPositionalEmbeddingConfig:
 
 class RotaryPositionalEmbedding(Module):
     Config: ClassVar[Type[RotaryPositionalEmbeddingConfig]] = RotaryPositionalEmbeddingConfig
-    keepdims: ClassVar[int] = -1
-
     head_dim: int = eqx.field(static=True)
     theta: float = eqx.field(static=True, default=10_000.0)
     dtype: DTypeLike = eqx.field(static=True, default=float)
@@ -80,7 +78,13 @@ class RotaryPositionalEmbedding(Module):
         return jnp.cos(freqs_outer).astype(dtype), jnp.sin(freqs_outer).astype(dtype)
 
     @jax.named_scope("olmax.nn.RotaryPositionalEmbedding")
-    def forward(self, x: Array) -> Array:
+    def __call__(self, x: Array, head_first: bool = False) -> Array:
+        assert x.ndim == 4
+        head_dim = 3 if head_first else 2
+        x = jax.vmap(self._apply_rope, head_dim, head_dim)(x)
+        return x
+
+    def _apply_rope(self, x: Array) -> Array:
         _, S, H = x.shape
         og_dtype = x.dtype
         if H != self.head_dim:
