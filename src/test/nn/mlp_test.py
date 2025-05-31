@@ -51,8 +51,14 @@ def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
     full_batch = _get_batch(batch_key, batch_size, d_model)
     dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
 
-    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key)
-    dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, parallel_config=parallel_config)
+    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=parallel_config.tp is None)
+    dist_mlp = nn.GatedMLP(
+        d_model,
+        hidden_size,
+        key=key,
+        bias=parallel_config.tp is None,
+        parallel_config=parallel_config,
+    )
 
     assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
     assert allclose(full_mlp.w2.weight, dist_mlp.w2.weight)
@@ -117,10 +123,19 @@ if __name__ == "__main__":
     full_batch = _get_batch(batch_key, batch_size, d_model)
     dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
 
-    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key)
-    dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, parallel_config=parallel_config)
+    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False)
+    dist_mlp = nn.GatedMLP(
+        d_model, hidden_size, key=key, bias=False, parallel_config=parallel_config
+    )
+    assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
+    assert allclose(full_mlp.w2.weight, dist_mlp.w2.weight)
+    assert allclose(full_mlp.w3.weight, dist_mlp.w3.weight)
+
+    full_preds = jax.jit(full_mlp)(full_batch[0])
+    dist_preds = jax.jit(dist_mlp)(dist_batch[0])
+    print(full_preds)
+    print(dist_preds)
 
     full_loss, _ = _get_loss_and_grads(full_mlp, full_batch)
     dist_loss, _ = _get_loss_and_grads(dist_mlp, dist_batch)
-    #  print(dist_loss)
     print(full_loss, dist_loss)

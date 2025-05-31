@@ -28,6 +28,10 @@ class GatedMLP(Module):
     ):
         super().__init__(parallel_config)
         tp_enabled = parallel_config is not None and parallel_config.tp is not None
+        if tp_enabled and bias:
+            raise ValueError(
+                f"bias=True is not allowed with tensor parallelism in {self.__class__.__name__}"
+            )
         w1_key, w2_key, w3_key = jax.random.split(key, 3)
         self.w1 = Linear(
             d_model,
@@ -60,15 +64,6 @@ class GatedMLP(Module):
 
     @jax.named_scope("olmax.nn.GatedMLP")
     def __call__(self, x: Array) -> Array:
-        h1 = self.w1(x)
-        h1 = vmap_multiple(self.activation, x.ndim - 1)(h1)
-        h2 = self.w3(x)
-        h = h1 * h2
-        h = self.w2(h)
-        return h
-
-    @jax.named_scope("olmax.nn.GatedMLP")
-    def forward(self, x: Array) -> Array:
         return self.w2(
-            jax.vmap(self.activation)(self.w1(x)) * self.w3(x),
+            vmap_multiple(self.activation, x.ndim - 1)(self.w1(x)) * self.w3(x),
         )
