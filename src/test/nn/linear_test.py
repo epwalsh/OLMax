@@ -5,7 +5,6 @@ import pytest
 
 import olmax.distributed as dist
 import olmax.nn as nn
-from olmax.debug import inspect
 from olmax.testing.distributed import run_distributed_test
 from olmax.testing.utils import allclose
 from olmax.types import Array, PRNGKeyArray
@@ -109,5 +108,4 @@ if __name__ == "__main__":
 
     model = nn.Linear(in_size, out_size, key=key, parallel_config=parallel_config)
     loss, grads = _get_loss_and_grads(model, batch)
-    inspect(loss, "loss")
     print(loss)

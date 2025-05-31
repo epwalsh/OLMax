@@ -2,10 +2,13 @@ from typing import ClassVar
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
+from jax.sharding import PartitionSpec as P
 
 from ..distributed.parallel import ParallelConfig, TPStyle
+from ..jax_utils import vmap_multiple
 from ..types import Array, DTypeLike, PRNGKeyArray
-from .functional import linear
+from .functional import batched_linear, batched_linear_rowwise_tp, linear
 from .init import truncated_normal
 from .module import Module
 
@@ -71,8 +74,53 @@ class Linear(Module):
         )
 
     @jax.named_scope("olmax.nn.Linear")
+    def __call__(self, x):
+        if (pc := self.parallel_config) is None:
+            return batched_linear(x, self.weight, self.bias)
+        elif self.tp_style is None:
+            return jax.shard_map(
+                batched_linear,
+                mesh=pc.get_data_mesh(),
+                in_specs=(pc.get_data_partition(), None, None),
+                out_specs=pc.get_data_partition(),
+            )(
+                x, self.weight, self.bias  # pyright: ignore
+            )
+        elif self.tp_style == TPStyle.colwise:
+            return jax.shard_map(
+                batched_linear,
+                mesh=pc.get_data_mesh(),
+                in_specs=(
+                    pc.get_data_partition(),
+                    pc.get_param_partition(dp_sharding_axis=None, tp_sharding_axis=0),
+                    None
+                    if self.bias is None
+                    else pc.get_param_partition(dp_sharding_axis=None, tp_sharding_axis=0),
+                ),
+                out_specs=pc.get_data_partition(tp_sharding_axis=-1, ndim=x.ndim),
+            )(
+                x, self.weight, self.bias  # pyright: ignore
+            )
+        elif self.tp_style == TPStyle.rowwise:
+            out = jax.shard_map(
+                batched_linear_rowwise_tp,
+                mesh=pc.get_data_mesh(),
+                in_specs=(
+                    pc.get_data_partition(tp_sharding_axis=-1, ndim=x.ndim),
+                    pc.get_param_partition(dp_sharding_axis=None, tp_sharding_axis=1),
+                    None,
+                ),
+                out_specs=pc.get_data_partition(),
+            )(
+                x, self.weight, self.bias  # pyright: ignore
+            )
+            return out
+        else:
+            raise ValueError(self.tp_style)
+
+    @jax.named_scope("olmax.nn.Linear")
     def forward(self, x: Array) -> Array:
-        assert x.ndim == 1
+        #  assert x.ndim == 1
         weight, bias = self.weight, self.bias
 
         # Maybe set parameter sharding constraints for tensor parallelism.

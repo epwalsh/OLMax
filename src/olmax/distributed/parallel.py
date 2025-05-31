@@ -22,13 +22,13 @@ class MeshAxisNames:
         shard = "dp_shard"
 
     class PP:
-        shard = "pp_split"
+        shard = "pp_shard"
 
     class CP:
-        shard = "cp_split"
+        shard = "cp_shard"
 
     class TP:
-        shard = "tp_split"
+        shard = "tp_shard"
 
 
 @dataclass(frozen=True)
@@ -157,23 +157,52 @@ class ParallelConfig:
             ),
         )
 
-    def get_data_partition(self, sharding_axis: int = 0) -> P:
+    def get_param_replication(self):
+        mesh = self.get_param_mesh()
+        return NamedSharding(mesh, P())
+
+    def get_data_partition(
+        self,
+        dp_sharding_axis: int = 0,
+        tp_sharding_axis: int | None = None,
+        ndim: int | None = None,
+    ) -> P:
+        if tp_sharding_axis is not None and self.tp is None:
+            raise ValueError("'tp_sharding_axis' is only valid when tensor parallelism is enabled")
+
+        if dp_sharding_axis is not None and dp_sharding_axis < 0:
+            if ndim is None:
+                raise ValueError("using negative offset axes requires specifying ndim")
+            dp_sharding_axis = ndim + dp_sharding_axis
+
+        if tp_sharding_axis is not None and tp_sharding_axis < 0:
+            if ndim is None:
+                raise ValueError("using negative offset axes requires specifying ndim")
+            tp_sharding_axis = ndim + tp_sharding_axis
+
         mesh = self.get_data_mesh()
         partitions: list[str | tuple[str, ...] | None] = []
         if MeshAxisNames.DP.replicate in mesh.shape and MeshAxisNames.DP.shard in mesh.shape:
-            partitions.extend([None] * sharding_axis)
+            partitions.extend([None] * dp_sharding_axis)
             partitions.append((MeshAxisNames.DP.replicate, MeshAxisNames.DP.shard))
         elif MeshAxisNames.DP.replicate in mesh.shape:
-            partitions.extend([None] * sharding_axis)
+            partitions.extend([None] * dp_sharding_axis)
             partitions.append(MeshAxisNames.DP.replicate)
         elif MeshAxisNames.DP.shard in mesh.shape:
-            partitions.extend([None] * sharding_axis)
+            partitions.extend([None] * dp_sharding_axis)
             partitions.append(MeshAxisNames.DP.shard)
+
+        if tp_sharding_axis is not None:
+            assert tp_sharding_axis > dp_sharding_axis
+            assert MeshAxisNames.TP.shard in mesh.shape
+            partitions.extend([None] * (1 + tp_sharding_axis - len(partitions)))
+            partitions[tp_sharding_axis] = MeshAxisNames.TP.shard
+
         return P(*partitions)
 
     def get_data_sharding(self, sharding_axis: int = 0) -> NamedSharding:
         mesh = self.get_data_mesh()
-        return NamedSharding(mesh, self.get_data_partition(sharding_axis=sharding_axis))
+        return NamedSharding(mesh, self.get_data_partition(dp_sharding_axis=sharding_axis))
 
     def _validate_dp_degrees(self, dp_device_ws: int) -> tuple[int, int]:
         dp_replicate_degree = self.dp.replicate_degree or 1

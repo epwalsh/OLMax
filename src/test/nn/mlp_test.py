@@ -60,7 +60,7 @@ def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
 
     full_loss, full_grads = _get_loss_and_grads(full_mlp, full_batch)
     dist_loss, dist_grads = _get_loss_and_grads(dist_mlp, dist_batch)
-    assert allclose(full_loss, dist_loss)
+    assert allclose(full_loss, dist_loss), f"{full_loss} != {dist_loss}"
     assert allclose(full_grads.w1.weight, dist_grads.w1.weight)
     assert allclose(full_grads.w1.bias, dist_grads.w1.bias)
 
@@ -105,11 +105,11 @@ def test_mlp_tensor_parallel(parallel_config: dist.ParallelConfig):
 
 
 if __name__ == "__main__":
-    import os
-
-    os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=2"
+    jax.config.update("jax_num_cpu_devices", 2)
+    jax.config.update("jax_disable_jit", True)
 
     parallel_config = dist.ParallelConfig(tp=dist.TensorParallelConfig(2))
+
     d_model, hidden_size, batch_size = (
         2 * dist.get_global_device_count(),
         4 * dist.get_global_device_count(),
@@ -121,5 +121,9 @@ if __name__ == "__main__":
     full_batch = _get_batch(batch_key, batch_size, d_model)
     dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
 
+    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key)
     dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, parallel_config=parallel_config)
-    dist_loss, dist_grads = _get_loss_and_grads(dist_mlp, dist_batch)
+
+    full_loss, _ = _get_loss_and_grads(full_mlp, full_batch)
+    dist_loss, _ = _get_loss_and_grads(dist_mlp, dist_batch)
+    print(full_loss, dist_loss)
