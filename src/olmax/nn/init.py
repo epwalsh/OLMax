@@ -4,6 +4,8 @@ import jax
 from jax.sharding import NamedSharding
 from jaxtyping import Array, DTypeLike, PRNGKeyArray
 
+from ..jax_utils import is_in_jit
+
 
 @ft.partial(jax.jit, static_argnums=(1,), static_argnames=("shape", "dtype", "sharding"))
 def truncated_normal(
@@ -20,7 +22,10 @@ def truncated_normal(
         key, shape, dtype=dtype
     )
     if sharding is not None:
-        out = jax.lax.with_sharding_constraint(out, sharding)
+        if is_in_jit():
+            out = jax.lax.with_sharding_constraint(out, sharding)
+        else:
+            out = jax.device_put(out, sharding)
     return out
 
 
@@ -34,7 +39,10 @@ def zeros(
 ) -> Array:
     out = jax.nn.initializers.zeros(key, shape, dtype=dtype)
     if sharding is not None:
-        out = jax.lax.with_sharding_constraint(out, sharding)
+        if is_in_jit():
+            out = jax.lax.with_sharding_constraint(out, sharding)
+        else:
+            out = jax.device_put(out, sharding)
     return out
 
 
@@ -48,5 +56,8 @@ def ones(
 ) -> Array:
     out = jax.nn.initializers.ones(key, shape, dtype=dtype)
     if sharding is not None:
-        out = jax.lax.with_sharding_constraint(out, sharding)
+        if is_in_jit():
+            out = jax.lax.with_sharding_constraint(out, sharding)
+        else:
+            out = jax.device_put(out, sharding)
     return out

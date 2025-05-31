@@ -62,14 +62,11 @@ class GatedMLP(Module):
 
     @jax.named_scope("olmax.nn.GatedMLP")
     def __call__(self, x: Array) -> Array:
-        #  jax.debug.visualize_array_sharding(x)
         h1 = self.w1(x)
         h1 = vmap_multiple(self.activation, x.ndim - 1)(h1)
         h2 = self.w3(x)
         h = h1 * h2
-        #  jax.debug.visualize_array_sharding(h)
         h = self.w2(h)
-        #  jax.debug.visualize_array_sharding(h)
         return h
 
     @jax.named_scope("olmax.nn.GatedMLP")

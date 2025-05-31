@@ -110,11 +110,7 @@ if __name__ == "__main__":
 
     parallel_config = dist.ParallelConfig(tp=dist.TensorParallelConfig(2))
 
-    d_model, hidden_size, batch_size = (
-        2 * dist.get_global_device_count(),
-        4 * dist.get_global_device_count(),
-        2 * dist.get_global_device_count(),
-    )
+    d_model, hidden_size, batch_size = (8, 32, 2)
     key = jax.random.PRNGKey(0)
 
     key, batch_key = jax.random.split(key)
@@ -126,4 +122,5 @@ if __name__ == "__main__":
 
     full_loss, _ = _get_loss_and_grads(full_mlp, full_batch)
     dist_loss, _ = _get_loss_and_grads(dist_mlp, dist_batch)
+    #  print(dist_loss)
     print(full_loss, dist_loss)

@@ -3,6 +3,8 @@ from typing import Callable, TypeVar
 
 import equinox as eqx
 import jax
+import jax.core
+import jax.numpy as jnp
 from jax.sharding import NamedSharding
 
 from .types import Array, DTypeLike, PyTree
@@ -43,3 +45,7 @@ def _with_optional_sharding_contraint(
         return jax.lax.with_sharding_constraint(leaf, sharding)
     else:
         return leaf
+
+
+def is_in_jit():
+    return isinstance(jnp.zeros((), dtype=jnp.float32), jax.core.Tracer)

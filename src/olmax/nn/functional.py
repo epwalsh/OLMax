@@ -4,7 +4,7 @@ from typing import Literal
 import jax
 import jax.numpy as jnp
 
-from ..distributed.parallel import MeshAxisNames
+from ..distributed.parallel import MeshAxesNames
 from ..jax_utils import vmap_multiple
 from ..types import Array
 
@@ -19,12 +19,16 @@ def linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
 
 @jax.jit
 def batched_linear(x: Array, weight: Array, bias: Array | None = None) -> Array:
+    #  print(weight.shape)
+    #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("x:", s))
+    #  jax.debug.inspect_array_sharding(weight, callback=lambda s: print("weight:", s))
+    #  jax.debug.visualize_array_sharding(weight)
     return vmap_multiple(lambda xi: linear(xi, weight, bias), x.ndim - 1)(x)
 
 
 @jax.jit
 def batched_linear_rowwise_tp(
-    x: Array, weight: Array, bias: Array | None = None, tp_axis: str = MeshAxisNames.TP.shard
+    x: Array, weight: Array, bias: Array | None = None, tp_axis: str = MeshAxesNames.TP.shard
 ) -> Array:
     out = vmap_multiple(lambda xi: linear(xi, weight, bias), x.ndim - 1)(x)
     return jax.lax.psum(out, tp_axis)

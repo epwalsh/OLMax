@@ -2,13 +2,17 @@ import dataclasses
 import functools as ft
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Callable, TypeVar, cast
 
 import jax
 from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from typing_extensions import Self
 
+from ..types import Array
 from . import utils as dist_utils
+
+F = TypeVar("F", bound=Callable)
 
 
 class TPStyle(StrEnum):
@@ -16,7 +20,7 @@ class TPStyle(StrEnum):
     rowwise = "rowwise"
 
 
-class MeshAxisNames:
+class MeshAxesNames:
     class DP:
         replicate = "dp_replicate"
         shard = "dp_shard"
@@ -101,6 +105,69 @@ class ParallelConfig:
             devices *= d if d > 0 else 2
         return devices
 
+    def get_mesh(self) -> Mesh:
+        axis_shapes, axis_names, axis_types = self._get_param_mesh_axes(
+            dist_utils.get_global_device_count()
+        )
+        return make_mesh(axis_shapes, axis_names, axis_types)
+
+    def get_partition_for(
+        self, x: Array | tuple[int, ...], axes: dict[int, str | tuple[str, ...] | None]
+    ) -> P:
+        mesh = self.get_mesh()
+        ndim = x.ndim if isinstance(x, Array) else len(x)
+        partitions: list[str | tuple[str, ...] | None] = [None] * ndim
+        for dim, axis_spec in axes.items():
+            if dim < 0:
+                dim = ndim + dim
+            assert 0 <= dim < ndim
+            assert partitions[dim] is None  # no duplicates
+            if isinstance(axis_spec, tuple):
+                axis_spec = tuple([a for a in axis_spec if a in mesh.shape]) or None
+            elif isinstance(axis_spec, str) and axis_spec not in mesh.shape:
+                axis_spec = None
+            partitions[dim] = axis_spec
+        return P(*partitions)
+
+    def get_sharding_for(
+        self, x: Array | tuple[int, ...], axes: dict[int, str | tuple[str, ...] | None]
+    ) -> NamedSharding:
+        mesh = self.get_mesh()
+        return NamedSharding(mesh, self.get_partition_for(x, axes))
+
+    def get_param_partition_for(
+        self,
+        x: Array | tuple[int, ...],
+        dp_sharding_axis: int | None = 0,
+        tp_sharding_axis: int | None = None,
+    ) -> P:
+        axes: dict[int, str | tuple[str, ...] | None] = {}
+        if dp_sharding_axis is not None:
+            axes[dp_sharding_axis] = MeshAxesNames.DP.shard
+        if tp_sharding_axis is not None:
+            axes[tp_sharding_axis] = MeshAxesNames.TP.shard
+        return self.get_partition_for(x, axes)
+
+    def get_data_partition_for(
+        self,
+        x: Array | tuple[int, ...],
+        dp_sharding_axis: int = 0,
+        tp_sharding_axis: int | None = None,
+    ) -> P:
+        axes: dict[int, str | tuple[str, ...] | None] = {}
+        if dp_sharding_axis is not None:
+            axes[dp_sharding_axis] = (MeshAxesNames.DP.replicate, MeshAxesNames.DP.shard)
+        if tp_sharding_axis is not None:
+            axes[tp_sharding_axis] = MeshAxesNames.TP.shard
+        return self.get_partition_for(x, axes)
+
+    def shard_map(
+        self, fun: F, in_specs: tuple[P | None, ...], out_specs: tuple[P | None] | P | None
+    ) -> F:
+        return cast(
+            F, jax.shard_map(fun, mesh=self.get_mesh(), in_specs=in_specs, out_specs=out_specs)
+        )
+
     def get_param_partition(
         self,
         dp_sharding_axis: int | None = 0,
@@ -123,23 +190,23 @@ class ParallelConfig:
         mesh = self.get_param_mesh()
         partitions: list[str | tuple[str, ...] | None] = []
         if tp_sharding_axis is not None:
-            assert MeshAxisNames.TP.shard in mesh.shape
-            if dp_sharding_axis is not None and MeshAxisNames.DP.shard in mesh.shape:
+            assert MeshAxesNames.TP.shard in mesh.shape
+            if dp_sharding_axis is not None and MeshAxesNames.DP.shard in mesh.shape:
                 partitions.extend([None] * (max(dp_sharding_axis, tp_sharding_axis) + 1))
                 if dp_sharding_axis == tp_sharding_axis:
                     partitions[dp_sharding_axis] = (
-                        MeshAxisNames.DP.shard,
-                        MeshAxisNames.TP.shard,
+                        MeshAxesNames.DP.shard,
+                        MeshAxesNames.TP.shard,
                     )
                 else:
-                    partitions[dp_sharding_axis] = MeshAxisNames.DP.shard
-                    partitions[tp_sharding_axis] = MeshAxisNames.TP.shard
+                    partitions[dp_sharding_axis] = MeshAxesNames.DP.shard
+                    partitions[tp_sharding_axis] = MeshAxesNames.TP.shard
             else:
                 partitions.extend([None] * tp_sharding_axis)
-                partitions.append(MeshAxisNames.TP.shard)
-        elif dp_sharding_axis is not None and MeshAxisNames.DP.shard in mesh.shape:
+                partitions.append(MeshAxesNames.TP.shard)
+        elif dp_sharding_axis is not None and MeshAxesNames.DP.shard in mesh.shape:
             partitions.extend([None] * dp_sharding_axis)
-            partitions.append(MeshAxisNames.DP.shard)
+            partitions.append(MeshAxesNames.DP.shard)
 
         return P(*partitions)
 
@@ -182,21 +249,21 @@ class ParallelConfig:
 
         mesh = self.get_data_mesh()
         partitions: list[str | tuple[str, ...] | None] = []
-        if MeshAxisNames.DP.replicate in mesh.shape and MeshAxisNames.DP.shard in mesh.shape:
+        if MeshAxesNames.DP.replicate in mesh.shape and MeshAxesNames.DP.shard in mesh.shape:
             partitions.extend([None] * dp_sharding_axis)
-            partitions.append((MeshAxisNames.DP.replicate, MeshAxisNames.DP.shard))
-        elif MeshAxisNames.DP.replicate in mesh.shape:
+            partitions.append((MeshAxesNames.DP.replicate, MeshAxesNames.DP.shard))
+        elif MeshAxesNames.DP.replicate in mesh.shape:
             partitions.extend([None] * dp_sharding_axis)
-            partitions.append(MeshAxisNames.DP.replicate)
-        elif MeshAxisNames.DP.shard in mesh.shape:
+            partitions.append(MeshAxesNames.DP.replicate)
+        elif MeshAxesNames.DP.shard in mesh.shape:
             partitions.extend([None] * dp_sharding_axis)
-            partitions.append(MeshAxisNames.DP.shard)
+            partitions.append(MeshAxesNames.DP.shard)
 
         if tp_sharding_axis is not None:
             assert tp_sharding_axis > dp_sharding_axis
-            assert MeshAxisNames.TP.shard in mesh.shape
+            assert MeshAxesNames.TP.shard in mesh.shape
             partitions.extend([None] * (1 + tp_sharding_axis - len(partitions)))
-            partitions[tp_sharding_axis] = MeshAxisNames.TP.shard
+            partitions[tp_sharding_axis] = MeshAxesNames.TP.shard
 
         return P(*partitions)
 
@@ -266,26 +333,23 @@ class ParallelConfig:
         # Data parallel.
         if dp_replicate_degree > 1:
             axis_shapes.append(dp_replicate_degree)
-            axis_names.append(MeshAxisNames.DP.replicate)
+            axis_names.append(MeshAxesNames.DP.replicate)
             axis_types.append(AxisType.Auto)
         if dp_shard_degree > 1:
             axis_shapes.append(dp_shard_degree)
-            axis_names.append(MeshAxisNames.DP.shard)
+            axis_names.append(MeshAxesNames.DP.shard)
             axis_types.append(AxisType.Auto)
 
         # Tensor parallel, the inner-most axis.
         if self.tp is not None:
             axis_shapes.append(self.tp.degree)
-            axis_names.append(MeshAxisNames.TP.shard)
+            axis_names.append(MeshAxesNames.TP.shard)
             axis_types.append(AxisType.Auto)
 
         return tuple(axis_shapes), tuple(axis_names), tuple(axis_types)
 
     def get_param_mesh(self) -> Mesh:
-        axis_shapes, axis_names, axis_types = self._get_param_mesh_axes(
-            dist_utils.get_global_device_count()
-        )
-        return make_mesh(axis_shapes, axis_names, axis_types)
+        return self.get_mesh()
 
     def get_data_mesh(self) -> Mesh:
         return self.get_param_mesh()

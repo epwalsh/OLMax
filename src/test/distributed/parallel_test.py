@@ -2,7 +2,7 @@ from jax.sharding import AxisType
 
 from olmax.distributed.parallel import (
     DataParallelConfig,
-    MeshAxisNames,
+    MeshAxesNames,
     ParallelConfig,
     TensorParallelConfig,
 )
@@ -13,7 +13,7 @@ def test_parallel_config_fsdp():
     assert config.get_min_device_count() == 2
     assert config._get_param_mesh_axes(4) == (
         (4,),
-        (MeshAxisNames.DP.shard,),
+        (MeshAxesNames.DP.shard,),
         (AxisType.Auto,),
     )
 
@@ -23,7 +23,7 @@ def test_parallel_config_hsdp():
     assert config.get_min_device_count() == 2
     assert config._get_param_mesh_axes(4) == (
         (2, 2),
-        (MeshAxisNames.DP.replicate, MeshAxisNames.DP.shard),
+        (MeshAxesNames.DP.replicate, MeshAxesNames.DP.shard),
         (AxisType.Auto, AxisType.Auto),
     )
 
@@ -33,7 +33,7 @@ def test_parallel_config_ddp():
     assert config.get_min_device_count() == 1
     assert config._get_param_mesh_axes(4) == (
         (4,),
-        (MeshAxisNames.DP.replicate,),
+        (MeshAxesNames.DP.replicate,),
         (AxisType.Auto,),
     )
 
@@ -43,7 +43,7 @@ def test_parallel_config_tp():
     assert config.get_min_device_count() == 2
     assert config._get_param_mesh_axes(2) == (
         (2,),
-        (MeshAxisNames.TP.shard,),
+        (MeshAxesNames.TP.shard,),
         (AxisType.Auto,),
     )
 
@@ -54,8 +54,8 @@ def test_parallel_config_tp_with_fsdp():
     assert config._get_param_mesh_axes(4) == (
         (2, 2),
         (
-            MeshAxisNames.DP.shard,
-            MeshAxisNames.TP.shard,
+            MeshAxesNames.DP.shard,
+            MeshAxesNames.TP.shard,
         ),
         (AxisType.Auto, AxisType.Auto),
     )

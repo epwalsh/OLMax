@@ -75,45 +75,45 @@ class Linear(Module):
 
     @jax.named_scope("olmax.nn.Linear")
     def __call__(self, x):
+        #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("x:", s))
+        #  jax.debug.inspect_array_sharding(self.weight, callback=lambda s: print("weight:", s))
         if (pc := self.parallel_config) is None:
-            return batched_linear(x, self.weight, self.bias)
+            out = batched_linear(x, self.weight, self.bias)
+            return out
         elif self.tp_style is None:
-            return jax.shard_map(
+            return pc.shard_map(
                 batched_linear,
-                mesh=pc.get_data_mesh(),
-                in_specs=(pc.get_data_partition(), None, None),
-                out_specs=pc.get_data_partition(),
-            )(
-                x, self.weight, self.bias  # pyright: ignore
-            )
+                (pc.get_data_partition_for(x), None, None),
+                pc.get_data_partition_for(x),
+            )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.colwise:
-            return jax.shard_map(
+            return pc.shard_map(
                 batched_linear,
-                mesh=pc.get_data_mesh(),
-                in_specs=(
-                    pc.get_data_partition(),
-                    pc.get_param_partition(dp_sharding_axis=None, tp_sharding_axis=0),
+                (
+                    pc.get_data_partition_for(x),
+                    pc.get_param_partition_for(
+                        self.weight, dp_sharding_axis=None, tp_sharding_axis=0
+                    ),
                     None
                     if self.bias is None
-                    else pc.get_param_partition(dp_sharding_axis=None, tp_sharding_axis=0),
+                    else pc.get_param_partition_for(
+                        self.bias, dp_sharding_axis=None, tp_sharding_axis=0
+                    ),
                 ),
-                out_specs=pc.get_data_partition(tp_sharding_axis=-1, ndim=x.ndim),
-            )(
-                x, self.weight, self.bias  # pyright: ignore
-            )
+                pc.get_data_partition_for(x, tp_sharding_axis=-1),
+            )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.rowwise:
-            out = jax.shard_map(
+            out = pc.shard_map(
                 batched_linear_rowwise_tp,
-                mesh=pc.get_data_mesh(),
-                in_specs=(
-                    pc.get_data_partition(tp_sharding_axis=-1, ndim=x.ndim),
-                    pc.get_param_partition(dp_sharding_axis=None, tp_sharding_axis=1),
+                (
+                    pc.get_data_partition_for(x, tp_sharding_axis=-1),
+                    pc.get_param_partition_for(
+                        self.weight, dp_sharding_axis=None, tp_sharding_axis=1
+                    ),
                     None,
                 ),
-                out_specs=pc.get_data_partition(),
-            )(
-                x, self.weight, self.bias  # pyright: ignore
-            )
+                pc.get_data_partition_for(x),
+            )(x, self.weight, self.bias)
             return out
         else:
             raise ValueError(self.tp_style)
