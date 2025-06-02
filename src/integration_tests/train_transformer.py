@@ -194,6 +194,7 @@ if __name__ == "__main__":
             "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
             #  "--xla_gpu_all_gather_combine_threshold_bytes=8589934592",
             #  "--xla_gpu_reduce_scatter_combine_threshold_bytes=8589934592",
+            #  "--xla_gpu_all_reduce_combine_threshold_bytes=8589934592",
         )
     )
 
