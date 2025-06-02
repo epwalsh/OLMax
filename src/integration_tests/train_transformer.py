@@ -53,7 +53,7 @@ def main(
         if sequence_length is None:
             sequence_length = 4096
         if instances_per_device is None:
-            instances_per_device = 1
+            instances_per_device = 2
     else:
         raise ValueError(recipe)
 
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument("--xla-mem-frac", type=str, default="0.95")
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--attn-window-size", type=int)
-    parser.add_argument("--attn-implementation", choices=["xla", "cudnn"], default="xla")
+    parser.add_argument("--attn-implementation", choices=["xla", "cudnn"])
     opts = parser.parse_args()
 
     if opts.no_jit:
@@ -209,6 +209,7 @@ if __name__ == "__main__":
         "--xla_gpu_enable_pipelined_all_reduce=true",
         "--xla_gpu_enable_all_gather_combine_by_dim=false",
         "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
+        "--xla_gpu_enable_nccl_user_buffers=true",
         #  "--xla_gpu_enable_command_buffer=",
     ]
     if opts.recipe == "271M":
