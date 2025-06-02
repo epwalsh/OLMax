@@ -4,6 +4,7 @@ import argparse
 import gc
 import os
 import time
+from collections import deque
 from typing import Literal
 
 import equinox as eqx
@@ -133,6 +134,7 @@ def main(
     print("Starting training...")
     gc.collect()
     batch_start = time.monotonic()
+    running_avg_tps: deque[float] = deque()
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
@@ -150,8 +152,15 @@ def main(
         # Log progress.
         metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
         batch_end = time.monotonic()
-        metrics["TPS"] = f"{int(batch_size_per_device / (batch_end - batch_start)):,d}"
+        tps = batch_size_per_device / (batch_end - batch_start)
+        metrics["TPS"] = f"{int(tps):,d}"
         batch_start = batch_end
+        if step > 2:
+            running_avg_tps.append(tps)
+        if len(running_avg_tps) > 20:
+            running_avg_tps.popleft()
+        if len(running_avg_tps) > 2:
+            metrics["TPS (running avg)"] = f"{int(sum(running_avg_tps) / len(running_avg_tps)):d}"
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
 
     print("Done.")
