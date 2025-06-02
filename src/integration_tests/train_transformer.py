@@ -135,6 +135,7 @@ def main(
     gc.collect()
     batch_start = time.monotonic()
     running_avg_tps: deque[float] = deque()
+    running_avg_tps_best: float = 0.0
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
@@ -157,13 +158,15 @@ def main(
         batch_start = batch_end
         if step > 2:
             running_avg_tps.append(tps)
-        if len(running_avg_tps) > 20:
+        if len(running_avg_tps) > 10:
             running_avg_tps.popleft()
         if len(running_avg_tps) > 2:
-            metrics["TPS (running avg)"] = f"{int(sum(running_avg_tps) / len(running_avg_tps)):d}"
+            avg_tps = sum(running_avg_tps) / len(running_avg_tps)
+            metrics["TPS (running avg)"] = f"{int(avg_tps):d}"
+            running_avg_tps_best = max(running_avg_tps_best, avg_tps)
         print(", ".join(f"{name}={value}" for name, value in metrics.items()))
 
-    print("Done.")
+    print(f"Done. Best throughput = {int(running_avg_tps_best):d} TPS")
 
 
 if __name__ == "__main__":
