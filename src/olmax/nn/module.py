@@ -48,3 +48,9 @@ class Module(eqx.Module):
             return None
         else:
             return jax.tree.map(lambda a: a.sharding.spec, self)
+
+    def get_param_shardings(self) -> PyTree:
+        if self.parallel_config is None:
+            return None
+        else:
+            return jax.tree.map(lambda a: a.sharding, self)

@@ -6,7 +6,8 @@ gantry run \
     --timeout=-1 \
     --gpus=8 \
     --beaker-image=petew/olmax \
+    --allow-dirty \
     --cluster=ai2/augusta-google-1 \
     --cluster=ai2/jupiter-cirrascale-2 \
-    --install 'pip install -e .' \
+    --install './src/scripts/install/cuda.sh' \
     -- "$@"
