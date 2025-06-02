@@ -151,22 +151,24 @@ def main(
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
         # Log progress.
-        metrics = {"step": step + 1, "loss": f"{loss:.4f}"}
+        metrics = {"loss": f"{loss:.4f}"}
         batch_end = time.monotonic()
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
         batch_start = batch_end
         if step > 2:
             running_avg_tps.append(tps)
-        if len(running_avg_tps) > 10:
+        if len(running_avg_tps) > 5:
             running_avg_tps.popleft()
         if len(running_avg_tps) > 2:
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
-            metrics["TPS (running avg)"] = f"{int(avg_tps):d}"
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
-        print(", ".join(f"{name}={value}" for name, value in metrics.items()))
+        print(
+            f"[step {step + 1:03d}]",
+            ", ".join(f"{name}={value}" for name, value in metrics.items()),
+        )
 
-    print(f"Done. Best throughput = {int(running_avg_tps_best):d} TPS")
+    print(f"Done. Best throughput = {int(running_avg_tps_best):,d} TPS")
 
 
 if __name__ == "__main__":
