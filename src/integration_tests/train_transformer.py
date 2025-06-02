@@ -209,14 +209,23 @@ if __name__ == "__main__":
         "--xla_gpu_enable_pipelined_all_reduce=true",
         "--xla_gpu_enable_all_gather_combine_by_dim=false",
         "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
-        "--xla_gpu_all_gather_combine_threshold_bytes=8589934592",
-        "--xla_gpu_reduce_scatter_combine_threshold_bytes=8589934592",
-        "--xla_gpu_all_reduce_combine_threshold_bytes=8589934592",
-        #  "--xla_gpu_all_gather_combine_threshold_bytes=1073741824",
-        #  "--xla_gpu_reduce_scatter_combine_threshold_bytes=134217728",
-        #  "--xla_gpu_all_reduce_combine_threshold_bytes=1073741824",
         #  "--xla_gpu_enable_command_buffer=",
     ]
+    if opts.recipe == "271M":
+        pass
+    elif opts.recipe == "7B":
+        xla_flags.extend(
+            [
+                #  "--xla_gpu_all_gather_combine_threshold_bytes=8589934592",
+                #  "--xla_gpu_reduce_scatter_combine_threshold_bytes=8589934592",
+                #  "--xla_gpu_all_reduce_combine_threshold_bytes=8589934592",
+                "--xla_gpu_all_gather_combine_threshold_bytes=1073741824",
+                "--xla_gpu_reduce_scatter_combine_threshold_bytes=134217728",
+                "--xla_gpu_all_reduce_combine_threshold_bytes=1073741824",
+            ]
+        )
+    else:
+        raise ValueError(opts.recipe)  # need to tune for model size
 
     os.environ["XLA_FLAGS"] = " ".join(xla_flags)
 
