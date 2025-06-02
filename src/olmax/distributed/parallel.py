@@ -9,10 +9,11 @@ from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from typing_extensions import Self
 
-from ..types import Array
+from ..types import Array, PyTree, Specs
 from . import utils as dist_utils
 
 F = TypeVar("F", bound=Callable)
+T = TypeVar("T", bound=PyTree)
 
 
 class TPStyle(StrEnum):
@@ -106,7 +107,7 @@ class ParallelConfig:
         return devices
 
     def get_mesh(self) -> Mesh:
-        axis_shapes, axis_names, axis_types = self._get_param_mesh_axes(
+        axis_shapes, axis_names, axis_types = self._get_mesh_axes(
             dist_utils.get_global_device_count()
         )
         return make_mesh(axis_shapes, axis_names, axis_types)
@@ -161,12 +162,42 @@ class ParallelConfig:
             axes[tp_sharding_axis] = MeshAxesNames.TP.shard
         return self.get_partition_for(x, axes)
 
-    def shard_map(
-        self, fun: F, in_specs: tuple[P | None, ...], out_specs: tuple[P | None] | P | None
-    ) -> F:
+    def get_replicated_partition(self) -> P:
+        return P()
+
+    def shard_map(self, fun: F, in_specs: Specs, out_specs: Specs | None) -> F:
         return cast(
             F, jax.shard_map(fun, mesh=self.get_mesh(), in_specs=in_specs, out_specs=out_specs)
         )
+
+    def all_gather(self, tree: T, axis: str) -> T:
+        return jax.tree.map(ft.partial(jax.lax.all_gather, axis_name=axis, tiled=True), tree)
+
+    def reduce_scatter(self, tree: T, axis: str) -> T:
+        axis_size = self.axis_size(axis)
+        divide_factor = dist_utils.get_reduce_divide_factor(axis_size)
+
+        def reduce_scatter(x: Array) -> Array:
+            x = jax.lax.psum_scatter(x / divide_factor, axis_name=axis, tiled=True)
+            return x * divide_factor / axis_size
+
+        return jax.tree.map(reduce_scatter, tree)
+
+    def all_reduce(self, tree: T, axis: str) -> T:
+        axis_size = self.axis_size(axis)
+        divide_factor = dist_utils.get_reduce_divide_factor(axis_size)
+
+        def all_reduce(x: Array) -> Array:
+            x = jax.lax.psum(x / divide_factor, axis_name=axis)
+            return x * divide_factor / axis_size
+
+        return jax.tree.map(all_reduce, tree)
+
+    def has_axis(self, axis: str) -> bool:
+        return axis in self.get_mesh().shape
+
+    def axis_size(self, axis: str) -> int:
+        return self.get_mesh().shape[axis]
 
     def get_param_partition(
         self,
@@ -187,7 +218,7 @@ class ParallelConfig:
                 raise ValueError("using negative offset axes requires specifying ndim")
             tp_sharding_axis = ndim + tp_sharding_axis
 
-        mesh = self.get_param_mesh()
+        mesh = self.get_mesh()
         partitions: list[str | tuple[str, ...] | None] = []
         if tp_sharding_axis is not None:
             assert MeshAxesNames.TP.shard in mesh.shape
@@ -216,7 +247,7 @@ class ParallelConfig:
         tp_sharding_axis: int | None = None,
         ndim: int | None = None,
     ) -> NamedSharding:
-        mesh = self.get_param_mesh()
+        mesh = self.get_mesh()
         return NamedSharding(
             mesh,
             self.get_param_partition(
@@ -225,7 +256,7 @@ class ParallelConfig:
         )
 
     def get_param_replication(self):
-        mesh = self.get_param_mesh()
+        mesh = self.get_mesh()
         return NamedSharding(mesh, P())
 
     def get_data_partition(
@@ -247,7 +278,7 @@ class ParallelConfig:
                 raise ValueError("using negative offset axes requires specifying ndim")
             tp_sharding_axis = ndim + tp_sharding_axis
 
-        mesh = self.get_data_mesh()
+        mesh = self.get_mesh()
         partitions: list[str | tuple[str, ...] | None] = []
         if MeshAxesNames.DP.replicate in mesh.shape and MeshAxesNames.DP.shard in mesh.shape:
             partitions.extend([None] * dp_sharding_axis)
@@ -268,7 +299,7 @@ class ParallelConfig:
         return P(*partitions)
 
     def get_data_sharding(self, sharding_axis: int = 0) -> NamedSharding:
-        mesh = self.get_data_mesh()
+        mesh = self.get_mesh()
         return NamedSharding(mesh, self.get_data_partition(dp_sharding_axis=sharding_axis))
 
     def _validate_dp_degrees(self, dp_device_ws: int) -> tuple[int, int]:
@@ -305,7 +336,7 @@ class ParallelConfig:
         return dp_replicate_degree, dp_shard_degree
 
     @ft.cache
-    def _get_param_mesh_axes(
+    def _get_mesh_axes(
         self, device_count: int
     ) -> tuple[tuple[int, ...], tuple[str, ...], tuple[AxisType, ...]]:
         dp_device_ws = device_count
@@ -348,14 +379,8 @@ class ParallelConfig:
 
         return tuple(axis_shapes), tuple(axis_names), tuple(axis_types)
 
-    def get_param_mesh(self) -> Mesh:
-        return self.get_mesh()
-
-    def get_data_mesh(self) -> Mesh:
-        return self.get_param_mesh()
-
     def set_mesh(self):
-        jax.sharding.set_mesh(self.get_param_mesh())
+        jax.sharding.set_mesh(self.get_mesh())
 
 
 @ft.cache

@@ -142,3 +142,10 @@ def synchronize_value(value: V) -> V:
     arr = jnp.array(value)
     arr = multihost_utils.broadcast_one_to_all(arr)
     return type(value)(arr.item())
+
+
+def get_reduce_divide_factor(axis_size: int) -> float:
+    factor: int = 1
+    while axis_size % factor == 0 and axis_size / factor > factor:
+        factor *= 2
+    return float(factor)

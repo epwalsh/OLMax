@@ -131,3 +131,41 @@ def test_transformer_data_parallel(parallel_config: dist.ParallelConfig):
         devices_per_process=parallel_config.get_min_device_count(),
         args=(parallel_config,),
     )
+
+
+def main(
+    parallel_config: dist.ParallelConfig,
+    d_model: int = 8,
+    hidden_size: int = 16,
+    vocab_size: int = 32,
+    num_layers: int = 2,
+    batch_size: int | None = None,
+    seq_len: int = 12,
+):
+    key = jax.random.PRNGKey(0)
+    batch_size = 2 * dist.get_global_device_count()
+
+    key, batch_key = jax.random.split(key)
+    full_batch = _get_batch(batch_key, batch_size, seq_len, vocab_size)
+    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+
+    dist_model = _get_model(
+        key=key,
+        d_model=d_model,
+        hidden_size=hidden_size,
+        vocab_size=vocab_size,
+        num_layers=num_layers,
+        parallel_config=parallel_config,
+    )
+    jax.debug.visualize_array_sharding(dist_model.blocks[0].mlp.w1.weight)
+
+    dist_loss, dist_grad = _get_loss_and_grads(dist_model, dist_batch)
+    print(dist_loss)
+    jax.debug.visualize_array_sharding(dist_grad.blocks[0].mlp.w1.weight)
+
+
+if __name__ == "__main__":
+    jax.config.update("jax_num_cpu_devices", 2)
+    jax.config.update("jax_disable_jit", False)
+
+    main(dist.ParallelConfig.FSDP())

@@ -69,17 +69,9 @@ class Linear(Module):
 
     @jax.named_scope("olmax.nn.Linear")
     def __call__(self, x):
-        #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("x:", s))
-        #  jax.debug.inspect_array_sharding(self.weight, callback=lambda s: print("weight:", s))
-        if (pc := self.parallel_config) is None:
+        if (pc := self.parallel_config) is None or self.tp_style is None:
             out = linear(x, self.weight, self.bias)
             return out
-        elif self.tp_style is None:
-            return pc.shard_map(
-                linear,
-                (pc.get_data_partition_for(x), None, None),
-                pc.get_data_partition_for(x),
-            )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.colwise:
             return pc.shard_map(
                 linear,

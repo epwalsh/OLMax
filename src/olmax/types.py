@@ -9,8 +9,10 @@ __all__ = [
     "PRNGKeyArray",
     "DTypeLike",
     "PyTree",
+    "Specs",
     "PathOrStr",
 ]
 
-PathOrStr = os.PathLike | str
 PyTree = Any
+Specs = Any
+PathOrStr = os.PathLike | str

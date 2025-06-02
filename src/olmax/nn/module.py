@@ -5,7 +5,7 @@ import jax
 from typing_extensions import Self
 
 from ..distributed.parallel import ParallelConfig
-from ..types import Array
+from ..types import Array, PyTree
 
 
 class Module(eqx.Module):
@@ -42,3 +42,9 @@ class Module(eqx.Module):
 
     def parameters(self) -> list[Array]:
         return jax.tree.flatten(self)[0]
+
+    def get_param_partitions(self) -> PyTree:
+        if self.parallel_config is None:
+            return None
+        else:
+            return jax.tree.map(lambda a: a.sharding.spec, self)
