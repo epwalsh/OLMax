@@ -181,6 +181,23 @@ if __name__ == "__main__":
     else:
         os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
 
+    # See https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md.
+    os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"  # not needed on B200s
+    os.environ["XLA_FLAGS"] = " ".join(
+        (
+            "--xla_gpu_enable_latency_hiding_scheduler=true",
+            "--xla_gpu_enable_while_loop_double_buffering=true",
+            "--xla_gpu_enable_pipelined_all_gather=true",
+            "--xla_gpu_enable_pipelined_reduce_scatter=true",
+            "--xla_gpu_enable_pipelined_all_reduce=true",
+            "--xla_gpu_enable_pipelined_collectives=false",
+            "--xla_gpu_enable_all_gather_combine_by_dim=false",
+            "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
+            #  "--xla_gpu_all_gather_combine_threshold_bytes=8589934592",
+            #  "--xla_gpu_reduce_scatter_combine_threshold_bytes=8589934592",
+        )
+    )
+
     main(
         opts.recipe,
         instances_per_device=opts.batch_size,
