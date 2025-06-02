@@ -180,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument("--xla-mem-frac", type=str, default="0.95")
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--attn-window-size", type=int)
-    parser.add_argument("--attn-implementation", choices=["xla", "cudnn"])
+    parser.add_argument("--attn", choices=["xla", "cudnn"])
     opts = parser.parse_args()
 
     if opts.no_jit:
@@ -234,5 +234,5 @@ if __name__ == "__main__":
         opts.recipe,
         instances_per_device=opts.batch_size,
         attn_window_size=opts.attn_window_size,
-        attn_implementation=opts.attn_implementation,
+        attn_implementation=opts.attn,
     )
