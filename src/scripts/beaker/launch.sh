@@ -8,5 +8,5 @@ gantry run \
     --beaker-image=petew/olmax \
     --cluster=ai2/augusta-google-1 \
     --cluster=ai2/jupiter-cirrascale-2 \
-    --install './src/scripts/install/cuda.sh' \
+    --install 'pip install -e .' \
     -- "$@"
