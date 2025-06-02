@@ -5,7 +5,7 @@ gantry run \
     --yes \
     --timeout=-1 \
     --gpus=8 \
-    --beaker-image=petew/nvidia-jax \
+    --beaker-image=petew/olmax \
     --cluster=ai2/augusta-google-1 \
     --cluster=ai2/jupiter-cirrascale-2 \
     --install './src/scripts/install/cuda.sh' \
