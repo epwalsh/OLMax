@@ -175,18 +175,21 @@ if __name__ == "__main__":
     if opts.no_remat:
         jax.config.update("jax_compiler_enable_remat_pass", False)
 
-    if opts.debug:
-        os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-        os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-    else:
-        os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = opts.xla_mem_frac
-
-    # See https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md.
-    os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"  # not needed on B200s
+    # See
+    #  - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
+    #  - https://docs.jax.dev/en/latest/gpu_performance_tips.html
+    os.environ.update(
+        {
+            "XLA_PYTHON_CLIENT_MEM_FRACTION": opts.xla_mem_frac,
+            "CUDA_DEVICE_MAX_CONNECTIONS": "1",  # not needed on B200s
+            "NCCL_LL128_BUFFSIZE": "-2",
+            "NCCL_LL_BUFFSIZE": "-2",
+            "NCCL_PROTO": "SIMPLE,LL,LL128",
+        }
+    )
     os.environ["XLA_FLAGS"] = " ".join(
         (
             "--xla_gpu_enable_latency_hiding_scheduler=true",
-            "--xla_gpu_enable_command_buffer=",
             "--xla_gpu_enable_while_loop_double_buffering=true",
             "--xla_gpu_enable_pipelined_all_gather=true",
             "--xla_gpu_enable_pipelined_reduce_scatter=true",
@@ -196,6 +199,7 @@ if __name__ == "__main__":
             #  "--xla_gpu_all_gather_combine_threshold_bytes=8589934592",
             #  "--xla_gpu_reduce_scatter_combine_threshold_bytes=8589934592",
             #  "--xla_gpu_all_reduce_combine_threshold_bytes=8589934592",
+            #  "--xla_gpu_enable_command_buffer=",
         )
     )
 
