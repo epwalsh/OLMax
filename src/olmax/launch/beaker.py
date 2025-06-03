@@ -101,7 +101,7 @@ class BeakerRuntime:
                 set_env_var("NCCL_SOCKET_IFNAME", "ib")
         elif "pluto" in self.node.hostname:
             set_env_var("NCCL_IB_HCA", "^=mlx5_1,mlx5_2")
-        elif "augusta" in self.node.hostname:
+        elif "augusta" in self.node.hostname and multi_node:
             # NOTE: For single-node training we still need all of these settings and we also
             # need host networking enabled so that the ethernet interface names don't change.
             set_env_var("NCCL_CROSS_NIC", "0")

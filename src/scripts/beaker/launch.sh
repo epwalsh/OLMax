@@ -9,5 +9,5 @@ gantry run \
     --env="PYTHONUNBUFFERED=1" \
     --allow-dirty \
     --gpu-type=h100 \
-    --install 'pip install -e .' \
+    --install './src/scripts/beaker/setup_env.sh' \
     -- "$@"
