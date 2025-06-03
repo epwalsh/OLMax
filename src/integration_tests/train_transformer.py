@@ -209,7 +209,7 @@ if __name__ == "__main__":
         "--xla_gpu_enable_pipelined_all_reduce=true",
         "--xla_gpu_enable_all_gather_combine_by_dim=false",
         "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
-        "--xla_gpu_enable_nccl_user_buffers=true",
+        #  "--xla_gpu_enable_nccl_user_buffers=true",
         #  "--xla_gpu_enable_command_buffer=",
     ]
     if opts.recipe == "271M":
