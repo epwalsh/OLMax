@@ -70,7 +70,7 @@ class MultiheadSelfAttention(Module):
     rope: RotaryPositionalEmbedding | None
     q_norm: LayerNorm | None
     k_norm: LayerNorm | None
-    qk_norm_headwise: bool
+    qk_norm_headwise: bool = eqx.field(static=True)
 
     n_heads: int = eqx.field(static=True)
     n_kv_heads: int = eqx.field(static=True)
