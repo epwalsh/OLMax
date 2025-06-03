@@ -23,6 +23,7 @@ from olmax.types import Array, DTypeLike
 
 def main(
     recipe: str,
+    beaker_runtime: BeakerRuntime | None = None,
     sequence_length: int | None = None,
     instances_per_device: int | None = None,
     vocab_size: int = 50_304,
@@ -34,6 +35,8 @@ def main(
     attn_implementation: Literal["xla", "cudnn"] | None = None,
     show_model: bool = False,
 ) -> tuple[float, int]:
+    gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
+
     if recipe == "271M":
         model_config = recipes.llama_like_271M(
             vocab_size,
@@ -45,6 +48,8 @@ def main(
             sequence_length = 1024
         if instances_per_device is None:
             instances_per_device = 16
+            if gpu_architecture == "blackwell":
+                instances_per_device *= 4
         if learning_rate is None:
             learning_rate = 1e-3
     elif recipe == "7B":
@@ -58,6 +63,8 @@ def main(
             sequence_length = 4096
         if instances_per_device is None:
             instances_per_device = 2
+            if gpu_architecture == "blackwell":
+                instances_per_device *= 4
         if learning_rate is None:
             learning_rate = 1e-4
     else:
@@ -264,6 +271,7 @@ if __name__ == "__main__":
     try:
         final_loss, final_tps = main(
             opts.recipe,
+            beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
             attn_window_size=opts.attn_window_size,
             attn_implementation=opts.attn,
