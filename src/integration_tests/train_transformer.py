@@ -69,6 +69,21 @@ def main(
                 instances_per_device *= 4
         if learning_rate is None:
             learning_rate = 1e-4
+    elif opts.recipe == "gemma2_27B":
+        model_config = recipes.gemma2_like_27B(
+            vocab_size,
+            param_dtype=param_dtype,
+            attn_window_size=attn_window_size,
+            attn_implementation=attn_implementation,
+        )
+        if sequence_length is None:
+            sequence_length = 4096
+        if instances_per_device is None:
+            instances_per_device = 1
+            #  if gpu_architecture == "blackwell":
+            #      instances_per_device *= 4
+        if learning_rate is None:
+            learning_rate = 1e-5
     else:
         raise ValueError(recipe)
 
@@ -213,7 +228,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("train_transformer")
 
     # Hyperparameters.
-    parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
+    parser.add_argument("--recipe", choices=["271M", "7B", "gemma2_27B"], default="271M")
     parser.add_argument("--batch-size", type=int)
 
     # Debugging.
@@ -253,6 +268,17 @@ if __name__ == "__main__":
             else beaker_runtime.node.gpu_architecture,
         )
     elif opts.recipe == "7B":
+        prepare_training_environment(
+            disable_jit=opts.no_jit,
+            disable_remat=opts.no_remat,
+            all_gather_combine_threshold_mib=1024,
+            reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
+            all_reduce_combine_threshold_mib=1024,
+            gpu_architecture=None
+            if beaker_runtime is None
+            else beaker_runtime.node.gpu_architecture,
+        )
+    elif opts.recipe == "gemma2_27B":
         prepare_training_environment(
             disable_jit=opts.no_jit,
             disable_remat=opts.no_remat,
