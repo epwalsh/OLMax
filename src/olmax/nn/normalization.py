@@ -8,7 +8,7 @@ import equinox as eqx
 import jax
 from typing_extensions import Self
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import layer_norm, rms_norm
 from .init import ones, zeros
@@ -49,7 +49,7 @@ class LayerNormConfig:
         elementwise_affine: bool | None = None,
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ) -> LayerNorm:
         return self.name.get_class()(
             shape,
@@ -60,7 +60,7 @@ class LayerNormConfig:
             else self.elementwise_affine,
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
 
@@ -81,9 +81,9 @@ class LayerNorm(Module):
         elementwise_affine: bool = True,
         bias: bool = True,
         dtype: DTypeLike = float,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ):
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
         if isinstance(shape, int):
             shape = (shape,)
         else:
@@ -100,7 +100,7 @@ class LayerNorm(Module):
                 wkey,
                 shape,
                 dtype=dtype,
-                sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
+                sharding=None if mesh_resource is None else mesh_resource.get_param_sharding(),
             )
         )
         self.bias = (
@@ -110,7 +110,7 @@ class LayerNorm(Module):
                 bkey,
                 shape,
                 dtype=dtype,
-                sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
+                sharding=None if mesh_resource is None else mesh_resource.get_param_sharding(),
             )
         )
 

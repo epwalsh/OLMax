@@ -5,7 +5,7 @@ from typing import ClassVar, Type
 
 import jax
 
-from ...distributed.parallel import ParallelConfig
+from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
 from ..lm_head import LMHead, LMHeadConfig
@@ -34,7 +34,7 @@ class TransformerConfig:
         block: TransformerBlockConfig | None = None,
         lm_head: LMHeadConfig | None = None,
         dtype: DTypeLike | None = None,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ) -> Transformer:
         return Transformer(
             key=key,
@@ -45,7 +45,7 @@ class TransformerConfig:
             block=block if block is not None else self.block,
             lm_head=lm_head if lm_head is not None else self.lm_head,
             dtype=dtype if dtype is not None else self.dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
 
@@ -67,19 +67,19 @@ class Transformer(Module):
         lm_head: LMHeadConfig,
         key: PRNGKeyArray,
         dtype: DTypeLike = float,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ):
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
         emb_key, blocks_key, lm_head_key = jax.random.split(key, 3)
         self.embedding = Embedding(
-            d_model, vocab_size, emb_key, dtype=dtype, parallel_config=parallel_config
+            d_model, vocab_size, emb_key, dtype=dtype, mesh_resource=mesh_resource
         )
         self.blocks = []
         for block_idx in range(num_layers):
             block_key = jax.random.fold_in(blocks_key, block_idx)
             self.blocks.append(
                 block.build(
-                    d_model, hidden_size, block_key, dtype=dtype, parallel_config=parallel_config
+                    d_model, hidden_size, block_key, dtype=dtype, mesh_resource=mesh_resource
                 )
             )
         self.lm_head = lm_head.build(
@@ -87,7 +87,7 @@ class Transformer(Module):
             vocab_size,
             lm_head_key,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
     @jax.named_scope("olmax.nn.Transformer")

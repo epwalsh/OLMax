@@ -1,6 +1,6 @@
 import jax
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .init import truncated_normal
 from .module import Module
@@ -16,13 +16,13 @@ class Embedding(Module):
         key: PRNGKeyArray,
         *,
         dtype: DTypeLike = float,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ):
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
         self.weight = truncated_normal(
             key,
             (num_embeddings, d_model),
-            sharding=None if parallel_config is None else parallel_config.get_param_sharding(),
+            sharding=None if mesh_resource is None else mesh_resource.get_param_sharding(),
             dtype=dtype,
         )
 

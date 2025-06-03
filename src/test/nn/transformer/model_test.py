@@ -24,7 +24,7 @@ def _get_model(
     hidden_size: int = 32,
     vocab_size: int = 128,
     num_layers: int = 4,
-    parallel_config: dist.ParallelConfig | None = None,
+    mesh_resource: dist.MeshResource | None = None,
 ) -> nn.Transformer:
     return nn.Transformer(
         key=key,
@@ -37,7 +37,7 @@ def _get_model(
             norm=nn.LayerNorm.Config(),
         ),
         lm_head=nn.LMHead.Config(norm=nn.LayerNorm.Config()),
-        parallel_config=parallel_config,
+        mesh_resource=mesh_resource,
     )
 
 
@@ -76,7 +76,7 @@ def test_transformer(
 
 
 def _run_transformer_parallel(
-    parallel_config: dist.ParallelConfig,
+    mesh_resource: dist.MeshResource,
     d_model: int = 16,
     hidden_size: int = 32,
     vocab_size: int = 128,
@@ -90,7 +90,7 @@ def _run_transformer_parallel(
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, seq_len, vocab_size)
-    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
 
     full_model = _get_model(
         key=key,
@@ -105,7 +105,7 @@ def _run_transformer_parallel(
         hidden_size=hidden_size,
         vocab_size=vocab_size,
         num_layers=num_layers,
-        parallel_config=parallel_config,
+        mesh_resource=mesh_resource,
     )
 
     assert allclose(full_model.embedding.weight, dist_model.embedding.weight)
@@ -117,24 +117,24 @@ def _run_transformer_parallel(
 
 
 @pytest.mark.parametrize(
-    "parallel_config",
+    "mesh_resource",
     [
-        pytest.param(dist.ParallelConfig.FSDP(), id="FSDP"),
-        pytest.param(dist.ParallelConfig.DDP(), id="DDP"),
-        pytest.param(dist.ParallelConfig.HSDP(2, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
+        pytest.param(dist.MeshResource.DDP(), id="DDP"),
+        pytest.param(dist.MeshResource.HSDP(2, 2), id="HSDP"),
     ],
 )
-def test_transformer_data_parallel(parallel_config: dist.ParallelConfig):
+def test_transformer_data_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_transformer_parallel,
         num_processes=1,
-        devices_per_process=parallel_config.get_min_device_count(),
-        args=(parallel_config,),
+        devices_per_process=mesh_resource.get_min_device_count(),
+        args=(mesh_resource,),
     )
 
 
 def main(
-    parallel_config: dist.ParallelConfig,
+    mesh_resource: dist.MeshResource,
     d_model: int = 8,
     hidden_size: int = 16,
     vocab_size: int = 32,
@@ -147,7 +147,7 @@ def main(
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, seq_len, vocab_size)
-    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
 
     dist_model = _get_model(
         key=key,
@@ -155,7 +155,7 @@ def main(
         hidden_size=hidden_size,
         vocab_size=vocab_size,
         num_layers=num_layers,
-        parallel_config=parallel_config,
+        mesh_resource=mesh_resource,
     )
     jax.debug.visualize_array_sharding(dist_model.blocks[0].mlp.w1.weight)
 
@@ -168,4 +168,4 @@ if __name__ == "__main__":
     jax.config.update("jax_num_cpu_devices", 2)
     jax.config.update("jax_disable_jit", False)
 
-    main(dist.ParallelConfig.FSDP())
+    main(dist.MeshResource.FSDP())

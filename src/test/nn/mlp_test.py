@@ -39,7 +39,7 @@ def test_mlp(d_model: int = 4, hidden_size: int = 8, batch_size: int = 2):
     assert grads is not None
 
 
-def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
+def _run_mlp_parallel(mesh_resource: dist.MeshResource):
     d_model, hidden_size, batch_size = (
         2 * dist.get_global_device_count(),
         4 * dist.get_global_device_count(),
@@ -49,15 +49,15 @@ def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, d_model)
-    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
 
-    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=parallel_config.tp is None)
+    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=mesh_resource.tp is None)
     dist_mlp = nn.GatedMLP(
         d_model,
         hidden_size,
         key=key,
-        bias=parallel_config.tp is None,
-        parallel_config=parallel_config,
+        bias=mesh_resource.tp is None,
+        mesh_resource=mesh_resource,
     )
 
     assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
@@ -72,41 +72,41 @@ def _run_mlp_parallel(parallel_config: dist.ParallelConfig):
 
 
 @pytest.mark.parametrize(
-    "parallel_config",
+    "mesh_resource",
     [
-        pytest.param(dist.ParallelConfig.FSDP(), id="FSDP"),
-        pytest.param(dist.ParallelConfig.DDP(), id="DDP"),
-        pytest.param(dist.ParallelConfig.HSDP(2, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
+        pytest.param(dist.MeshResource.DDP(), id="DDP"),
+        pytest.param(dist.MeshResource.HSDP(2, 2), id="HSDP"),
     ],
 )
-def test_mlp_data_parallel(parallel_config: dist.ParallelConfig):
+def test_mlp_data_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_mlp_parallel,
         num_processes=1,
-        devices_per_process=parallel_config.get_min_device_count(),
-        args=(parallel_config,),
+        devices_per_process=mesh_resource.get_min_device_count(),
+        args=(mesh_resource,),
     )
 
 
 @pytest.mark.parametrize(
-    "parallel_config",
+    "mesh_resource",
     [
         pytest.param(
-            dist.ParallelConfig(dp=dist.DataParallelConfig.FSDP(), tp=dist.TensorParallelConfig(2)),
+            dist.MeshResource(dp=dist.DataParallelConfig.FSDP(), tp=dist.TensorParallelConfig(2)),
             id="FSDP+TP",
         ),
         pytest.param(
-            dist.ParallelConfig(tp=dist.TensorParallelConfig(2)),
+            dist.MeshResource(tp=dist.TensorParallelConfig(2)),
             id="TP",
         ),
     ],
 )
-def test_mlp_tensor_parallel(parallel_config: dist.ParallelConfig):
+def test_mlp_tensor_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_mlp_parallel,
         num_processes=1,
-        devices_per_process=parallel_config.get_min_device_count(),
-        args=(parallel_config,),
+        devices_per_process=mesh_resource.get_min_device_count(),
+        args=(mesh_resource,),
     )
 
 
@@ -114,19 +114,17 @@ if __name__ == "__main__":
     jax.config.update("jax_num_cpu_devices", 2)
     jax.config.update("jax_disable_jit", True)
 
-    parallel_config = dist.ParallelConfig(tp=dist.TensorParallelConfig(2))
+    mesh_resource = dist.MeshResource(tp=dist.TensorParallelConfig(2))
 
     d_model, hidden_size, batch_size = (8, 32, 2)
     key = jax.random.PRNGKey(0)
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, d_model)
-    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
 
     full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False)
-    dist_mlp = nn.GatedMLP(
-        d_model, hidden_size, key=key, bias=False, parallel_config=parallel_config
-    )
+    dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False, mesh_resource=mesh_resource)
     assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
     assert allclose(full_mlp.w2.weight, dist_mlp.w2.weight)
     assert allclose(full_mlp.w3.weight, dist_mlp.w3.weight)

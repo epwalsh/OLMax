@@ -38,8 +38,8 @@ def test_save_and_restore(tmp_path, block: bool):
 
 def _run_save_and_restore_distributed(
     checkpoint_dir,
-    save_sharding: dist.ParallelConfig,
-    load_sharding: dist.ParallelConfig,
+    save_sharding: dist.MeshResource,
+    load_sharding: dist.MeshResource,
 ):
     in_size = dist.get_global_device_count() * 4
     out_size = dist.get_global_device_count() * 2
@@ -49,7 +49,7 @@ def _run_save_and_restore_distributed(
         in_size,
         out_size,
         key=jax.random.PRNGKey(0),
-        parallel_config=save_sharding,
+        mesh_resource=save_sharding,
     )
 
     # Save checkpoint.
@@ -60,7 +60,7 @@ def _run_save_and_restore_distributed(
         in_size,
         out_size,
         key=jax.random.PRNGKey(1),
-        parallel_config=load_sharding,
+        mesh_resource=load_sharding,
     )
     model2 = checkpoint_utils.restore(checkpoint_dir, model2)
 
@@ -73,8 +73,8 @@ def _run_save_and_restore_distributed(
 def _run_save_and_restore_distributed_fsdp(checkpoint_dir):
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        dist.ParallelConfig.FSDP(),
-        dist.ParallelConfig.FSDP(),
+        dist.MeshResource.FSDP(),
+        dist.MeshResource.FSDP(),
     )
 
 
@@ -87,8 +87,8 @@ def _run_save_and_restore_distributed_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        dist.ParallelConfig.HSDP(2),
-        dist.ParallelConfig.HSDP(2),
+        dist.MeshResource.HSDP(2),
+        dist.MeshResource.HSDP(2),
     )
 
 
@@ -103,8 +103,8 @@ def _run_save_and_restore_distributed_fsdp_to_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        dist.ParallelConfig.FSDP(),
-        dist.ParallelConfig.HSDP(2),
+        dist.MeshResource.FSDP(),
+        dist.MeshResource.HSDP(2),
     )
 
 

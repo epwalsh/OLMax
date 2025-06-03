@@ -59,13 +59,12 @@ def main(
 
     batch_size_per_device = sequence_length * instances_per_device
 
-    print("========================= train integration test starting... =========================")
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
-    parallel_config = dist.ParallelConfig.FSDP()
+    mesh_resource = dist.MeshResource.FSDP()
 
     print("Initializing model...")
-    model = model_config.build(model_key, parallel_config=parallel_config)
+    model = model_config.build(model_key, mesh_resource=mesh_resource)
     print(model)
     num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
@@ -79,8 +78,8 @@ def main(
     opt_state = optim.init(model)  # pyright: ignore
 
     param_sharding = model.get_param_shardings()
-    data_sharding = parallel_config.get_data_sharding()
-    opt_state_sharding = parallel_config.get_opt_state_sharding(opt_state)
+    data_sharding = mesh_resource.get_data_sharding()
+    opt_state_sharding = mesh_resource.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -144,7 +143,7 @@ def main(
             sequence_length=sequence_length,
             num_local_instances=per_process_batch_size_instances,
             total_batches=train_steps,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
     ):
         # Do a step.

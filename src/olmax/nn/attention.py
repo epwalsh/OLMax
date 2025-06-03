@@ -6,7 +6,7 @@ from typing import ClassVar, Literal, Type
 import equinox as eqx
 import jax
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
@@ -38,7 +38,7 @@ class MultiheadSelfAttentionConfig:
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike | None = None,
         implementation: Literal["xla", "cudnn"] | None = None,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ) -> MultiheadSelfAttention:
         return MultiheadSelfAttention(
             d_model=d_model,
@@ -51,7 +51,7 @@ class MultiheadSelfAttentionConfig:
             window_size=window_size if window_size is not None else self.window_size,
             dtype=dtype if dtype is not None else self.dtype,
             implementation=implementation if implementation is not None else self.implementation,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
 
@@ -86,9 +86,9 @@ class MultiheadSelfAttention(Module):
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike = float,
         implementation: Literal["xla", "cudnn"] | None = None,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ):
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads or n_heads
         self.head_dim = d_model // n_heads
@@ -104,7 +104,7 @@ class MultiheadSelfAttention(Module):
             w_q_key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.w_k = Linear(
             d_model,
@@ -112,7 +112,7 @@ class MultiheadSelfAttention(Module):
             w_k_key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.w_v = Linear(
             d_model,
@@ -120,7 +120,7 @@ class MultiheadSelfAttention(Module):
             w_v_key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.w_out = Linear(
             d_model,
@@ -128,22 +128,22 @@ class MultiheadSelfAttention(Module):
             w_out_key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.rope = (
             None
             if rope is None
-            else rope.build(head_dim=self.head_dim, key=rope_key, parallel_config=parallel_config)
+            else rope.build(head_dim=self.head_dim, key=rope_key, mesh_resource=mesh_resource)
         )
         self.q_norm = (
             None
             if qk_norm is None
-            else qk_norm.build(d_model, q_norm_key, parallel_config=parallel_config)
+            else qk_norm.build(d_model, q_norm_key, mesh_resource=mesh_resource)
         )
         self.k_norm = (
             None
             if qk_norm is None
-            else qk_norm.build(d_model, k_norm_key, parallel_config=parallel_config)
+            else qk_norm.build(d_model, k_norm_key, mesh_resource=mesh_resource)
         )
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")

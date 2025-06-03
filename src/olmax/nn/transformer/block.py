@@ -5,7 +5,7 @@ from typing import ClassVar, Type
 
 import jax
 
-from ...distributed.parallel import ParallelConfig
+from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
 from ..mlp import GatedMLP
@@ -29,7 +29,7 @@ class TransformerBlockConfig:
         norm: LayerNormConfig | None = None,
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ) -> TransformerBlock:
         return TransformerBlock(
             d_model,
@@ -39,7 +39,7 @@ class TransformerBlockConfig:
             norm=norm if norm is not None else self.norm,
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
 
@@ -60,9 +60,9 @@ class TransformerBlock(Module):
         norm: LayerNormConfig,
         bias: bool = False,
         dtype: DTypeLike = float,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ):
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
         mlp_key, mlp_norm_key, attention_key, attention_norm_key = jax.random.split(key, 4)
         self.mlp = GatedMLP(
             d_model,
@@ -70,24 +70,24 @@ class TransformerBlock(Module):
             mlp_key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.mlp_norm = norm.build(
             d_model,
             mlp_norm_key,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.attention = attention.build(
             d_model,
             attention_key,
             bias=bias,
             dtype=dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
         self.attention_norm = norm.build(
             d_model,
             attention_norm_key,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
     @jax.named_scope("olmax.nn.TransformerBlock")

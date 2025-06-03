@@ -4,7 +4,7 @@ import equinox as eqx
 import jax
 from typing_extensions import Self
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import MeshResource
 from ..types import Array, PyTree
 
 
@@ -13,10 +13,10 @@ class Module(eqx.Module):
     Abstract base class for ``nn`` modules. This is just an extension of :class:`equinox.Module`.
     """
 
-    parallel_config: ParallelConfig | None = eqx.field(static=True, repr=False)
+    mesh_resource: MeshResource | None = eqx.field(static=True, repr=False)
 
-    def __init__(self, parallel_config: ParallelConfig | None = None):
-        self.parallel_config = parallel_config
+    def __init__(self, mesh_resource: MeshResource | None = None):
+        self.mesh_resource = mesh_resource
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -44,13 +44,13 @@ class Module(eqx.Module):
         return jax.tree.flatten(self)[0]
 
     def get_param_partitions(self) -> PyTree:
-        if self.parallel_config is None:
+        if self.mesh_resource is None:
             return None
         else:
             return jax.tree.map(lambda a: a.sharding.spec, self)
 
     def get_param_shardings(self) -> PyTree:
-        if self.parallel_config is None:
+        if self.mesh_resource is None:
             return None
         else:
             return jax.tree.map(lambda a: a.sharding, self)

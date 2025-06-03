@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 
 from ..caches import cache_clears
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .module import Module
 
@@ -28,14 +28,14 @@ class RotaryPositionalEmbeddingConfig:
         *,
         theta: float | None = None,
         dtype: DTypeLike | None = None,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ) -> RotaryPositionalEmbedding:
         return RotaryPositionalEmbedding(
             head_dim=head_dim,
             key=key,
             theta=theta if theta is not None else self.theta,
             dtype=dtype if dtype is not None else self.dtype,
-            parallel_config=parallel_config,
+            mesh_resource=mesh_resource,
         )
 
 
@@ -52,10 +52,10 @@ class RotaryPositionalEmbedding(Module):
         *,
         theta: float = 10_000.0,
         dtype: DTypeLike = float,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
     ):
         del key  # unused
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
         self.head_dim = head_dim
         self.theta = theta
         self.dtype = dtype

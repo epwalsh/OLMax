@@ -2,7 +2,7 @@ import dataclasses
 import functools as ft
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Callable, TypeVar, cast
+from typing import Callable, ClassVar, Type, TypeVar, cast
 
 import jax
 import optax
@@ -78,7 +78,9 @@ class ExpertParallelConfig:
 
 
 @dataclass(frozen=True)
-class ParallelConfig:
+class MeshResource:
+    MeshAxesNames: ClassVar[Type[MeshAxesNames]] = MeshAxesNames
+
     dp: DataParallelConfig = dataclasses.field(default_factory=DataParallelConfig)
     tp: TensorParallelConfig | None = None
     #  cp: ContextParallelConfig | None = None

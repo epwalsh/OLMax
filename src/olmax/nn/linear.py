@@ -1,7 +1,7 @@
 import equinox as eqx
 import jax
 
-from ..distributed.parallel import MeshAxesNames, ParallelConfig, TPStyle
+from ..distributed.parallel import MeshAxesNames, MeshResource, TPStyle
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import linear
 from .init import truncated_normal
@@ -20,10 +20,10 @@ class Linear(Module):
         key: PRNGKeyArray,
         bias: bool = True,
         dtype: DTypeLike = float,
-        parallel_config: ParallelConfig | None = None,
+        mesh_resource: MeshResource | None = None,
         tp_style: TPStyle | None = None,
     ):
-        super().__init__(parallel_config)
+        super().__init__(mesh_resource)
 
         # Notes on tensor parallelism.
         # ============================
@@ -42,8 +42,8 @@ class Linear(Module):
             wkey,
             (out_size, in_size),
             sharding=None
-            if parallel_config is None
-            else parallel_config.get_param_sharding(
+            if mesh_resource is None
+            else mesh_resource.get_param_sharding(
                 dp_sharding_axis=1 if tp_style == TPStyle.colwise else 0,
                 tp_sharding_axis=0
                 if tp_style == TPStyle.colwise
@@ -58,8 +58,8 @@ class Linear(Module):
                 bkey,
                 (out_size,),
                 sharding=None
-                if parallel_config is None
-                else parallel_config.get_param_sharding(
+                if mesh_resource is None
+                else mesh_resource.get_param_sharding(
                     dp_sharding_axis=0,
                     tp_sharding_axis=0 if tp_style == TPStyle.colwise else None,
                 ),
@@ -69,7 +69,7 @@ class Linear(Module):
 
     @jax.named_scope("olmax.nn.Linear")
     def __call__(self, x):
-        if (pc := self.parallel_config) is None or self.tp_style is None:
+        if (pc := self.mesh_resource) is None or self.tp_style is None:
             out = linear(x, self.weight, self.bias)
             return out
         elif self.tp_style == TPStyle.colwise:

@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jax import random
 from jax.sharding import NamedSharding
 
-from ..distributed.parallel import ParallelConfig
+from ..distributed.parallel import MeshResource
 from ..types import Array, PRNGKeyArray
 
 
@@ -37,7 +37,7 @@ def generate_batches_of_sequential_tokens(
     total_batches: int,
     local_data_parallel_rank: int = 0,
     start_batch: int = 0,
-    parallel_config: ParallelConfig | None = None,
+    mesh_resource: MeshResource | None = None,
 ) -> Generator[tuple[Array, Array], None, None]:
     key = jax.random.fold_in(key, local_data_parallel_rank)
     batch = jnp.arange(0, sequence_length).reshape(1, -1).repeat(num_local_instances, 0)
@@ -48,6 +48,6 @@ def generate_batches_of_sequential_tokens(
                 batch=batch,
                 vocab_size=vocab_size,
                 key=batch_key,
-                sharding=None if parallel_config is None else parallel_config.get_data_sharding(),
+                sharding=None if mesh_resource is None else mesh_resource.get_data_sharding(),
             )
         )

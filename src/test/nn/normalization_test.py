@@ -14,12 +14,12 @@ def _get_norm(
     key: PRNGKeyArray,
     dim: int,
     norm_type: str,
-    parallel_config: dist.ParallelConfig | None = None,
+    mesh_resource: dist.MeshResource | None = None,
 ) -> nn.LayerNorm | nn.RMSNorm:
     if norm_type == "LayerNorm":
-        return nn.LayerNorm(dim, key, parallel_config=parallel_config)
+        return nn.LayerNorm(dim, key, mesh_resource=mesh_resource)
     elif norm_type == "RMSNorm":
-        return nn.RMSNorm(dim, key, parallel_config=parallel_config)
+        return nn.RMSNorm(dim, key, mesh_resource=mesh_resource)  # pyright: ignore
     else:
         raise ValueError(norm_type)
 
@@ -54,7 +54,7 @@ def test_norm(norm_type: str):
     assert grads is not None
 
 
-def _run_norm_data_parallel(parallel_config: dist.ParallelConfig, norm_type: str):
+def _run_norm_data_parallel(mesh_resource: dist.MeshResource, norm_type: str):
     dim, batch_size = (
         4 * dist.get_global_device_count(),
         2 * dist.get_global_device_count(),
@@ -63,10 +63,10 @@ def _run_norm_data_parallel(parallel_config: dist.ParallelConfig, norm_type: str
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, dim)
-    dist_batch = jax.device_put(full_batch, parallel_config.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
 
     full_norm = _get_norm(key, dim, norm_type)
-    dist_norm = _get_norm(key, dim, norm_type, parallel_config=parallel_config)
+    dist_norm = _get_norm(key, dim, norm_type, mesh_resource=mesh_resource)
 
     assert allclose(full_norm.weight, dist_norm.weight)
     assert allclose(full_norm.bias, dist_norm.bias)
@@ -79,18 +79,18 @@ def _run_norm_data_parallel(parallel_config: dist.ParallelConfig, norm_type: str
 
 
 @pytest.mark.parametrize(
-    "parallel_config",
+    "mesh_resource",
     [
-        pytest.param(dist.ParallelConfig.FSDP(), id="FSDP"),
-        pytest.param(dist.ParallelConfig.DDP(), id="DDP"),
-        pytest.param(dist.ParallelConfig.HSDP(2, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
+        pytest.param(dist.MeshResource.DDP(), id="DDP"),
+        pytest.param(dist.MeshResource.HSDP(2, 2), id="HSDP"),
     ],
 )
 @pytest.mark.parametrize("norm_type", ["LayerNorm", "RMSNorm"])
-def test_norm_data_parallel(parallel_config: dist.ParallelConfig, norm_type: str):
+def test_norm_data_parallel(mesh_resource: dist.MeshResource, norm_type: str):
     run_distributed_test(
         _run_norm_data_parallel,
         num_processes=1,
-        devices_per_process=parallel_config.get_min_device_count(),
-        args=(parallel_config, norm_type),
+        devices_per_process=mesh_resource.get_min_device_count(),
+        args=(mesh_resource, norm_type),
     )
