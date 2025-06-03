@@ -1,3 +1,5 @@
+from typing import Literal
+
 from ..utils import mib_to_bytes, set_env_var
 
 
@@ -8,6 +10,7 @@ def prepare_training_environment(
     all_reduce_combine_threshold_mib: float = 256,
     disable_jit: bool = False,
     disable_remat: bool = False,
+    gpu_architecture: Literal["hopper", "blackwell", "ampere"] | None = None,
 ):
     assert 0 <= xla_mem_frac <= 1.0
 
@@ -28,14 +31,21 @@ def prepare_training_environment(
         #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
         #  "--xla_gpu_enable_command_buffer=",
     ]
-    for name, value in {
+    if gpu_architecture == "blackwell":
+        xla_flags.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
+
+    env_vars = {
         "XLA_PYTHON_CLIENT_MEM_FRACTION": f"{round(xla_mem_frac, 2):.2f}",
-        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
         "NCCL_LL128_BUFFSIZE": "-2",
         "NCCL_LL_BUFFSIZE": "-2",
         "NCCL_PROTO": "SIMPLE,LL,LL128",
         "XLA_FLAGS": " ".join(xla_flags),
-    }.items():
+    }
+
+    if gpu_architecture != "blackwell":
+        env_vars["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
+
+    for name, value in env_vars.items():
         set_env_var(name, value)
 
     import jax

@@ -226,6 +226,9 @@ if __name__ == "__main__":
             disable_jit=opts.no_jit,
             disable_remat=opts.no_remat,
             reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
+            gpu_architecture=None
+            if beaker_runtime is None
+            else beaker_runtime.node.gpu_architecture,
         )
     elif opts.recipe == "7B":
         prepare_training_environment(
@@ -234,6 +237,9 @@ if __name__ == "__main__":
             all_gather_combine_threshold_mib=1024,
             reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
             all_reduce_combine_threshold_mib=1024,
+            gpu_architecture=None
+            if beaker_runtime is None
+            else beaker_runtime.node.gpu_architecture,
         )
     else:
         raise ValueError(opts.recipe)  # need to tune for model size

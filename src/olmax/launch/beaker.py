@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import functools as ft
 import os
 from dataclasses import dataclass
+from typing import Literal
+
+from beaker import Beaker, BeakerGpuType
 
 from ..utils import set_env_var
+
+B200_CLUSTERS = {""}
 
 
 @dataclass
@@ -12,6 +18,7 @@ class BeakerWorkloadInfo:
     task_id: str
     job_id: str
     result_dataset_id: str | None
+    result_dataset_path: str | None
 
     @classmethod
     def from_env(cls) -> BeakerWorkloadInfo:
@@ -20,6 +27,7 @@ class BeakerWorkloadInfo:
             task_id=os.environ["BEAKER_TASK_ID"],
             job_id=os.environ["BEAKER_JOB_ID"],
             result_dataset_id=os.environ.get("BEAKER_RESULT_DATASET_ID"),
+            result_dataset_path=os.environ.get("RESULTS_DIR"),
         )
 
 
@@ -47,6 +55,29 @@ class BeakerNodeInfo:
             id=os.environ["BEAKER_NODE_ID"],
             hostname=os.environ["BEAKER_NODE_HOSTNAME"],
         )
+
+    @ft.cached_property
+    def gpu_type(self) -> BeakerGpuType | None:
+        with Beaker.from_env() as beaker:
+            node = beaker.node.get(self.id)
+            try:
+                return BeakerGpuType(node.node_resources.gpu_type)
+            except ValueError:
+                return None
+
+    @property
+    def gpu_architecture(self) -> Literal["hopper", "blackwell", "ampere"] | None:
+        gpu_type = self.gpu_type
+        if gpu_type is None:
+            return None
+        elif "H100" in gpu_type.name:
+            return "hopper"
+        elif "B200" in gpu_type.name:
+            return "blackwell"
+        elif "A100" in gpu_type.name:
+            return "ampere"
+        else:
+            raise ValueError(f"unexpected GPU type {gpu_type}")
 
 
 @dataclass
@@ -94,8 +125,6 @@ class BeakerRuntime:
     def set_description(self, description: str):
         if self.replica is not None and self.replica.rank != 0:
             return
-
-        from beaker import Beaker
 
         with Beaker.from_env() as beaker:
             workload = beaker.workload.get(self.workload.id)
