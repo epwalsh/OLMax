@@ -48,11 +48,9 @@ def is_in_jit():
     return isinstance(jnp.zeros((), dtype=jnp.float32), jax.core.Tracer)
 
 
-def get_peak_local_device_memory_usage() -> tuple[int, int]:
+def get_peak_local_device_memory_usage() -> int:
     peak_bytes_in_use = 0
-    peak_bytes_reserved = 0
     for device in jax.local_devices():
         memory_stats = device.memory_stats()
         peak_bytes_in_use = max(peak_bytes_in_use, memory_stats.get("peak_bytes_in_use", 0))
-        peak_bytes_reserved = max(peak_bytes_reserved, memory_stats.get("peak_bytes_reserved", 0))
-    return peak_bytes_in_use, peak_bytes_reserved
+    return peak_bytes_in_use
