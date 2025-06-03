@@ -185,13 +185,24 @@ if __name__ == "__main__":
     replica = None if beaker_runtime is None else beaker_runtime.replica
 
     parser = argparse.ArgumentParser("train_transformer")
+
+    # Hyperparameters.
     parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
+    parser.add_argument("--batch-size", type=int)
+
+    # Debugging.
     parser.add_argument("--show-model", action="store_true")
     parser.add_argument("--no-jit", action="store_true")
+
+    # Performance.
     parser.add_argument("--no-remat", action="store_true")
-    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--reduce-scatter-combine-threshold-mib", type=int)
+
+    # Attention settings.
     parser.add_argument("--attn-window-size", type=int)
     parser.add_argument("--attn", choices=["xla", "cudnn"])
+
+    # Distributed settings.
     parser.add_argument("--nproc", type=int, default=1 if replica is None else replica.count)
     parser.add_argument("--proc-rank", type=int, default=None if replica is None else replica.rank)
     parser.add_argument(
@@ -199,6 +210,7 @@ if __name__ == "__main__":
         type=str,
         default=None if replica is None else f"{replica.leader_node.hostname}:29400",
     )
+
     opts = parser.parse_args()
 
     if beaker_runtime is not None:
@@ -206,13 +218,17 @@ if __name__ == "__main__":
         beaker_runtime.set_description("JAX/OLMaX run...")
 
     if opts.recipe == "271M":
-        prepare_training_environment(disable_jit=opts.no_jit, disable_remat=opts.no_remat)
+        prepare_training_environment(
+            disable_jit=opts.no_jit,
+            disable_remat=opts.no_remat,
+            reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
+        )
     elif opts.recipe == "7B":
         prepare_training_environment(
             disable_jit=opts.no_jit,
             disable_remat=opts.no_remat,
             all_gather_combine_threshold_mib=1024,
-            reduce_scatter_combine_threshold_mib=128,
+            reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
             all_reduce_combine_threshold_mib=1024,
         )
     else:
