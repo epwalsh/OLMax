@@ -230,6 +230,7 @@ if __name__ == "__main__":
     # Hyperparameters.
     parser.add_argument("--recipe", choices=["271M", "7B", "gemma2_27B"], default="271M")
     parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--vocab-size", type=int, default=50_304)
 
     # Debugging.
     parser.add_argument("--show-model", action="store_true")
@@ -314,6 +315,7 @@ if __name__ == "__main__":
             opts.recipe,
             beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
+            vocab_size=opts.vocab_size,
             attn_window_size=opts.attn_window_size,
             attn_implementation=opts.attn,
             show_model=opts.show_model,
