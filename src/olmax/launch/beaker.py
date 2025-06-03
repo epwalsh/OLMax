@@ -104,7 +104,9 @@ class BeakerRuntime:
     def set_env_vars(self):
         multi_node = self.replica is not None and self.replica.count > 1
 
-        if "jupiter" in self.node.hostname:
+        if "titan" in self.node.hostname:
+            set_env_var("NCCL_P2P_NET_CHUNKSIZE", "131072")
+        elif "jupiter" in self.node.hostname:
             set_env_var("NCCL_IB_HCA", "^=mlx5_bond_0")
             if multi_node:
                 # Only for multi-node

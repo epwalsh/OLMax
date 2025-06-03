@@ -10,7 +10,7 @@ gantry run \
     --env="NCCL_DEBUG=info" \
     --env-secret="BEAKER_TOKEN=PETEW_BEAKER_TOKEN" \
     --allow-dirty \
-    --gpu-type=b200 \
+    --gpu-type=h100 \
     --install './src/scripts/beaker/setup_env.sh' \
     --replicas=2 \
     --leader-selection \
