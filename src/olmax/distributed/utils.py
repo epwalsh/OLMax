@@ -22,7 +22,6 @@ def init_distributed(
     cluster_detection_method: str | None = None,
     initialization_timeout: int = 300,
     coordinator_bind_address: str | None = None,
-    slice_index: int | None = None,
 ):
     global _DIST_INITIALIZED
     if _DIST_INITIALIZED:
@@ -35,7 +34,6 @@ def init_distributed(
         cluster_detection_method=cluster_detection_method,
         initialization_timeout=initialization_timeout,
         coordinator_bind_address=coordinator_bind_address,
-        slice_index=slice_index,
     )
     _DIST_INITIALIZED = True
 
