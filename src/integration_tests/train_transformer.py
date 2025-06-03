@@ -157,15 +157,18 @@ def main(
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
-            #  local_data_parallel_rank=dist.get_process_rank(),
+            local_data_parallel_rank=dist.get_process_rank(),
             vocab_size=vocab_size,
             sequence_length=sequence_length,
-            #  num_local_instances=per_process_batch_size_instances,
-            num_local_instances=global_batch_size_instances,
+            num_local_instances=per_process_batch_size_instances,
             total_batches=train_steps,
             mesh_resource=mesh_resource,
         )
     ):
+        if dist.is_distributed():
+            input_ids = jax.make_array_from_process_local_data(data_sharding, input_ids)
+            labels = jax.make_array_from_process_local_data(data_sharding, labels)
+
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
