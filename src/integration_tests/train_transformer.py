@@ -294,7 +294,7 @@ if __name__ == "__main__":
         )
         if beaker_runtime is not None:
             beaker_runtime.set_description(
-                f"JAX/OLMaX run: loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem}"
+                f"JAX/OLMaX run: loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem:,d}"
             )
     finally:
         if dist.is_distributed():
