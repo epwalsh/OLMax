@@ -33,14 +33,12 @@ def generate_batches_of_sequential_tokens(
     *,
     vocab_size: int,
     sequence_length: int,
-    num_local_instances: int,
+    global_batch_size_instances: int,
     total_batches: int,
-    local_data_parallel_rank: int = 0,
     start_batch: int = 0,
     mesh_resource: MeshResource | None = None,
 ) -> Generator[tuple[Array, Array], None, None]:
-    key = jax.random.fold_in(key, local_data_parallel_rank)
-    batch = jnp.arange(0, sequence_length).reshape(1, -1).repeat(num_local_instances, 0)
+    batch = jnp.arange(0, sequence_length).reshape(1, -1).repeat(global_batch_size_instances, 0)
     for batch_idx in range(start_batch, total_batches):
         batch_key = jax.random.fold_in(key, batch_idx)
         yield (
