@@ -144,6 +144,7 @@ class BeakerRuntime:
         elif "pluto" in self.node.hostname:
             set_env_var("NCCL_IB_HCA", "^=mlx5_1,mlx5_2")
         elif "augusta" in self.node.hostname and multi_node:
+            # See https://beaker-docs.apps.allenai.org/compute/augusta.html#distributed-workloads
             # NOTE: This path var must be set prior to launching Python
             #  set_env_var(
             #      "LD_LIBRARY_PATH",
@@ -184,5 +185,5 @@ class BeakerRuntime:
                 "NCCL_FASTRAK_IFNAME",
                 "enp6s0,enp7s0,enp13s0,enp14s0,enp134s0,enp135s0,enp141s0,enp142s0",
             )
-            #  set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
+            set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
             set_env_var("NCCL_DEBUG_SUBSYS", "INIT,NET")
