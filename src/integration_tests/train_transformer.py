@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import os
 import time
 from collections import deque
 from typing import Literal
@@ -16,6 +17,7 @@ import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree, count_params
+from olmax.launch.beaker import BeakerRuntime
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 
@@ -58,6 +60,13 @@ def main(
         raise ValueError(recipe)
 
     batch_size_per_device = sequence_length * instances_per_device
+    global_batch_size = batch_size_per_device * dist.get_global_device_count()
+    per_process_batch_size = global_batch_size // dist.get_process_world_size()
+    per_process_batch_size_instances = per_process_batch_size // sequence_length
+    print(
+        f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
+        f"which is {instances_per_device:,d} instances of length {sequence_length:,d}.\n"
+    )
 
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
@@ -126,10 +135,6 @@ def main(
 
         return loss, model, opt_state
 
-    global_batch_size = batch_size_per_device * dist.get_global_device_count()
-    per_process_batch_size = global_batch_size // dist.get_process_world_size()
-    per_process_batch_size_instances = per_process_batch_size // sequence_length
-
     print("Starting training...")
     gc.collect()
     batch_start = time.monotonic()
@@ -171,6 +176,9 @@ def main(
 
 
 if __name__ == "__main__":
+    beaker_runtime = BeakerRuntime.from_env()
+    replica = None if beaker_runtime is None else beaker_runtime.replica
+
     parser = argparse.ArgumentParser("train_transformer")
     parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
     parser.add_argument("--debug", action="store_true")
@@ -179,6 +187,13 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--attn-window-size", type=int)
     parser.add_argument("--attn", choices=["xla", "cudnn"])
+    parser.add_argument("--nproc", type=int, default=1 if replica is None else replica.count)
+    parser.add_argument("--proc-rank", type=int, default=None if replica is None else replica.rank)
+    parser.add_argument(
+        "--coordinator-address",
+        type=str,
+        default=None if replica is None else replica.leader_node.hostname,
+    )
     opts = parser.parse_args()
 
     if opts.recipe == "271M":
@@ -194,9 +209,30 @@ if __name__ == "__main__":
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
 
-    main(
-        opts.recipe,
-        instances_per_device=opts.batch_size,
-        attn_window_size=opts.attn_window_size,
-        attn_implementation=opts.attn,
-    )
+    if opts.nproc > 1:
+        if opts.coordinator_address is None:
+            raise ValueError("--coordinator-address is required for distributed training")
+        if opts.proc_rank is None:
+            raise ValueError("--proc-rank is required for distributed training")
+
+        print("Initializing distributed backend...")
+        dist.init_distributed(
+            coordinator_address=opts.coordinator_address,
+            num_processes=opts.nproc,
+            process_id=opts.proc_rank,
+        )
+        print(
+            f"Distributed backend initialized with {dist.get_global_device_count():,d} total devices "
+            f"across {dist.get_process_world_size():,d} processses"
+        )
+
+    try:
+        main(
+            opts.recipe,
+            instances_per_device=opts.batch_size,
+            attn_window_size=opts.attn_window_size,
+            attn_implementation=opts.attn,
+        )
+    finally:
+        if dist.is_distributed():
+            dist.teardown_distributed()
