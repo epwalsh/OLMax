@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import argparse
 import functools as ft
 import os
+import sys
 from dataclasses import dataclass
 from typing import Literal
 
 from beaker import Beaker, BeakerGpuType
+from beaker.exceptions import BeakerError
+from gantry.api import launch_experiment
+from gantry.exceptions import GantryError
+from rich.console import Console
+from rich.traceback import Traceback
 
 from ..utils import set_env_var
 
@@ -186,3 +193,74 @@ class BeakerRuntime:
             )
             set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
             set_env_var("NCCL_DEBUG_SUBSYS", "INIT,NET")
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        "olmax.launch.beaker", usage="python -m olmax.launch.beaker [OPTIONS...] -- [CMD...]"
+    )
+    parser.add_argument("--nodes", type=int, default=1)
+    parser.add_argument("--gpus-per-node", type=int, default=8)
+    parser.add_argument("--gpu-type", type=str, choices=["h100", "b200"])
+    parser.add_argument("--cluster", type=str, nargs="*")
+    parser.add_argument("--hostname", type=str, nargs="*")
+    parser.add_argument("--allow-dirty", action="store_true")
+
+    if len(sys.argv) < 3 or "--" not in sys.argv:
+        parser.print_help()
+        sys.exit(1)
+
+    sep_index = sys.argv.index("--")
+    args = sys.argv[1:sep_index]
+    command = sys.argv[sep_index + 1 :]
+    opts = parser.parse_args(args)
+    return opts, tuple(command)
+
+
+def _print_stderr(*args, **kwargs):
+    Console(stderr=True).print(*args, **kwargs)
+
+
+def _excepthook(exctype, value, tb):
+    """
+    Used to patch ``sys.excepthook`` in order to customize handling of uncaught exceptions.
+    """
+    # Ignore in-house error types because we don't need a traceback for those.
+    if issubclass(exctype, (GantryError, BeakerError)):
+        _print_stderr(f"[red][bold]{exctype.__name__}:[/] [i]{value}[/][/]")
+    # For interruptions, call the original exception handler.
+    elif issubclass(exctype, KeyboardInterrupt):
+        sys.__excepthook__(exctype, value, tb)
+    else:
+        _print_stderr(Traceback.from_exception(exctype, value, tb))
+
+
+def main():
+    sys.excepthook = _excepthook
+    opts, command = _parse_args()
+    is_multi_node = opts.nodes > 1
+    launch_experiment(
+        command,
+        priority="high",
+        yes=True,
+        timeout=-1,
+        gpus=opts.gpus_per_node,
+        gpu_types=(opts.gpu_type,),
+        clusters=opts.cluster,
+        hostnames=opts.hostname,
+        beaker_image="petew/olmax",
+        env_vars=["PYTHONUNBUFFERED=1", "NCCL_DEBUG=info"],
+        env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
+        allow_dirty=opts.allow_dirty,
+        install="./src/scripts/beaker/setup_env.sh",
+        replicas=opts.nodes if is_multi_node else None,
+        leader_selection=is_multi_node,
+        host_networking=is_multi_node,
+        propagate_failure=is_multi_node,
+        propagate_preemption=is_multi_node,
+        synchronized_start_timeout="5m" if is_multi_node else None,
+    )
+
+
+if __name__ == "__main__":
+    main()
