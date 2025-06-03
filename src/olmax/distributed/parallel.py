@@ -165,6 +165,9 @@ class ParallelConfig:
     def get_replicated_partition(self) -> P:
         return P()
 
+    def get_replicated_sharding(self) -> NamedSharding:
+        return NamedSharding(self.get_mesh(), P())
+
     def shard_map(self, fun: F, in_specs: Specs, out_specs: Specs | None) -> F:
         return cast(
             F, jax.shard_map(fun, mesh=self.get_mesh(), in_specs=in_specs, out_specs=out_specs)
