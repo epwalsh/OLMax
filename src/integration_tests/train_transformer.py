@@ -256,7 +256,7 @@ if __name__ == "__main__":
 
     if beaker_runtime is not None:
         beaker_runtime.set_env_vars()
-        beaker_runtime.set_description("JAX/OLMaX run...")
+        beaker_runtime.set_description(f"OLMaX {opts.recipe}...")
 
     if opts.recipe == "271M":
         prepare_training_environment(
@@ -320,7 +320,7 @@ if __name__ == "__main__":
         )
         if beaker_runtime is not None:
             beaker_runtime.set_description(
-                f"JAX/OLMaX run: loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem:,d}"
+                f"OLMaX {opts.recipe}: loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem:,d}"
             )
     finally:
         if dist.is_distributed():
