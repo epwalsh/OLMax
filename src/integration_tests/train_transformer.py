@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import gc
-import os
 import time
 from collections import deque
 from typing import Literal
@@ -17,6 +16,7 @@ import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree, count_params
+from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 
 
@@ -177,58 +177,23 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--no-jit", action="store_true")
     parser.add_argument("--no-remat", action="store_true")
-    parser.add_argument("--xla-mem-frac", type=str, default="0.95")
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--attn-window-size", type=int)
     parser.add_argument("--attn", choices=["xla", "cudnn"])
     opts = parser.parse_args()
 
-    if opts.no_jit:
-        jax.config.update("jax_disable_jit", True)
-
-    if opts.no_remat:
-        jax.config.update("jax_compiler_enable_remat_pass", False)
-
-    # See
-    #  - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
-    #  - https://docs.jax.dev/en/latest/gpu_performance_tips.html
-    os.environ.update(
-        {
-            "XLA_PYTHON_CLIENT_MEM_FRACTION": opts.xla_mem_frac,
-            "CUDA_DEVICE_MAX_CONNECTIONS": "1",  # not needed on B200s
-            "NCCL_LL128_BUFFSIZE": "-2",
-            "NCCL_LL_BUFFSIZE": "-2",
-            "NCCL_PROTO": "SIMPLE,LL,LL128",
-        }
-    )
-    xla_flags = [
-        "--xla_gpu_enable_latency_hiding_scheduler=true",
-        "--xla_gpu_enable_while_loop_double_buffering=true",
-        "--xla_gpu_enable_pipelined_all_gather=true",
-        "--xla_gpu_enable_pipelined_reduce_scatter=true",
-        "--xla_gpu_enable_pipelined_all_reduce=true",
-        "--xla_gpu_enable_all_gather_combine_by_dim=false",
-        "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
-        #  "--xla_gpu_enable_nccl_user_buffers=true",
-        #  "--xla_gpu_enable_command_buffer=",
-    ]
     if opts.recipe == "271M":
-        pass
+        prepare_training_environment(disable_jit=opts.no_jit, disable_remat=opts.no_remat)
     elif opts.recipe == "7B":
-        xla_flags.extend(
-            [
-                #  "--xla_gpu_all_gather_combine_threshold_bytes=8589934592",
-                #  "--xla_gpu_reduce_scatter_combine_threshold_bytes=8589934592",
-                #  "--xla_gpu_all_reduce_combine_threshold_bytes=8589934592",
-                "--xla_gpu_all_gather_combine_threshold_bytes=1073741824",
-                "--xla_gpu_reduce_scatter_combine_threshold_bytes=134217728",
-                "--xla_gpu_all_reduce_combine_threshold_bytes=1073741824",
-            ]
+        prepare_training_environment(
+            disable_jit=opts.no_jit,
+            disable_remat=opts.no_remat,
+            all_gather_combine_threshold_mib=1024,
+            reduce_scatter_combine_threshold_mib=128,
+            all_reduce_combine_threshold_mib=1024,
         )
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
-
-    os.environ["XLA_FLAGS"] = " ".join(xla_flags)
 
     main(
         opts.recipe,
