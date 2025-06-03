@@ -1,7 +1,7 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass
-
-from typing_extensions import Self
 
 from ..utils import set_env_var
 
@@ -14,7 +14,7 @@ class BeakerWorkloadInfo:
     result_dataset_id: str | None
 
     @classmethod
-    def from_env(cls) -> Self:
+    def from_env(cls) -> BeakerWorkloadInfo:
         return cls(
             id=os.environ["BEAKER_WORKLOAD_ID"],
             task_id=os.environ["BEAKER_TASK_ID"],
@@ -29,7 +29,7 @@ class BeakerResourcesInfo:
     cpu_count: int
 
     @classmethod
-    def from_env(cls) -> Self:
+    def from_env(cls) -> BeakerResourcesInfo:
         return cls(
             gpu_count=int(os.environ["BEAKER_ASSIGNED_GPU_COUNT"]),
             cpu_count=int(os.environ["BEAKER_ASSIGNED_CPU_COUNT"]),
@@ -42,7 +42,7 @@ class BeakerNodeInfo:
     hostname: str
 
     @classmethod
-    def from_env(cls) -> Self:
+    def from_env(cls) -> BeakerNodeInfo:
         return cls(
             id=os.environ["BEAKER_NODE_ID"],
             hostname=os.environ["BEAKER_NODE_HOSTNAME"],
@@ -57,7 +57,7 @@ class BeakerReplicaInfo:
     leader_node: BeakerNodeInfo
 
     @classmethod
-    def from_env(cls) -> Self | None:
+    def from_env(cls) -> BeakerReplicaInfo | None:
         if "BEAKER_REPLICA_RANK" not in os.environ:
             return None
 
@@ -80,7 +80,7 @@ class BeakerRuntime:
     replica: BeakerReplicaInfo | None
 
     @classmethod
-    def from_env(cls) -> Self | None:
+    def from_env(cls) -> BeakerRuntime | None:
         if "BEAKER_WORKLOAD_ID" not in os.environ:
             return None
 
@@ -107,10 +107,10 @@ class BeakerRuntime:
             set_env_var("NCCL_CROSS_NIC", "0")
             set_env_var("NCCL_ALGO", "Ring,Tree")
             set_env_var("NCCL_PROTO", "Simple,LL128")
-            set_env_var("NCCL_MIN_NCHANNELS", "4")
-            set_env_var("NCCL_P2P_NET_CHUNKSIZE", "524288")
-            set_env_var("NCCL_P2P_PCI_CHUNKSIZE", "524288")
-            set_env_var("NCCL_P2P_NVL_CHUNKSIZE", "1048576")
+            #  set_env_var("NCCL_MIN_NCHANNELS", "4")
+            #  set_env_var("NCCL_P2P_NET_CHUNKSIZE", "524288")
+            #  set_env_var("NCCL_P2P_PCI_CHUNKSIZE", "524288")
+            #  set_env_var("NCCL_P2P_NVL_CHUNKSIZE", "1048576")
             set_env_var("NCCL_FASTRAK_NUM_FLOWS", "2")
             set_env_var("NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL", "0")
             set_env_var("NCCL_BUFFSIZE", "8388608")

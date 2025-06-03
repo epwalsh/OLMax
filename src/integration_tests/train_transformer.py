@@ -32,6 +32,7 @@ def main(
     train_steps: int = 100,
     attn_window_size: int | tuple[int, int] | None = None,
     attn_implementation: Literal["xla", "cudnn"] | None = None,
+    show_model: bool = False,
 ):
     if recipe == "271M":
         model_config = recipes.llama_like_271M(
@@ -73,7 +74,8 @@ def main(
 
     print("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
-    print(model)
+    if show_model:
+        print(model)
     num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     print(
@@ -180,7 +182,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser("train_transformer")
     parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
-    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--show-model", action="store_true")
     parser.add_argument("--no-jit", action="store_true")
     parser.add_argument("--no-remat", action="store_true")
     parser.add_argument("--batch-size", type=int)
@@ -234,6 +236,7 @@ if __name__ == "__main__":
             instances_per_device=opts.batch_size,
             attn_window_size=opts.attn_window_size,
             attn_implementation=opts.attn,
+            show_model=opts.show_model,
         )
     finally:
         if dist.is_distributed():
