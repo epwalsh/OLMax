@@ -8,7 +8,6 @@ gantry run \
     --beaker-image=petew/olmax \
     --env="PYTHONUNBUFFERED=1" \
     --env="NCCL_DEBUG=info" \
-    --env="NCCL_P2P_NET_CHUNKSIZE=131072" \
     --env-secret="BEAKER_TOKEN=PETEW_BEAKER_TOKEN" \
     --allow-dirty \
     --gpu-type=b200 \
