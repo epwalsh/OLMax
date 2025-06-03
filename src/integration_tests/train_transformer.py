@@ -180,7 +180,7 @@ def main(
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
 
-        if step + 1 % 5 == 0:
+        if (step + 1) % 5 == 0:
             peak_bytes_in_use, peak_bytes_reserved = get_peak_local_device_memory_usage()
             metrics["Peak mem used (MiB)"] = str(int(bytes_to_mib(peak_bytes_in_use)))
             metrics["Peak mem reserved (MiB)"] = str(int(bytes_to_mib(peak_bytes_reserved)))
