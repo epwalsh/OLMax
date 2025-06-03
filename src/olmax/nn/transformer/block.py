@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import ClassVar, Type
+from typing import Callable, ClassVar, Type
 
 import jax
 from typing_extensions import Self
@@ -88,6 +88,7 @@ class TransformerBlock(Module):
         bias: bool = False,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        activation: Callable[[Array], Array] = jax.nn.silu,
     ):
         super().__init__(mesh_resource)
         mlp_key, mlp_norm_key, attention_key, attention_norm_key = jax.random.split(key, 4)
@@ -95,6 +96,7 @@ class TransformerBlock(Module):
             d_model,
             hidden_size,
             mlp_key,
+            activation=activation,
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
@@ -147,6 +149,7 @@ class Gemma2TransformerBlock(TransformerBlock):
         norm: LayerNormConfig,
         bias: bool = False,
         dtype: DTypeLike = float,
+        activation: Callable[[Array], Array] = jax.nn.gelu,
         mesh_resource: MeshResource | None = None,
     ):
         key, attn_input_norm_key, mlp_input_norm_key = jax.random.split(key, 3)
@@ -158,6 +161,7 @@ class Gemma2TransformerBlock(TransformerBlock):
             norm=norm,
             bias=bias,
             dtype=dtype,
+            activation=activation,
             mesh_resource=mesh_resource,
         )
         self.attention_input_norm = norm.build(
