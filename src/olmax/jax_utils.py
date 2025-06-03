@@ -5,9 +5,8 @@ import equinox as eqx
 import jax
 import jax.core
 import jax.numpy as jnp
-from jax.sharding import NamedSharding
 
-from .types import Array, DTypeLike, PyTree
+from .types import Array, DTypeLike, PyTree, Specs
 
 F = TypeVar("F", bound=Callable)
 
@@ -30,16 +29,14 @@ def count_params(tree: PyTree) -> int:
     return jax.tree.reduce(lambda c, p: c + p.size, tree, 0)
 
 
-def with_optional_sharding_contraint(
-    tree: T, sharding: NamedSharding, cond: Callable[[Array], bool]
-) -> T:
+def with_optional_sharding_contraint(tree: T, sharding: Specs, cond: Callable[[Array], bool]) -> T:
     return jax.tree.map(
         ft.partial(_with_optional_sharding_contraint, sharding=sharding, cond=cond), tree
     )
 
 
 def _with_optional_sharding_contraint(
-    leaf: Array, sharding: NamedSharding, cond: Callable[[Array], bool]
+    leaf: Array, sharding: Specs, cond: Callable[[Array], bool]
 ) -> Array:
     if cond(leaf):
         return jax.lax.with_sharding_constraint(leaf, sharding)

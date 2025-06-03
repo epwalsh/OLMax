@@ -16,7 +16,7 @@ import olmax.nn as nn
 import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree, count_params, with_optional_sharding_contraint
+from olmax.jax_utils import cast_tree, count_params
 from olmax.types import Array, DTypeLike
 
 
@@ -53,7 +53,7 @@ def main(
         if sequence_length is None:
             sequence_length = 4096
         if instances_per_device is None:
-            instances_per_device = 2
+            instances_per_device = 1
     else:
         raise ValueError(recipe)
 
@@ -78,14 +78,18 @@ def main(
     optim = optax.adamw(learning_rate)
     opt_state = optim.init(model)  # pyright: ignore
 
+    param_sharding = model.get_param_shardings()
+    data_sharding = param_sharding.get_data_sharding()
+    opt_state_sharding = jax.tree.map(lambda a: a.sharding, opt_state)
+
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
-        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
-        input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
-        labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
+        model = jax.lax.with_sharding_constraint(model, param_sharding)
+        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
+        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
         logits = model(input_ids)
-        logits = jax.lax.with_sharding_constraint(logits, parallel_config.get_data_sharding())
+        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
 
         return F.cross_entropy_loss(logits, labels)
 
@@ -93,12 +97,13 @@ def main(
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[Array, nn.Transformer, optax.OptState]:
-        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
-        input_ids = jax.lax.with_sharding_constraint(input_ids, parallel_config.get_data_sharding())
-        labels = jax.lax.with_sharding_constraint(labels, parallel_config.get_data_sharding())
-        opt_state = with_optional_sharding_contraint(
-            opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
-        )
+        model = jax.lax.with_sharding_constraint(model, param_sharding)
+        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
+        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
+        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        #  opt_state = with_optional_sharding_contraint(
+        #      opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
+        #  )
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -108,22 +113,23 @@ def main(
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-        grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
+        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
             grads = cast_tree(grads, param_dtype)
-            grads = jax.lax.with_sharding_constraint(grads, parallel_config.get_param_sharding())
+            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        updates = jax.lax.with_sharding_constraint(updates, parallel_config.get_param_sharding())
-        opt_state = with_optional_sharding_contraint(
-            opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
-        )
+        updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        #  opt_state = with_optional_sharding_contraint(
+        #      opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
+        #  )
 
         model = eqx.apply_updates(model, updates)
-        model = jax.lax.with_sharding_constraint(model, parallel_config.get_param_sharding())
+        model = jax.lax.with_sharding_constraint(model, param_sharding)
 
         return loss, model, opt_state
 
