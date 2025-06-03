@@ -1,6 +1,4 @@
-import os
-
-from ..utils import mib_to_bytes
+from ..utils import mib_to_bytes, set_env_var
 
 
 def prepare_training_environment(
@@ -30,16 +28,15 @@ def prepare_training_environment(
         #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
         #  "--xla_gpu_enable_command_buffer=",
     ]
-    os.environ.update(
-        {
-            "XLA_PYTHON_CLIENT_MEM_FRACTION": f"{round(xla_mem_frac, 2):.2f}",
-            "CUDA_DEVICE_MAX_CONNECTIONS": "1",
-            "NCCL_LL128_BUFFSIZE": "-2",
-            "NCCL_LL_BUFFSIZE": "-2",
-            "NCCL_PROTO": "SIMPLE,LL,LL128",
-            "XLA_FLAGS": " ".join(xla_flags),
-        }
-    )
+    for name, value in {
+        "XLA_PYTHON_CLIENT_MEM_FRACTION": f"{round(xla_mem_frac, 2):.2f}",
+        "CUDA_DEVICE_MAX_CONNECTIONS": "1",
+        "NCCL_LL128_BUFFSIZE": "-2",
+        "NCCL_LL_BUFFSIZE": "-2",
+        "NCCL_PROTO": "SIMPLE,LL,LL128",
+        "XLA_FLAGS": " ".join(xla_flags),
+    }.items():
+        set_env_var(name, value)
 
     import jax
 

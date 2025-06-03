@@ -64,7 +64,7 @@ def main(
     per_process_batch_size_instances = per_process_batch_size // sequence_length
     print(
         f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
-        f"which is {instances_per_device:,d} instances of length {sequence_length:,d}.\n"
+        f"which is {instances_per_device:,d} instances of length {sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
@@ -195,6 +195,9 @@ if __name__ == "__main__":
     )
     opts = parser.parse_args()
 
+    if beaker_runtime is not None:
+        beaker_runtime.set_env_vars()
+
     if opts.recipe == "271M":
         prepare_training_environment(disable_jit=opts.no_jit, disable_remat=opts.no_remat)
     elif opts.recipe == "7B":
@@ -222,7 +225,7 @@ if __name__ == "__main__":
         )
         print(
             f"Distributed backend initialized with {dist.get_global_device_count():,d} total devices "
-            f"across {dist.get_process_world_size():,d} processses"
+            f"across {dist.get_process_world_size():,d} processes."
         )
 
     try:
