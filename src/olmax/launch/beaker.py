@@ -112,7 +112,7 @@ class BeakerRuntime:
 
     @classmethod
     def from_env(cls) -> BeakerRuntime | None:
-        if "BEAKER_WORKLOAD_ID" not in os.environ and "BEAKER_TASK_ID" not in os.environ:
+        if "BEAKER_WORKLOAD_ID" not in os.environ or "BEAKER_TASK_ID" not in os.environ:
             return None
 
         return cls(
