@@ -53,7 +53,7 @@ def main(
         if sequence_length is None:
             sequence_length = 4096
         if instances_per_device is None:
-            instances_per_device = 1
+            instances_per_device = 2
     else:
         raise ValueError(recipe)
 
