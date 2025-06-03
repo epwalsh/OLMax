@@ -203,6 +203,7 @@ if __name__ == "__main__":
 
     if beaker_runtime is not None:
         beaker_runtime.set_env_vars()
+        beaker_runtime.set_description("JAX/OLMaX run...")
 
     if opts.recipe == "271M":
         prepare_training_environment(disable_jit=opts.no_jit, disable_remat=opts.no_remat)
@@ -243,7 +244,9 @@ if __name__ == "__main__":
             show_model=opts.show_model,
         )
         if beaker_runtime is not None:
-            beaker_runtime.set_description(f"loss = {final_loss:.4f}, TPS = {final_tps:,d}")
+            beaker_runtime.set_description(
+                f"JAX/OLMaX run: loss = {final_loss:.4f}, TPS = {final_tps:,d}"
+            )
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()
