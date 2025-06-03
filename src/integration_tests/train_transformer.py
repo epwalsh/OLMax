@@ -33,7 +33,7 @@ def main(
     attn_window_size: int | tuple[int, int] | None = None,
     attn_implementation: Literal["xla", "cudnn"] | None = None,
     show_model: bool = False,
-):
+) -> tuple[float, int]:
     if recipe == "271M":
         model_config = recipes.llama_like_271M(
             vocab_size,
@@ -141,6 +141,7 @@ def main(
     batch_start = time.monotonic()
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
+    final_loss: float = float("inf")
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
@@ -156,7 +157,9 @@ def main(
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
         # Log progress.
-        metrics = {"loss": f"{loss:.4f}"}
+        loss_float = loss.item()
+        final_loss = loss_float
+        metrics = {"loss": f"{loss_float:.4f}"}
         batch_end = time.monotonic()
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
@@ -174,6 +177,7 @@ def main(
         )
 
     print(f"Done. Best throughput = {int(running_avg_tps_best):,d} TPS")
+    return final_loss, int(running_avg_tps_best)
 
 
 if __name__ == "__main__":
@@ -231,13 +235,15 @@ if __name__ == "__main__":
         )
 
     try:
-        main(
+        final_loss, final_tps = main(
             opts.recipe,
             instances_per_device=opts.batch_size,
             attn_window_size=opts.attn_window_size,
             attn_implementation=opts.attn,
             show_model=opts.show_model,
         )
+        if beaker_runtime is not None:
+            beaker_runtime.set_description(f"loss = {final_loss:.4f}, TPS = {final_tps:,d}")
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()

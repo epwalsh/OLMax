@@ -91,6 +91,16 @@ class BeakerRuntime:
             replica=BeakerReplicaInfo.from_env(),
         )
 
+    def set_description(self, description: str):
+        if self.replica is not None and self.replica.rank != 0:
+            return
+
+        from beaker import Beaker
+
+        with Beaker.from_env() as beaker:
+            workload = beaker.workload.get(self.workload.id)
+            beaker.workload.update(workload, description=description)
+
     def set_env_vars(self):
         multi_node = self.replica is not None and self.replica.count > 1
 
@@ -102,8 +112,12 @@ class BeakerRuntime:
         elif "pluto" in self.node.hostname:
             set_env_var("NCCL_IB_HCA", "^=mlx5_1,mlx5_2")
         elif "augusta" in self.node.hostname and multi_node:
-            # NOTE: For single-node training we still need all of these settings and we also
-            # need host networking enabled so that the ethernet interface names don't change.
+            # NOTE: This path var must be set prior to launching Python
+            #  set_env_var(
+            #      "LD_LIBRARY_PATH",
+            #      "/var/lib/tcpxo/lib64:" + os.environ.get("LD_LIBRARY_PATH", ""),
+            #      override=True,
+            #  )
             set_env_var("NCCL_CROSS_NIC", "0")
             set_env_var("NCCL_ALGO", "Ring,Tree")
             set_env_var("NCCL_PROTO", "Simple,LL128")
@@ -125,12 +139,6 @@ class BeakerRuntime:
             set_env_var("NCCL_USE_SNAP", "1")
             set_env_var("NCCL_FASTRAK_USE_LLCM", "1")
             set_env_var("NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY", "/dev/aperture_devices")
-            # NOTE: This path var must be set prior to launching Python
-            #  set_env_var(
-            #      "LD_LIBRARY_PATH",
-            #      "/var/lib/tcpxo/lib64:" + os.environ.get("LD_LIBRARY_PATH", ""),
-            #      override=True,
-            #  )
             set_env_var("NCCL_TUNER_PLUGIN", "libnccl-tuner.so")
             set_env_var(
                 "NCCL_TUNER_CONFIG_PATH", "/var/lib/tcpxo/lib64/a3plus_tuner_config_ll128.textproto"
@@ -144,5 +152,5 @@ class BeakerRuntime:
                 "NCCL_FASTRAK_IFNAME",
                 "enp6s0,enp7s0,enp13s0,enp14s0,enp134s0,enp135s0,enp141s0,enp142s0",
             )
-            set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
+            #  set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
             set_env_var("NCCL_DEBUG_SUBSYS", "INIT,NET")
