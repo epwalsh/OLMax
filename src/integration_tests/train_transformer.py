@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import gc
-import os
 import time
 from collections import deque
 from typing import Literal
@@ -192,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--coordinator-address",
         type=str,
-        default=None if replica is None else replica.leader_node.hostname,
+        default=None if replica is None else f"{replica.leader_node.hostname}:29400",
     )
     opts = parser.parse_args()
 
