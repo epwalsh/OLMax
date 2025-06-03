@@ -72,6 +72,7 @@ def main(
 
     batch_size_per_device = sequence_length * instances_per_device
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
+    global_batch_size_instances = instances_per_device * dist.get_global_device_count()
     per_process_batch_size = global_batch_size // dist.get_process_world_size()
     per_process_batch_size_instances = per_process_batch_size // sequence_length
     print(
@@ -156,10 +157,11 @@ def main(
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
-            local_data_parallel_rank=dist.get_process_rank(),
+            #  local_data_parallel_rank=dist.get_process_rank(),
             vocab_size=vocab_size,
             sequence_length=sequence_length,
-            num_local_instances=per_process_batch_size_instances,
+            #  num_local_instances=per_process_batch_size_instances,
+            num_local_instances=global_batch_size_instances,
             total_batches=train_steps,
             mesh_resource=mesh_resource,
         )
