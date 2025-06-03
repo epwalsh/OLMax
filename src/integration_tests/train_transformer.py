@@ -28,7 +28,7 @@ def main(
     vocab_size: int = 50_304,
     param_dtype: DTypeLike = float,
     compute_dtype: DTypeLike = jax.dtypes.bfloat16,
-    learning_rate: float = 1e-3,
+    learning_rate: float | None = None,
     train_steps: int = 100,
     attn_window_size: int | tuple[int, int] | None = None,
     attn_implementation: Literal["xla", "cudnn"] | None = None,
@@ -45,6 +45,8 @@ def main(
             sequence_length = 1024
         if instances_per_device is None:
             instances_per_device = 16
+        if learning_rate is None:
+            learning_rate = 1e-3
     elif recipe == "7B":
         model_config = recipes.llama_like_7B(
             vocab_size,
@@ -56,6 +58,8 @@ def main(
             sequence_length = 4096
         if instances_per_device is None:
             instances_per_device = 2
+        if learning_rate is None:
+            learning_rate = 1e-4
     else:
         raise ValueError(recipe)
 
