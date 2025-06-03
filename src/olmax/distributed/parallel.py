@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Callable, TypeVar, cast
 
 import jax
+import optax
 from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 from typing_extensions import Self
@@ -167,6 +168,11 @@ class ParallelConfig:
 
     def get_replicated_sharding(self) -> NamedSharding:
         return NamedSharding(self.get_mesh(), P())
+
+    def get_opt_state_sharding(self, opt_state: optax.OptState) -> optax.OptState:
+        return jax.tree.map(
+            lambda a: a.sharding if a.ndim > 0 else self.get_replicated_sharding(), opt_state
+        )
 
     def shard_map(self, fun: F, in_specs: Specs, out_specs: Specs | None) -> F:
         return cast(

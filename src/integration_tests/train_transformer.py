@@ -80,7 +80,7 @@ def main(
 
     param_sharding = model.get_param_shardings()
     data_sharding = parallel_config.get_data_sharding()
-    opt_state_sharding = jax.tree.map(lambda a: a.sharding, opt_state)
+    opt_state_sharding = parallel_config.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -101,9 +101,6 @@ def main(
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-        #  opt_state = with_optional_sharding_contraint(
-        #      opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
-        #  )
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -124,9 +121,6 @@ def main(
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         updates = jax.lax.with_sharding_constraint(updates, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-        #  opt_state = with_optional_sharding_contraint(
-        #      opt_state, parallel_config.get_param_sharding(), lambda s: s.ndim > 0
-        #  )
 
         model = eqx.apply_updates(model, updates)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
