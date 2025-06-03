@@ -170,7 +170,7 @@ def main(
         batch_start = batch_end
         if step > 2:
             running_avg_tps.append(tps)
-        if len(running_avg_tps) > 5:
+        if len(running_avg_tps) > 10:
             running_avg_tps.popleft()
         if len(running_avg_tps) > 2:
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
