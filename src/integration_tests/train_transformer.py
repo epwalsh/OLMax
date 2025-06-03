@@ -79,7 +79,7 @@ def main(
     opt_state = optim.init(model)  # pyright: ignore
 
     param_sharding = model.get_param_shardings()
-    data_sharding = param_sharding.get_data_sharding()
+    data_sharding = parallel_config.get_data_sharding()
     opt_state_sharding = jax.tree.map(lambda a: a.sharding, opt_state)
 
     @eqx.filter_value_and_grad
