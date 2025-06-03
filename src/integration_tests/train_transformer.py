@@ -15,10 +15,11 @@ import olmax.nn as nn
 import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree, count_params
+from olmax.jax_utils import cast_tree, count_params, get_peak_local_device_memory_usage
 from olmax.launch.beaker import BeakerRuntime
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
+from olmax.utils import bytes_to_mib
 
 
 def main(
@@ -34,6 +35,7 @@ def main(
     attn_window_size: int | tuple[int, int] | None = None,
     attn_implementation: Literal["xla", "cudnn"] | None = None,
     show_model: bool = False,
+    running_avg_tps_count: int = 10,
 ) -> tuple[float, int]:
     gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
 
@@ -173,21 +175,29 @@ def main(
         loss_float = loss.item()
         final_loss = loss_float
         metrics = {"loss": f"{loss_float:.4f}"}
+
         batch_end = time.monotonic()
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
-        batch_start = batch_end
+
+        if step + 1 % 5 == 0:
+            peak_bytes_in_use, peak_bytes_reserved = get_peak_local_device_memory_usage()
+            metrics["Peak mem used (MiB)"] = str(int(bytes_to_mib(peak_bytes_in_use)))
+            metrics["Peak mem reserved (MiB)"] = str(int(bytes_to_mib(peak_bytes_reserved)))
+
         if step > 2:
             running_avg_tps.append(tps)
-        if len(running_avg_tps) > 10:
+        if len(running_avg_tps) > running_avg_tps_count:
             running_avg_tps.popleft()
-        if len(running_avg_tps) > 2:
+        if len(running_avg_tps) >= running_avg_tps_count:
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
+
         print(
             f"[step {step + 1:03d}]",
             ", ".join(f"{name}={value}" for name, value in metrics.items()),
         )
+        batch_start = batch_end
 
     print(f"Done. Best throughput = {int(running_avg_tps_best):,d} TPS")
     return final_loss, int(running_avg_tps_best)
