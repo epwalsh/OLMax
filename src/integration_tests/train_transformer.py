@@ -36,7 +36,7 @@ def main(
     attn_implementation: Literal["xla", "cudnn"] | None = None,
     show_model: bool = False,
     running_avg_tps_count: int = 10,
-) -> tuple[float, int]:
+) -> tuple[float, int, int]:
     gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
 
     if recipe == "271M":
@@ -181,8 +181,8 @@ def main(
         metrics["TPS"] = f"{int(tps):,d}"
 
         if (step + 1) % 5 == 0:
-            peak_bytes_in_use = get_peak_local_device_memory_usage()
-            metrics["Peak mem usage"] = f"{int(bytes_to_mib(peak_bytes_in_use)):,d}MiB"
+            peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+            metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
 
         if step > 2:
             running_avg_tps.append(tps)
@@ -194,12 +194,16 @@ def main(
 
         print(
             f"[step {step + 1:03d}]",
-            ", ".join(f"{name}={value}" for name, value in metrics.items()),
+            ", ".join(f"{name} = {value}" for name, value in metrics.items()),
         )
         batch_start = batch_end
 
-    print(f"Done. Best throughput = {int(running_avg_tps_best):,d} TPS")
-    return final_loss, int(running_avg_tps_best)
+    peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+    print(
+        f"Done.\n❯ Best throughput = {int(running_avg_tps_best):,d} TPS"
+        f"\n❯ Peak mem usage = {peak_mib_in_use:,d} MiB"
+    )
+    return final_loss, int(running_avg_tps_best), peak_mib_in_use
 
 
 if __name__ == "__main__":
@@ -280,7 +284,7 @@ if __name__ == "__main__":
         )
 
     try:
-        final_loss, final_tps = main(
+        final_loss, final_tps, peak_mem = main(
             opts.recipe,
             beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
@@ -290,7 +294,7 @@ if __name__ == "__main__":
         )
         if beaker_runtime is not None:
             beaker_runtime.set_description(
-                f"JAX/OLMaX run: loss = {final_loss:.4f}, TPS = {final_tps:,d}"
+                f"JAX/OLMaX run: loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem}"
             )
     finally:
         if dist.is_distributed():

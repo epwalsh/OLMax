@@ -137,10 +137,9 @@ class BeakerRuntime:
             #  set_env_var("NCCL_P2P_NET_CHUNKSIZE", "131072")
             pass
         elif "jupiter" in self.node.hostname:
-            set_env_var("NCCL_IB_HCA", "^=mlx5_bond_0")
-            if multi_node:
-                # Only for multi-node
-                set_env_var("NCCL_SOCKET_IFNAME", "ib")
+            #  set_env_var("NCCL_IB_HCA", "^=mlx5_bond_0")
+            #  set_env_var("NCCL_SOCKET_IFNAME", "ib")
+            pass
         elif "pluto" in self.node.hostname:
             set_env_var("NCCL_IB_HCA", "^=mlx5_1,mlx5_2")
         elif "augusta" in self.node.hostname and multi_node:
