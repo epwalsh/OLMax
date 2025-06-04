@@ -9,6 +9,7 @@ from typing import Literal
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 import optax
 
 import olmax.distributed as dist
@@ -129,6 +130,10 @@ def train(
         raise ValueError(mesh_type)
     log.info(f"Build mesh with axes {mesh_resource.get_mesh_axes_repr()}")
 
+    if beaker_runtime is not None:
+        log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
+        beaker_runtime.set_description(f"OLMax {recipe} on {beaker_runtime.cluster_nickname}...")
+
     log.info("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
     if show_model:
@@ -196,6 +201,7 @@ def train(
     log.info("Starting training...")
     gc.collect()
     batch_start = time.monotonic()
+    all_steps_tps: list[float] = []
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
     loss: Array | None = None
@@ -226,6 +232,7 @@ def train(
 
         if step > 2:
             running_avg_tps.append(tps)
+            all_steps_tps.append(tps)
         if len(running_avg_tps) > running_avg_tps_count:
             running_avg_tps.popleft()
         if len(running_avg_tps) >= running_avg_tps_count:
@@ -237,15 +244,32 @@ def train(
         )
         batch_start = batch_end
 
+    gc.collect()
+
+    # Collect final metrics.
     assert loss is not None
     final_loss = loss.item()
     peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+    tps_arr = jnp.array(all_steps_tps)
+    tps_avg = int(tps_arr.mean().item())
+    tps_std = int(tps_arr.std().item())
+
     log.info(
         f"Done.\n"
-        f"❯ Best throughput = {int(running_avg_tps_best):,d} TPS\n"
+        f"❯ Best running avg throughput = {int(running_avg_tps_best):,d} TPS\n"
+        f"❯ Actual avg throughput = {tps_avg:,d}+={tps_std:,d} TPS = ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d})\n"
         f"❯ Peak mem usage = {peak_mib_in_use:,d} MiB\n"
         f"❯ Final loss = {final_loss:.4f}"
     )
+
+    if beaker_runtime is not None:
+        beaker_runtime.set_description(
+            f"OLMax {recipe} on {beaker_runtime.cluster_nickname}: "
+            f"loss = {final_loss:.4f}, "
+            f"running best TPS = {int(running_avg_tps_best):,d}, "
+            f"mem usage (MiB) = {peak_mib_in_use:,d}"
+        )
+
     return final_loss, int(running_avg_tps_best), peak_mib_in_use
 
 
@@ -290,12 +314,6 @@ def main():
     )
 
     opts = parser.parse_args()
-
-    if beaker_runtime is not None:
-        log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
-        beaker_runtime.set_description(
-            f"OLMax {opts.recipe} on {beaker_runtime.cluster_nickname}..."
-        )
 
     all_gather_combine_threshold_mib: float
     reduce_scatter_combine_threshold_mib: float
@@ -346,7 +364,7 @@ def main():
         )
 
     try:
-        final_loss, final_tps, peak_mem = train(
+        train(
             opts.recipe,
             beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
@@ -356,11 +374,6 @@ def main():
             show_model=opts.show_model,
             mesh_type=opts.mesh_type,
         )
-        if beaker_runtime is not None:
-            beaker_runtime.set_description(
-                f"OLMax {opts.recipe} on {beaker_runtime.cluster_nickname}: "
-                f"loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem:,d}"
-            )
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()
