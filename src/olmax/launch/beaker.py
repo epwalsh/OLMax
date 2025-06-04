@@ -170,7 +170,7 @@ def main():
         yes=True,
         timeout=-1,
         gpus=opts.gpus_per_node,
-        gpu_types=(opts.gpu_type,),
+        gpu_types=None if not opts.gpu_type else (opts.gpu_type,),
         clusters=opts.cluster,
         hostnames=opts.hostname,
         beaker_image="petew/olmax",
