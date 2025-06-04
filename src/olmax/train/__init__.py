@@ -33,13 +33,13 @@ def prepare_training_environment(
     ]
     if gpu_architecture == "blackwell":
         xla_flags.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
+    set_env_var("XLA_FLAGS", " ".join(xla_flags), override=True)
 
     env_vars = {
         "XLA_PYTHON_CLIENT_MEM_FRACTION": f"{round(xla_mem_frac, 2):.2f}",
         "NCCL_LL128_BUFFSIZE": "-2",
         "NCCL_LL_BUFFSIZE": "-2",
         "NCCL_PROTO": "SIMPLE,LL,LL128",
-        "XLA_FLAGS": " ".join(xla_flags),
     }
 
     if gpu_architecture != "blackwell":
