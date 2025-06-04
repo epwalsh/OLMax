@@ -42,6 +42,10 @@ def prepare_training_environment(
         if gpu_architecture == "blackwell":
             xla_flags_.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
         set_env_var("XLA_FLAGS", " ".join(xla_flags_), override=True)
+    elif xla_flags != "system_default":
+        raise ValueError(
+            f"invalid value for 'xla_flags', expected one of 'recommended', 'system_default', but got '{xla_flags}'"
+        )
 
     set_env_var("XLA_PYTHON_CLIENT_MEM_FRACTION", f"{round(xla_mem_frac, 2):.2f}", override=True)
 
