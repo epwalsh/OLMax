@@ -212,7 +212,7 @@ def main(
 
         log.info(
             f"[step {step + 1:03d}] "
-            ", ".join(f"{name} = {value}" for name, value in metrics.items()),
+            + ", ".join(f"{name} = {value}" for name, value in metrics.items()),
         )
         batch_start = batch_end
 
