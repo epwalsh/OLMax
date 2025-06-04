@@ -237,7 +237,9 @@ def main():
 
     # Hyperparameters.
     parser.add_argument(
-        "--recipe", choices=["271M", "7B", "gemma2_27B", "gemma3_27B"], default="271M"
+        "--recipe",
+        choices=[r.name for r in TransformerRecipeName],
+        default=TransformerRecipeName.llama_like_271M,
     )
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int, default=50_304)
@@ -273,15 +275,18 @@ def main():
     reduce_scatter_combine_threshold_mib: float
     all_reduce_combine_threshold_mib: float
     enabled_pipelined_comms: bool = True
-    if opts.recipe == "271M":
+    if opts.recipe == TransformerRecipeName.llama_like_271M:
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
-    elif opts.recipe == "7B":
+    elif opts.recipe == TransformerRecipeName.llama_like_7B:
         all_gather_combine_threshold_mib = 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 1024
-    elif opts.recipe in ("gemma2_27B", "gemma3_27B"):
+    elif (
+        opts.recipe == TransformerRecipeName.gemma2_like_27B
+        or opts.recipe == TransformerRecipeName.gemma3_like_27B
+    ):
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
