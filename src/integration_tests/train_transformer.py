@@ -19,7 +19,7 @@ from olmax.jax_utils import cast_tree, count_params, get_peak_local_device_memor
 from olmax.launch.beaker import BeakerRuntime
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
-from olmax.utils import bytes_to_mib
+from olmax.utils import bytes_to_mib, prepare_cli_environment
 
 
 def main(
@@ -222,6 +222,8 @@ def main(
 
 
 if __name__ == "__main__":
+    prepare_cli_environment()
+
     beaker_runtime = BeakerRuntime.from_env()
     replica = None if beaker_runtime is None else beaker_runtime.replica
 

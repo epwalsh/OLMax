@@ -8,13 +8,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 from beaker import Beaker, BeakerGpuType
-from beaker.exceptions import BeakerError
 from gantry.api import launch_experiment
-from gantry.exceptions import GantryError
-from rich.console import Console
-from rich.traceback import Traceback
 
-from ..utils import set_env_var
+from ..utils import prepare_cli_environment, set_env_var
 
 B200_CLUSTERS = {""}
 
@@ -217,26 +213,8 @@ def _parse_args():
     return opts, tuple(command)
 
 
-def _print_stderr(*args, **kwargs):
-    Console(stderr=True).print(*args, **kwargs)
-
-
-def _excepthook(exctype, value, tb):
-    """
-    Used to patch ``sys.excepthook`` in order to customize handling of uncaught exceptions.
-    """
-    # Ignore in-house error types because we don't need a traceback for those.
-    if issubclass(exctype, (GantryError, BeakerError)):
-        _print_stderr(f"[red][bold]{exctype.__name__}:[/] [i]{value}[/][/]")
-    # For interruptions, call the original exception handler.
-    elif issubclass(exctype, KeyboardInterrupt):
-        sys.__excepthook__(exctype, value, tb)
-    else:
-        _print_stderr(Traceback.from_exception(exctype, value, tb))
-
-
 def main():
-    sys.excepthook = _excepthook
+    prepare_cli_environment()
     opts, command = _parse_args()
     is_multi_node = opts.nodes > 1
     launch_experiment(
