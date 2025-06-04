@@ -37,7 +37,7 @@ def prepare_training_environment(
             f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
             #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
             #  "--xla_gpu_enable_command_buffer=",
-            #  "--xla_gpu_enable_triton_gemm=false",
+            "--xla_gpu_enable_triton_gemm=false",
         ]
         if gpu_architecture == "blackwell":
             xla_flags_.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
