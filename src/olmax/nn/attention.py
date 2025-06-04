@@ -36,6 +36,7 @@ class MultiheadSelfAttentionConfig:
         head_dim: int | None = None,
         rope: RotaryPositionalEmbeddingConfig | None = None,
         qk_norm: LayerNormConfig | None = None,
+        qk_norm_headwise: bool | None = None,
         n_kv_heads: int | None = None,
         bias: bool | None = None,
         window_size: int | tuple[int, int] | None = None,
@@ -51,6 +52,9 @@ class MultiheadSelfAttentionConfig:
             head_dim=head_dim if head_dim is not None else self.head_dim,
             rope=rope if rope is not None else self.rope,
             qk_norm=qk_norm if qk_norm is not None else self.qk_norm,
+            qk_norm_headwise=qk_norm_headwise
+            if qk_norm_headwise is not None
+            else self.qk_norm_headwise,
             bias=bias if bias is not None else self.bias,
             window_size=window_size if window_size is not None else self.window_size,
             dtype=dtype if dtype is not None else self.dtype,
