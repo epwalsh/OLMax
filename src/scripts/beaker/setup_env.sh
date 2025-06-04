@@ -3,8 +3,10 @@
 set -x
 
 if [[ -d "/var/lib/tcpxo/lib64" ]]; then
+    echo "Configuring NCCL for GPUDirect-TCPXO..."
     export NCCL_LIB_DIR="/var/lib/tcpxo/lib64"
     export LD_LIBRARY_PATH="/var/lib/tcpxo/lib64:$LD_LIBRARY_PATH"
+    source /var/lib/tcpxo/lib64/nccl-env-profile.sh
 fi
 
 pip install -e ".[all]"
