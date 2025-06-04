@@ -175,7 +175,7 @@ def main(
     batch_start = time.monotonic()
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
-    final_loss: float = float("inf")
+    loss: Array | None = None
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
@@ -190,17 +190,16 @@ def main(
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
         # Log progress.
-        loss_float = loss.item()
-        final_loss = loss_float
-        metrics = {"loss": f"{loss_float:.4f}"}
-
-        batch_end = time.monotonic()
-        tps = batch_size_per_device / (batch_end - batch_start)
-        metrics["TPS"] = f"{int(tps):,d}"
+        metrics: dict[str, str] = {}
 
         if (step + 1) % 5 == 0:
             peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
             metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
+            metrics["loss"] = f"{loss.item():.4f}"
+
+        batch_end = time.monotonic()
+        tps = batch_size_per_device / (batch_end - batch_start)
+        metrics["TPS"] = f"{int(tps):,d}"
 
         if step > 2:
             running_avg_tps.append(tps)
@@ -209,7 +208,6 @@ def main(
         if len(running_avg_tps) >= running_avg_tps_count:
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
-
         log.info(
             f"[step {step + 1:03d}] "
             + ", ".join(f"{name} = {value}" for name, value in metrics.items()),
@@ -221,7 +219,8 @@ def main(
         f"Done.\n❯ Best throughput = {int(running_avg_tps_best):,d} TPS"
         f"\n❯ Peak mem usage = {peak_mib_in_use:,d} MiB"
     )
-    return final_loss, int(running_avg_tps_best), peak_mib_in_use
+    assert loss is not None
+    return loss.item(), int(running_avg_tps_best), peak_mib_in_use
 
 
 if __name__ == "__main__":

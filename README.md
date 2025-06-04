@@ -20,7 +20,6 @@ Results:
 - [11,537 TPS/GPU](https://beaker.org/ex/01JWXR4M5KFH578WFGYNZQDX17) on 2 Jupiter H100 nodes
 - [10,653 TPS/GPU](https://beaker.org/ex/01JWXWWW70E9A9AD6EX8MW85S8) on 2 Augusta H100 nodes
 
-
 ### Gemma2 27B
 
 Setup:
@@ -36,4 +35,4 @@ python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integratio
 ```
 
 Results:
-- [4,700 TPS/GPU](https://beaker.org/ex/01JWW3NKVGXZKSB0DA6H1NJ4R5) on 2 Titan B200 nodes
+- [4,717 TPS/GPU](https://beaker.org/ex/01JWW3NKVGXZKSB0DA6H1NJ4R5) on 2 Titan B200 nodes
