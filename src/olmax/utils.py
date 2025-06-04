@@ -34,7 +34,7 @@ def setup_logging(force: bool = False) -> None:
     ):
         handler = logging.StreamHandler(sys.stdout)
         formatter = logging.Formatter(
-            "%(asctime)s\t%(hostname)s:%(local_rank)s\t%(name)s:%(lineno)s\t%(levelname)s\t%(message)s"
+            "%(asctime)s\t%(name)s:%(lineno)s\t%(levelname)s\t%(message)s"
         )
         formatter.default_time_format = "%Y-%m-%d %H:%M:%S"
         formatter.default_msec_format = "%s.%03d"
@@ -194,5 +194,5 @@ class _RichHandler(logging.Handler):
 
     def get_location_text(self, record: logging.LogRecord) -> Text:
         name_and_line = f"{record.name}:{record.lineno}" if record.name != "root" else "root"
-        text = f"[{name_and_line}, rank={record.local_rank}]"  # type: ignore
+        text = f"[{name_and_line}]"  # type: ignore
         return Text(text, style="log.path")
