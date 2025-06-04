@@ -40,6 +40,7 @@ def setup_logging(force: bool = False) -> None:
         formatter.default_msec_format = "%s.%03d"
         handler.setFormatter(formatter)
     else:
+        rich.reconfigure(width=max(rich.get_console().width, 180), soft_wrap=True)
         handler = _RichHandler()
 
     logging.basicConfig(handlers=[handler], level=logging.INFO, force=True)
