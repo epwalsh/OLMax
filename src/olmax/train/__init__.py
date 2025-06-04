@@ -46,7 +46,7 @@ def prepare_training_environment(
         env_vars["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
 
     for name, value in env_vars.items():
-        set_env_var(name, value)
+        set_env_var(name, value, override=True)
 
     import jax
 
