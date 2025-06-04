@@ -274,6 +274,7 @@ if __name__ == "__main__":
     all_gather_combine_threshold_mib: float
     reduce_scatter_combine_threshold_mib: float
     all_reduce_combine_threshold_mib: float
+    enabled_pipelined_comms: bool = True
     if opts.recipe == "271M":
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
@@ -286,6 +287,7 @@ if __name__ == "__main__":
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
+        enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
 
@@ -296,6 +298,7 @@ if __name__ == "__main__":
         all_gather_combine_threshold_mib=all_gather_combine_threshold_mib,
         reduce_scatter_combine_threshold_mib=reduce_scatter_combine_threshold_mib,
         all_reduce_combine_threshold_mib=all_reduce_combine_threshold_mib,
+        enabled_pipelined_comms=enabled_pipelined_comms,
         gpu_architecture=None if beaker_runtime is None else beaker_runtime.node.gpu_architecture,
     )
 

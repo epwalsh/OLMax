@@ -8,11 +8,13 @@ log = logging.getLogger(__name__)
 
 
 def prepare_training_environment(
+    *,
     xla_mem_frac: float = 0.95,
     xla_flags: Literal["recommended", "system_default"] = "recommended",
     all_gather_combine_threshold_mib: float = 256,
     reduce_scatter_combine_threshold_mib: float = 128,
     all_reduce_combine_threshold_mib: float = 256,
+    enabled_pipelined_comms: bool = True,
     disable_jit: bool = False,
     disable_remat: bool = False,
     gpu_architecture: Literal["hopper", "blackwell", "ampere"] | None = None,
@@ -27,9 +29,9 @@ def prepare_training_environment(
         xla_flags_ = [
             "--xla_gpu_enable_latency_hiding_scheduler=true",
             #  "--xla_gpu_enable_while_loop_double_buffering=true",
-            #  "--xla_gpu_enable_pipelined_all_gather=true",
-            #  "--xla_gpu_enable_pipelined_reduce_scatter=true",
-            #  "--xla_gpu_enable_pipelined_all_reduce=true",
+            f"--xla_gpu_enable_pipelined_all_gather={str(enabled_pipelined_comms).lower()}",
+            f"--xla_gpu_enable_pipelined_reduce_scatter={str(enabled_pipelined_comms).lower()}",
+            f"--xla_gpu_enable_pipelined_all_reduce={str(enabled_pipelined_comms).lower()}",
             "--xla_gpu_enable_all_gather_combine_by_dim=false",
             "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
             f"--xla_gpu_all_gather_combine_threshold_bytes={mib_to_bytes(all_gather_combine_threshold_mib)}",
