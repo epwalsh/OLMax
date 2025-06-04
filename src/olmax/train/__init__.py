@@ -28,7 +28,6 @@ def prepare_training_environment(
     if xla_flags == "recommended":
         xla_flags_ = [
             "--xla_gpu_enable_latency_hiding_scheduler=true",
-            #  "--xla_gpu_enable_while_loop_double_buffering=true",
             f"--xla_gpu_enable_pipelined_all_gather={str(enabled_pipelined_comms).lower()}",
             f"--xla_gpu_enable_pipelined_reduce_scatter={str(enabled_pipelined_comms).lower()}",
             f"--xla_gpu_enable_pipelined_all_reduce={str(enabled_pipelined_comms).lower()}",
@@ -37,12 +36,13 @@ def prepare_training_environment(
             f"--xla_gpu_all_gather_combine_threshold_bytes={mib_to_bytes(all_gather_combine_threshold_mib)}",
             f"--xla_gpu_reduce_scatter_combine_threshold_bytes={mib_to_bytes(reduce_scatter_combine_threshold_mib)}",
             f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
+            #  "--xla_gpu_enable_while_loop_double_buffering=true",
             #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
             #  "--xla_gpu_enable_command_buffer=",
             #  "--xla_gpu_enable_triton_gemm=false",
         ]
-        if gpu_architecture == "blackwell":
-            xla_flags_.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
+        #  if gpu_architecture == "blackwell":
+        #      xla_flags_.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
         set_env_var("XLA_FLAGS", " ".join(xla_flags_), override=True)
     elif xla_flags != "system_default":
         raise ValueError(
