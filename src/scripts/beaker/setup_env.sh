@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -x
-
 if [[ -d "/var/lib/tcpxo/lib64" ]]; then
     echo "Configuring NCCL for GPUDirect-TCPXO..."
     export NCCL_LIB_DIR="/var/lib/tcpxo/lib64"
