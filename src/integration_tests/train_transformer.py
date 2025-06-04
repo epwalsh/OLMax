@@ -198,7 +198,7 @@ def train(
 
         if step == 1 and trace_dir is not None:
             jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
-        elif step > 4 and trace_dir is not None:
+        elif step == 4 and trace_dir is not None:
             loss.block_until_ready()
             jax.profiler.stop_trace()
 
