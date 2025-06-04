@@ -246,6 +246,9 @@ if __name__ == "__main__":
     # Performance.
     parser.add_argument("--no-remat", action="store_true")
     parser.add_argument("--reduce-scatter-combine-threshold-mib", type=int)
+    parser.add_argument(
+        "--xla-flags", choices=["recommended", "system_default"], default="recommended"
+    )
 
     # Attention settings.
     parser.add_argument("--attn-window-size", type=int)
@@ -268,39 +271,33 @@ if __name__ == "__main__":
             f"OLMaX {opts.recipe} on {beaker_runtime.cluster_nickname}..."
         )
 
+    all_gather_combine_threshold_mib: float
+    reduce_scatter_combine_threshold_mib: float
+    all_reduce_combine_threshold_mib: float
     if opts.recipe == "271M":
-        prepare_training_environment(
-            disable_jit=opts.no_jit,
-            disable_remat=opts.no_remat,
-            reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
-            gpu_architecture=None
-            if beaker_runtime is None
-            else beaker_runtime.node.gpu_architecture,
-        )
+        all_gather_combine_threshold_mib = 256
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = 256
     elif opts.recipe == "7B":
-        prepare_training_environment(
-            disable_jit=opts.no_jit,
-            disable_remat=opts.no_remat,
-            all_gather_combine_threshold_mib=1024,
-            reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
-            all_reduce_combine_threshold_mib=1024,
-            gpu_architecture=None
-            if beaker_runtime is None
-            else beaker_runtime.node.gpu_architecture,
-        )
+        all_gather_combine_threshold_mib = 1024
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = 1024
     elif opts.recipe == "gemma2_27B":
-        prepare_training_environment(
-            disable_jit=opts.no_jit,
-            disable_remat=opts.no_remat,
-            all_gather_combine_threshold_mib=1024,
-            reduce_scatter_combine_threshold_mib=opts.reduce_scatter_combine_threshold_mib or 128,
-            all_reduce_combine_threshold_mib=1024,
-            gpu_architecture=None
-            if beaker_runtime is None
-            else beaker_runtime.node.gpu_architecture,
-        )
+        all_gather_combine_threshold_mib = 1024
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = 1024
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
+
+    prepare_training_environment(
+        disable_jit=opts.no_jit,
+        disable_remat=opts.no_remat,
+        xla_flags=opts.xla_flags,
+        all_gather_combine_threshold_mib=all_gather_combine_threshold_mib,
+        reduce_scatter_combine_threshold_mib=reduce_scatter_combine_threshold_mib,
+        all_reduce_combine_threshold_mib=all_reduce_combine_threshold_mib,
+        gpu_architecture=None if beaker_runtime is None else beaker_runtime.node.gpu_architecture,
+    )
 
     if opts.nproc > 1:
         if opts.coordinator_address is None:

@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 
 def prepare_training_environment(
     xla_mem_frac: float = 0.95,
+    xla_flags: Literal["recommended", "system_default"] = "recommended",
     all_gather_combine_threshold_mib: float = 256,
     reduce_scatter_combine_threshold_mib: float = 128,
     all_reduce_combine_threshold_mib: float = 256,
@@ -19,30 +20,35 @@ def prepare_training_environment(
     assert 0 <= xla_mem_frac <= 1.0
 
     # See:
-    #  - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
-    #  - https://docs.jax.dev/en/latest/gpu_performance_tips.html
-    xla_flags = [
-        "--xla_gpu_enable_triton_gemm=false",
-        "--xla_gpu_enable_latency_hiding_scheduler=true",
-        "--xla_gpu_enable_while_loop_double_buffering=true",
-        "--xla_gpu_enable_pipelined_all_gather=true",
-        "--xla_gpu_enable_pipelined_reduce_scatter=true",
-        "--xla_gpu_enable_pipelined_all_reduce=true",
-        "--xla_gpu_enable_all_gather_combine_by_dim=false",
-        "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
-        f"--xla_gpu_all_gather_combine_threshold_bytes={mib_to_bytes(all_gather_combine_threshold_mib)}",
-        f"--xla_gpu_reduce_scatter_combine_threshold_bytes={mib_to_bytes(reduce_scatter_combine_threshold_mib)}",
-        f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
-        #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
-        #  "--xla_gpu_enable_command_buffer=",
-    ]
-    if gpu_architecture == "blackwell":
-        xla_flags.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
-    set_env_var("XLA_FLAGS", " ".join(xla_flags), override=True)
+    # - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
+    # - https://docs.jax.dev/en/latest/gpu_performance_tips.html
+
+    if xla_flags == "recommended":
+        xla_flags_ = [
+            "--xla_gpu_enable_latency_hiding_scheduler=true",
+            "--xla_gpu_enable_while_loop_double_buffering=true",
+            "--xla_gpu_enable_pipelined_all_gather=true",
+            "--xla_gpu_enable_pipelined_reduce_scatter=true",
+            "--xla_gpu_enable_pipelined_all_reduce=true",
+            "--xla_gpu_enable_all_gather_combine_by_dim=false",
+            "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
+            f"--xla_gpu_all_gather_combine_threshold_bytes={mib_to_bytes(all_gather_combine_threshold_mib)}",
+            f"--xla_gpu_reduce_scatter_combine_threshold_bytes={mib_to_bytes(reduce_scatter_combine_threshold_mib)}",
+            f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
+            #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
+            #  "--xla_gpu_enable_command_buffer=",
+            #  "--xla_gpu_enable_triton_gemm=false",
+        ]
+        if gpu_architecture == "blackwell":
+            xla_flags_.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
+        set_env_var("XLA_FLAGS", " ".join(xla_flags_), override=True)
+
     set_env_var("XLA_PYTHON_CLIENT_MEM_FRACTION", f"{round(xla_mem_frac, 2):.2f}", override=True)
+
     set_env_var("NCCL_LL128_BUFFSIZE", "-2")
     set_env_var("NCCL_LL_BUFFSIZE", "-2")
     set_env_var("NCCL_PROTO", "SIMPLE,LL,LL128")
+
     if gpu_architecture != "blackwell":
         set_env_var("CUDA_DEVICE_MAX_CONNECTIONS", "1")
 
@@ -56,7 +62,10 @@ def prepare_training_environment(
 
     all_xla_env_vars = []
     for name, value in os.environ.items():
-        if name.startswith("XLA_"):
+        if name == "XLA_FLAGS":
+            for flag in value.split(" "):
+                all_xla_env_vars.append(flag.replace("--", "", 1))
+        elif name.startswith("XLA_"):
             all_xla_env_vars.append(f"{name}={value}")
     log.info("XLA environment:\n- " + "\n- ".join(all_xla_env_vars))
 
