@@ -41,17 +41,11 @@ def train(
     show_model: bool = False,
     running_avg_tps_count: int = 10,
     mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
-    trace: bool = False,
     trace_dir: str | None = None,
 ) -> tuple[float, int, int]:
     recipe = recipe_name.get_recipe()
     beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
     gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
-    if trace and trace_dir is None:
-        if beaker_runtime is not None:
-            trace_dir = beaker_runtime.workload.result_dataset_path
-        else:
-            raise ValueError("--trace-dir is required!")
 
     if vocab_size is None:
         vocab_size = recipe.default_vocab_size
@@ -294,6 +288,13 @@ def main():
 
     opts = parser.parse_args()
 
+    trace_dir = opts.trace_dir
+    if opts.trace and opts.trace_dir is None:
+        if beaker_runtime is not None:
+            trace_dir = beaker_runtime.workload.result_dataset_path
+        else:
+            raise ValueError("--trace-dir is required!")
+
     all_gather_combine_threshold_mib: float
     reduce_scatter_combine_threshold_mib: float
     all_reduce_combine_threshold_mib: float
@@ -358,8 +359,7 @@ def main():
             attn_implementation=opts.attn,
             show_model=opts.show_model,
             mesh_type=opts.mesh_type,
-            trace=opts.trace,
-            trace_dir=opts.trace_dir,
+            trace_dir=trace_dir,
         )
     finally:
         if dist.is_distributed():
