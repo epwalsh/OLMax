@@ -25,7 +25,7 @@ from olmax.utils import bytes_to_mib, prepare_cli_environment
 log = logging.getLogger("main")
 
 
-def main(
+def train(
     recipe: str,
     beaker_runtime: BeakerRuntime | None = None,
     sequence_length: int | None = None,
@@ -72,7 +72,7 @@ def main(
                 instances_per_device *= 4
         if learning_rate is None:
             learning_rate = 1e-4
-    elif opts.recipe == "gemma2_27B":
+    elif recipe == "gemma2_27B":
         model_config = recipes.gemma2_like_27B(
             vocab_size,
             param_dtype=param_dtype,
@@ -226,7 +226,7 @@ def main(
     return final_loss, int(running_avg_tps_best), peak_mib_in_use
 
 
-if __name__ == "__main__":
+def main():
     prepare_cli_environment()
 
     beaker_runtime = BeakerRuntime.from_env()
@@ -320,7 +320,7 @@ if __name__ == "__main__":
         )
 
     try:
-        final_loss, final_tps, peak_mem = main(
+        final_loss, final_tps, peak_mem = train(
             opts.recipe,
             beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
@@ -337,3 +337,7 @@ if __name__ == "__main__":
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()
+
+
+if __name__ == "__main__":
+    main()
