@@ -10,7 +10,7 @@ from rich.highlighter import NullHighlighter
 from rich.text import Text
 from rich.traceback import Traceback
 
-from .exceptions import OLMaXError
+from .exceptions import OLMaxError
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def _excepthook(exctype, value, tb):
     """
     Used to patch ``sys.excepthook`` in order to customize handling of uncaught exceptions.
     """
-    in_house_error_types: list[Type[Exception]] = [OLMaXError]
+    in_house_error_types: list[Type[Exception]] = [OLMaxError]
     try:
         from gantry.exceptions import GantryError
 
