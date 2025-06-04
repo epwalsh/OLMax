@@ -42,7 +42,7 @@ python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integratio
 - Optimizer data type: `FP32`
 
 **Results:**
-- [??? TPS/GPU]() on 2 Titan B200 nodes with full FSDP
+- [4,221 TPS/GPU](https://beaker.org/ex/01JWYJFCJSEGX7TXD2JGVH2W4A) on 2 Titan B200 nodes with full FSDP
 
 **Example launch command:**
 ```fish
