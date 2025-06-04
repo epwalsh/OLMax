@@ -17,8 +17,8 @@ python -m olmax.launch.beaker --allow-dirty --nodes=2 --gpu-type=h100 -- python 
 ```
 
 Results:
-- [11,537 TPS/GPU](https://beaker.org/ex/01JWXR4M5KFH578WFGYNZQDX17) on 2 Jupiter H100 nodes
-- [10,653 TPS/GPU](https://beaker.org/ex/01JWXWWW70E9A9AD6EX8MW85S8) on 2 Augusta H100 nodes
+- [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes
+- [10,909 TPS/GPU](https://beaker.org/ex/01JWY0GKCNJM8C32WZ7H7MGM93) on 2 Augusta H100 nodes
 
 ### Gemma2 27B
 

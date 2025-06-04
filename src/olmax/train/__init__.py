@@ -1,6 +1,10 @@
+import logging
+import os
 from typing import Literal
 
 from ..utils import mib_to_bytes, set_env_var
+
+log = logging.getLogger()
 
 
 def prepare_training_environment(
@@ -48,3 +52,9 @@ def prepare_training_environment(
 
     if disable_remat:
         jax.config.update("jax_compiler_enable_remat_pass", False)
+
+    all_nccl_env_vars = []
+    for name, value in os.environ.items():
+        if name.startswith("NCCL_"):
+            all_nccl_env_vars.append(f"{name}={value}")
+    log.info("NCCL environment:\n- " + "\n- ".join(all_nccl_env_vars))
