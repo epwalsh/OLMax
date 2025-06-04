@@ -35,4 +35,4 @@ python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integratio
 ```
 
 Results:
-- [4,717 TPS/GPU](https://beaker.org/ex/01JWW3NKVGXZKSB0DA6H1NJ4R5) on 2 Titan B200 nodes
+- [4,731 TPS/GPU](https://beaker.org/ex/01JWY2W7TGN20NE6MB1RGQEP7S) on 2 Titan B200 nodes

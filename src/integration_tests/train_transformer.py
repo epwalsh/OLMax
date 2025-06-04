@@ -283,9 +283,9 @@ if __name__ == "__main__":
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 1024
     elif opts.recipe == "gemma2_27B":
-        all_gather_combine_threshold_mib = 1024
+        all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = 1024
+        all_reduce_combine_threshold_mib = 256
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
 

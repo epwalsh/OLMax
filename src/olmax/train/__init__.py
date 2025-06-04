@@ -63,7 +63,7 @@ def prepare_training_environment(
     all_xla_env_vars = []
     for name, value in os.environ.items():
         if name == "XLA_FLAGS":
-            for flag in value.split(" "):
+            for flag in value.strip().split(" "):
                 all_xla_env_vars.append(flag.replace("--", "", 1))
         elif name.startswith("XLA_"):
             all_xla_env_vars.append(f"{name}={value}")
