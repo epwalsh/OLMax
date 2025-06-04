@@ -11,7 +11,7 @@
 
 **Results:**
 - [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes with full FSDP
-- [10,909 TPS/GPU](https://beaker.org/ex/01JWY0GKCNJM8C32WZ7H7MGM93) on 2 Augusta H100 nodes with full FSDP
+- [10,924 TPS/GPU](https://beaker.org/ex/01JWYHDW51H9R9H1Z0X3AZZW9D) on 2 Augusta H100 nodes with full FSDP
 - [12,157 TPS/GPU](https://beaker.org/ex/01JWY6Q9PRD5QZ8176K2FS8QP0) on 1 Augusta H100 node with full FSDP
 
 **Example launch command:**

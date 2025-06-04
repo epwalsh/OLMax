@@ -85,7 +85,6 @@ def train(
     log.info(f"Build mesh with axes {mesh_resource.get_mesh_axes_repr()}")
 
     if beaker_runtime is not None:
-        log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
         beaker_runtime.set_description(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}..."
         )
@@ -295,6 +294,9 @@ def main():
         enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
+
+    if beaker_runtime is not None:
+        log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
 
     prepare_training_environment(
         disable_jit=opts.no_jit,
