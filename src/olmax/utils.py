@@ -108,8 +108,9 @@ def prepare_cli_environment():
 def set_env_var(name: str, value: str, override: bool = False, secret: bool = False):
     value_str = "****" if secret else value
     if name in os.environ:
-        if override and os.environ[name] != value:
-            msg = f"Overriding env var '{name}' to '{value_str}'"
+        if override and (old_value := os.environ[name]) != value:
+            old_value_str = "****" if secret else old_value
+            msg = f"Overriding env var '{name}' from '{old_value_str}' to '{value_str}'"
             if logging_configured():
                 log.warning(msg)
             else:

@@ -53,6 +53,18 @@ def prepare_training_environment(
     if disable_remat:
         jax.config.update("jax_compiler_enable_remat_pass", False)
 
+    all_xla_env_vars = []
+    for name, value in os.environ.items():
+        if name.startswith("XLA_"):
+            all_xla_env_vars.append(f"{name}={value}")
+    log.info("XLA environment:\n- " + "\n- ".join(all_xla_env_vars))
+
+    all_cuda_env_vars = []
+    for name, value in os.environ.items():
+        if name.startswith("CUDA_"):
+            all_cuda_env_vars.append(f"{name}={value}")
+    log.info("CUDA environment:\n- " + "\n- ".join(all_cuda_env_vars))
+
     all_nccl_env_vars = []
     for name, value in os.environ.items():
         if name.startswith("NCCL_"):
