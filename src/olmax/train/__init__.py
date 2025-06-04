@@ -34,19 +34,12 @@ def prepare_training_environment(
     if gpu_architecture == "blackwell":
         xla_flags.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
     set_env_var("XLA_FLAGS", " ".join(xla_flags), override=True)
-
-    env_vars = {
-        "XLA_PYTHON_CLIENT_MEM_FRACTION": f"{round(xla_mem_frac, 2):.2f}",
-        "NCCL_LL128_BUFFSIZE": "-2",
-        "NCCL_LL_BUFFSIZE": "-2",
-        "NCCL_PROTO": "SIMPLE,LL,LL128",
-    }
-
+    set_env_var("XLA_PYTHON_CLIENT_MEM_FRACTION", f"{round(xla_mem_frac, 2):.2f}", override=True)
+    set_env_var("NCCL_LL128_BUFFSIZE", "-2")
+    set_env_var("NCCL_LL_BUFFSIZE", "-2")
+    set_env_var("NCCL_PROTO", "SIMPLE,LL,LL128")
     if gpu_architecture != "blackwell":
-        env_vars["CUDA_DEVICE_MAX_CONNECTIONS"] = "1"
-
-    for name, value in env_vars.items():
-        set_env_var(name, value, override=True)
+        set_env_var("CUDA_DEVICE_MAX_CONNECTIONS", "1")
 
     import jax
 
