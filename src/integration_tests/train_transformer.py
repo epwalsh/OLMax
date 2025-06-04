@@ -268,7 +268,7 @@ if __name__ == "__main__":
     if beaker_runtime is not None:
         log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
         beaker_runtime.set_description(
-            f"OLMaX {opts.recipe} on {beaker_runtime.cluster_nickname}..."
+            f"OLMax {opts.recipe} on {beaker_runtime.cluster_nickname}..."
         )
 
     all_gather_combine_threshold_mib: float
@@ -331,7 +331,7 @@ if __name__ == "__main__":
         )
         if beaker_runtime is not None:
             beaker_runtime.set_description(
-                f"OLMaX {opts.recipe} on {beaker_runtime.cluster_nickname}: "
+                f"OLMax {opts.recipe} on {beaker_runtime.cluster_nickname}: "
                 f"loss = {final_loss:.4f}, TPS = {final_tps:,d}, mem usage (MiB) = {peak_mem:,d}"
             )
     finally:

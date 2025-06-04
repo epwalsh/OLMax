@@ -1,2 +1,2 @@
-class OLMaXError(Exception):
+class OLMaxError(Exception):
     pass
