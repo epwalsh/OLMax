@@ -195,12 +195,12 @@ def train(
         if step > 2:
             running_avg_tps.append(tps)
             all_steps_tps.append(tps)
-            if trace_dir is not None:
-                jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
-        elif step > 5:
-            if trace_dir is not None:
-                loss.block_until_ready()
-                jax.profiler.stop_trace()
+
+        if step == 1 and trace_dir is not None:
+            jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
+        elif step > 4 and trace_dir is not None:
+            loss.block_until_ready()
+            jax.profiler.stop_trace()
 
         if len(running_avg_tps) > running_avg_tps_count:
             running_avg_tps.popleft()
