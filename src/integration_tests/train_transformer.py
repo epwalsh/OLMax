@@ -39,6 +39,7 @@ def train(
     attn_implementation: Literal["xla", "cudnn"] | None = None,
     show_model: bool = False,
     running_avg_tps_count: int = 10,
+    mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
 ) -> tuple[float, int, int]:
     gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
 
@@ -104,7 +105,13 @@ def train(
 
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
-    mesh_resource = dist.MeshResource.FSDP()
+
+    if mesh_type == "FSDP":
+        mesh_resource = dist.MeshResource.FSDP()
+    elif mesh_type == "HSDP":
+        mesh_resource = dist.MeshResource.HSDP(8)
+    else:
+        raise ValueError(mesh_type)
 
     log.info("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
@@ -238,6 +245,7 @@ def main():
     parser.add_argument("--recipe", choices=["271M", "7B", "gemma2_27B"], default="271M")
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int, default=50_304)
+    parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
 
     # Debugging.
     parser.add_argument("--show-model", action="store_true")
@@ -328,6 +336,7 @@ def main():
             attn_window_size=opts.attn_window_size,
             attn_implementation=opts.attn,
             show_model=opts.show_model,
+            mesh_type=opts.mesh_type,
         )
         if beaker_runtime is not None:
             beaker_runtime.set_description(
