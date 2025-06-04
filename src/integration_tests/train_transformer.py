@@ -256,10 +256,10 @@ def train(
 
     log.info(
         f"Done.\n"
-        f"❯ Best running avg throughput = {int(running_avg_tps_best):,d} TPS\n"
-        f"❯ Actual avg throughput = {tps_avg:,d}+={tps_std:,d} TPS = ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d})\n"
-        f"❯ Peak mem usage = {peak_mib_in_use:,d} MiB\n"
-        f"❯ Final loss = {final_loss:.4f}"
+        f"❯ Best running avg throughput: {int(running_avg_tps_best):,d} TPS\n"
+        f"❯ Actual avg throughput: {tps_avg:,d} += {tps_std:,d} ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d}) TPS\n"
+        f"❯ Peak mem usage: {peak_mib_in_use:,d} MiB\n"
+        f"❯ Final loss: {final_loss:.4f}"
     )
 
     if beaker_runtime is not None:
