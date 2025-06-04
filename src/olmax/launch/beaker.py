@@ -177,7 +177,7 @@ def main():
         env_vars=["PYTHONUNBUFFERED=1", "NCCL_DEBUG=info", "FORCE_COLOR=1"],
         env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
-        install="./src/scripts/beaker/setup_env.sh",
+        install="pip install -e '.[all]'",
         replicas=opts.nodes if is_multi_node else None,
         leader_selection=is_multi_node,
         host_networking=is_multi_node,
