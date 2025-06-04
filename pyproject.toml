@@ -47,7 +47,7 @@ dev = [
 ]
 beaker = [
     "beaker-py>=2.0,<3.0",
-    "beaker-gantry>=2.5,<3.0",
+    "beaker-gantry>=2.6,<3.0",
 ]
 wandb = [
     "wandb",

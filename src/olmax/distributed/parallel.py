@@ -390,6 +390,13 @@ class MeshResource:
 
         return tuple(axis_shapes), tuple(axis_names), tuple(axis_types)
 
+    def get_mesh_axes_repr(self) -> str:
+        axes = self._get_mesh_axes(dist_utils.get_global_device_count())
+        axes_repr = []
+        for axis_size, axis_name, _ in zip(*axes):
+            axes_repr.append(f"{axis_name} x {axis_size}")
+        return f"({', '.join(axes_repr)})"
+
     def set_mesh(self):
         jax.sharding.set_mesh(self.get_mesh())
 

@@ -112,6 +112,7 @@ def train(
         mesh_resource = dist.MeshResource.HSDP(8)
     else:
         raise ValueError(mesh_type)
+    log.info(f"Build mesh with axes {mesh_resource.get_mesh_axes_repr()}")
 
     log.info("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
