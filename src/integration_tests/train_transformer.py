@@ -262,7 +262,6 @@ if __name__ == "__main__":
 
     if beaker_runtime is not None:
         log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
-        beaker_runtime.set_env_vars()
         beaker_runtime.set_description(
             f"OLMaX {opts.recipe} on {beaker_runtime.cluster_nickname}..."
         )

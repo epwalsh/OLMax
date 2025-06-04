@@ -10,7 +10,7 @@ from typing import Literal
 from beaker import Beaker, BeakerGpuType
 from gantry.api import launch_experiment
 
-from ..utils import prepare_cli_environment, set_env_var
+from ..utils import prepare_cli_environment
 
 B200_CLUSTERS = {""}
 
@@ -136,67 +136,6 @@ class BeakerRuntime:
         with Beaker.from_env() as beaker:
             workload = beaker.workload.get(self.workload.id)
             beaker.workload.update(workload, description=description)
-
-    def set_env_vars(self):
-        multi_node = self.replica is not None and self.replica.count > 1
-
-        if "titan" in self.node.hostname:
-            #  set_env_var("NCCL_P2P_NET_CHUNKSIZE", "131072")
-            pass
-        elif "jupiter" in self.node.hostname:
-            #  set_env_var("NCCL_IB_HCA", "^=mlx5_bond_0")
-            #  set_env_var("NCCL_SOCKET_IFNAME", "ib")
-            pass
-        elif "pluto" in self.node.hostname:
-            set_env_var("NCCL_IB_HCA", "^=mlx5_1,mlx5_2")
-        elif "augusta" in self.node.hostname and multi_node:
-            # See https://beaker-docs.apps.allenai.org/compute/augusta.html#distributed-workloads
-            # NOTE: This path var must be set prior to launching Python, so we do it in the
-            # 'setup_env.sh' script.
-            #  set_env_var(
-            #      "LD_LIBRARY_PATH",
-            #      "/var/lib/tcpxo/lib64:" + os.environ.get("LD_LIBRARY_PATH", ""),
-            #      override=True,
-            #  )
-            set_env_var("NCCL_NET", "FasTrak")  # process will fail if not configured properly
-            set_env_var("NCCL_CROSS_NIC", "0")
-            set_env_var("NCCL_ALGO", "Ring,Tree")
-            set_env_var("NCCL_PROTO", "Simple,LL128")
-
-            set_env_var("NCCL_MIN_NCHANNELS", "4")
-            set_env_var("NCCL_P2P_NET_CHUNKSIZE", "524288")
-            set_env_var("NCCL_P2P_PCI_CHUNKSIZE", "524288")
-            set_env_var("NCCL_P2P_NVL_CHUNKSIZE", "1048576")
-
-            #  set_env_var("NCCL_BUFFSIZE", "8388608")
-            set_env_var("NCCL_NET_GDR_LEVEL", "PIX")
-            set_env_var("NCCL_NVLS_ENABLE", "0")
-            set_env_var("NCCL_USE_SNAP", "1")
-
-            set_env_var("NCCL_TUNER_PLUGIN", "libnccl-tuner.so")
-            set_env_var(
-                "NCCL_TUNER_CONFIG_PATH", "/var/lib/tcpxo/lib64/a3plus_tuner_config_ll128.textproto"
-            )
-            set_env_var(
-                "NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE",
-                "/var/lib/tcpxo/lib64/a3plus_guest_config_ll128.textproto",
-            )
-
-            set_env_var("NCCL_FASTRAK_CTRL_DEV", "enp0s12")
-            set_env_var(
-                "NCCL_FASTRAK_IFNAME",
-                "enp6s0,enp7s0,enp13s0,enp14s0,enp134s0,enp135s0,enp141s0,enp142s0",
-            )
-            set_env_var("NCCL_FASTRAK_USE_LLCM", "1")
-            set_env_var("NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY", "/dev/aperture_devices")
-            set_env_var("NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING", "0")
-            set_env_var("NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS", "600000")
-            set_env_var("NCCL_FASTRAK_NUM_FLOWS", "2")
-            set_env_var("NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL", "0")
-            set_env_var("NCCL_FASTRAK_USE_SNAP", "1")
-
-            set_env_var("NCCL_SOCKET_IFNAME", "enp0s12")
-            set_env_var("NCCL_DEBUG_SUBSYS", "INIT,NET")
 
 
 def _parse_args():
