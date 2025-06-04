@@ -395,7 +395,7 @@ class MeshResource:
         axes_repr = []
         for axis_size, axis_name, _ in zip(*axes):
             axes_repr.append(f"{axis_name} x {axis_size}")
-        return f"({', '.join(axes_repr)})"
+        return f"({', '.join(axes_repr)},)"
 
     def set_mesh(self):
         jax.sharding.set_mesh(self.get_mesh())
