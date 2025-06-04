@@ -86,7 +86,9 @@ def train(
 
     if beaker_runtime is not None:
         log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
-        beaker_runtime.set_description(f"OLMax {recipe} on {beaker_runtime.cluster_nickname}...")
+        beaker_runtime.set_description(
+            f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}..."
+        )
 
     log.info("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
@@ -218,7 +220,7 @@ def train(
 
     if beaker_runtime is not None:
         beaker_runtime.set_description(
-            f"OLMax {recipe} on {beaker_runtime.cluster_nickname}: "
+            f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
             f"loss = {final_loss:.4f}, "
             f"running best TPS = {int(running_avg_tps_best):,d}, "
             f"mem usage (MiB) = {peak_mib_in_use:,d}"
