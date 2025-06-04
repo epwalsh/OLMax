@@ -2,78 +2,105 @@ from __future__ import annotations
 
 import argparse
 import gc
+import logging
 import time
 from collections import deque
 from typing import Literal
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 import optax
 
 import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
-import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree, count_params
+from olmax.jax_utils import cast_tree, count_params, get_peak_local_device_memory_usage
+from olmax.launch.beaker import BeakerRuntime
+from olmax.nn.transformer.recipes import TransformerRecipeName
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
+from olmax.utils import bytes_to_mib, prepare_cli_environment
+
+log = logging.getLogger("main")
 
 
-def main(
-    recipe: str,
+def train(
+    recipe_name: TransformerRecipeName,
+    beaker_runtime: BeakerRuntime | None = None,
     sequence_length: int | None = None,
     instances_per_device: int | None = None,
     vocab_size: int = 50_304,
     param_dtype: DTypeLike = float,
     compute_dtype: DTypeLike = jax.dtypes.bfloat16,
-    learning_rate: float = 1e-3,
+    learning_rate: float | None = None,
     train_steps: int = 100,
     attn_window_size: int | tuple[int, int] | None = None,
     attn_implementation: Literal["xla", "cudnn"] | None = None,
-):
-    if recipe == "271M":
-        model_config = recipes.llama_like_271M(
-            vocab_size,
-            param_dtype=param_dtype,
-            attn_window_size=attn_window_size,
-            attn_implementation=attn_implementation,
-        )
-        if sequence_length is None:
-            sequence_length = 1024
-        if instances_per_device is None:
-            instances_per_device = 16
-    elif recipe == "7B":
-        model_config = recipes.llama_like_7B(
-            vocab_size,
-            param_dtype=param_dtype,
-            attn_window_size=attn_window_size,
-            attn_implementation=attn_implementation,
-        )
-        if sequence_length is None:
-            sequence_length = 4096
-        if instances_per_device is None:
-            instances_per_device = 2
-    else:
-        raise ValueError(recipe)
+    show_model: bool = False,
+    running_avg_tps_count: int = 10,
+    mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
+) -> tuple[float, int, int]:
+    recipe = recipe_name.get_recipe()
+    beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
+    gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
+
+    model_config = recipe.build_config(
+        vocab_size,
+        param_dtype=param_dtype,
+        attn_window_size=attn_window_size,
+        attn_implementation=attn_implementation,
+    )
+    if sequence_length is None:
+        sequence_length = recipe.default_sequence_length
+    if learning_rate is None:
+        learning_rate = recipe.default_learning_rate
+    if instances_per_device is None:
+        batch_size_per_device = recipe.get_mbz_per_device(gpu_type or "A100")
+        assert batch_size_per_device % sequence_length == 0
+        instances_per_device = batch_size_per_device // sequence_length
 
     batch_size_per_device = sequence_length * instances_per_device
+    global_batch_size = batch_size_per_device * dist.get_global_device_count()
+    global_batch_size_instances = instances_per_device * dist.get_global_device_count()
+    log.info(
+        f"Using global batch size of {global_batch_size:,d} tokens, "
+        f"which is {global_batch_size_instances:,d} instances of length {sequence_length:,d}."
+    )
+    log.info(
+        f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
+        f"which is {instances_per_device:,d} instances of length {sequence_length:,d}."
+    )
 
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
-    mesh_resource = dist.MeshResource.FSDP()
 
-    print("Initializing model...")
+    if mesh_type == "FSDP":
+        mesh_resource = dist.MeshResource.FSDP()
+    elif mesh_type == "HSDP":
+        mesh_resource = dist.MeshResource.HSDP(8)
+    else:
+        raise ValueError(mesh_type)
+    log.info(f"Build mesh with axes {mesh_resource.get_mesh_axes_repr()}")
+
+    if beaker_runtime is not None:
+        beaker_runtime.set_description(
+            f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}..."
+        )
+
+    log.info("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
-    print(model)
+    if show_model:
+        print(model)
     num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
-    print(
+    log.info(
         f"Built model with {num_params:,d} total parameters, "
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
-    print("Initializing optimizer...")
+    log.info("Initializing optimizer...")
     optim = optax.adamw(learning_rate)
     opt_state = optim.init(model)  # pyright: ignore
 
@@ -126,22 +153,19 @@ def main(
 
         return loss, model, opt_state
 
-    global_batch_size = batch_size_per_device * dist.get_global_device_count()
-    per_process_batch_size = global_batch_size // dist.get_process_world_size()
-    per_process_batch_size_instances = per_process_batch_size // sequence_length
-
-    print("Starting training...")
+    log.info("Starting training...")
     gc.collect()
     batch_start = time.monotonic()
+    all_steps_tps: list[float] = []
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
+    loss: Array | None = None
     for step, (input_ids, labels) in enumerate(
         generate_batches_of_sequential_tokens(
             data_key,
-            local_data_parallel_rank=dist.get_process_rank(),
             vocab_size=vocab_size,
             sequence_length=sequence_length,
-            num_local_instances=per_process_batch_size_instances,
+            global_batch_size_instances=global_batch_size_instances,
             total_batches=train_steps,
             mesh_resource=mesh_resource,
         )
@@ -150,53 +174,173 @@ def main(
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
         # Log progress.
-        metrics = {"loss": f"{loss:.4f}"}
+        metrics: dict[str, str] = {}
+
+        if (step + 1) % 5 == 0:
+            peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+            metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
+            metrics["loss"] = f"{loss.item():.4f}"
+
         batch_end = time.monotonic()
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
-        batch_start = batch_end
+
         if step > 2:
             running_avg_tps.append(tps)
-        if len(running_avg_tps) > 5:
+            all_steps_tps.append(tps)
+        if len(running_avg_tps) > running_avg_tps_count:
             running_avg_tps.popleft()
-        if len(running_avg_tps) > 2:
+        if len(running_avg_tps) >= running_avg_tps_count:
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
-        print(
-            f"[step {step + 1:03d}]",
-            ", ".join(f"{name}={value}" for name, value in metrics.items()),
+        log.info(
+            f"[step {step + 1:03d}] "
+            + ", ".join(f"{name} = {value}" for name, value in metrics.items()),
+        )
+        batch_start = batch_end
+
+    gc.collect()
+
+    # Collect final metrics.
+    assert loss is not None
+    final_loss = loss.item()
+    peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+    tps_arr = jnp.array(all_steps_tps)
+    tps_avg = int(tps_arr.mean().item())
+    tps_std = int(tps_arr.std().item())
+
+    log.info(
+        f"Done.\n"
+        f"❯ Best running avg throughput: {int(running_avg_tps_best):,d} TPS\n"
+        f"❯ Actual avg throughput: {tps_avg:,d} += {2 * tps_std:,d} ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d}) TPS\n"
+        f"❯ Peak mem usage: {peak_mib_in_use:,d} MiB\n"
+        f"❯ Final loss: {final_loss:.4f}"
+    )
+
+    if beaker_runtime is not None:
+        beaker_runtime.set_description(
+            f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
+            f"loss = {final_loss:.4f}, "
+            f"running best TPS = {int(running_avg_tps_best):,d}, "
+            f"mem usage (MiB) = {peak_mib_in_use:,d}"
         )
 
-    print(f"Done. Best throughput = {int(running_avg_tps_best):,d} TPS")
+    return final_loss, int(running_avg_tps_best), peak_mib_in_use
 
 
-if __name__ == "__main__":
+def main():
+    prepare_cli_environment()
+
+    beaker_runtime = BeakerRuntime.from_env()
+    replica = None if beaker_runtime is None else beaker_runtime.replica
+
     parser = argparse.ArgumentParser("train_transformer")
-    parser.add_argument("--recipe", choices=["271M", "7B"], default="271M")
-    parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--no-jit", action="store_true")
-    parser.add_argument("--no-remat", action="store_true")
+
+    # Hyperparameters.
+    parser.add_argument(
+        "--recipe",
+        choices=[r.name for r in TransformerRecipeName],
+        default=TransformerRecipeName.llama_like_271M,
+    )
     parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--vocab-size", type=int, default=50_304)
+    parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
+
+    # Debugging.
+    parser.add_argument("--show-model", action="store_true")
+    parser.add_argument("--no-jit", action="store_true")
+
+    # Performance.
+    parser.add_argument("--no-remat", action="store_true")
+    parser.add_argument("--reduce-scatter-combine-threshold-mib", type=int)
+    parser.add_argument(
+        "--xla-flags", choices=["recommended", "system_default"], default="recommended"
+    )
+
+    # Attention settings.
     parser.add_argument("--attn-window-size", type=int)
     parser.add_argument("--attn", choices=["xla", "cudnn"])
+
+    # Distributed settings.
+    parser.add_argument("--nproc", type=int, default=1 if replica is None else replica.count)
+    parser.add_argument("--proc-rank", type=int, default=None if replica is None else replica.rank)
+    parser.add_argument(
+        "--coordinator-address",
+        type=str,
+        default=None if replica is None else f"{replica.leader_node.hostname}:29400",
+    )
+
     opts = parser.parse_args()
 
-    if opts.recipe == "271M":
-        prepare_training_environment(disable_jit=opts.no_jit, disable_remat=opts.no_remat)
-    elif opts.recipe == "7B":
-        prepare_training_environment(
-            disable_jit=opts.no_jit,
-            disable_remat=opts.no_remat,
-            all_gather_combine_threshold_mib=1024,
-            reduce_scatter_combine_threshold_mib=128,
-            all_reduce_combine_threshold_mib=1024,
-        )
+    all_gather_combine_threshold_mib: float
+    reduce_scatter_combine_threshold_mib: float
+    all_reduce_combine_threshold_mib: float
+    enabled_pipelined_comms: bool = True
+    if opts.recipe == TransformerRecipeName.llama_like_271M:
+        all_gather_combine_threshold_mib = 256
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = 256
+    elif opts.recipe == TransformerRecipeName.llama_like_7B:
+        all_gather_combine_threshold_mib = 1024
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = 1024
+    elif (
+        opts.recipe == TransformerRecipeName.gemma2_like_27B
+        or opts.recipe == TransformerRecipeName.gemma3_like_27B
+    ):
+        all_gather_combine_threshold_mib = 256
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = 256
+        enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
 
-    main(
-        opts.recipe,
-        instances_per_device=opts.batch_size,
-        attn_window_size=opts.attn_window_size,
-        attn_implementation=opts.attn,
+    if beaker_runtime is not None:
+        log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
+
+    prepare_training_environment(
+        disable_jit=opts.no_jit,
+        disable_remat=opts.no_remat,
+        xla_flags=opts.xla_flags,
+        all_gather_combine_threshold_mib=all_gather_combine_threshold_mib,
+        reduce_scatter_combine_threshold_mib=reduce_scatter_combine_threshold_mib,
+        all_reduce_combine_threshold_mib=all_reduce_combine_threshold_mib,
+        enabled_pipelined_comms=enabled_pipelined_comms,
+        gpu_architecture=None if beaker_runtime is None else beaker_runtime.node.gpu_architecture,
     )
+
+    if opts.nproc > 1:
+        if opts.coordinator_address is None:
+            raise ValueError("--coordinator-address is required for distributed training")
+        if opts.proc_rank is None:
+            raise ValueError("--proc-rank is required for distributed training")
+
+        log.info("Initializing distributed backend...")
+        dist.init_distributed(
+            coordinator_address=opts.coordinator_address,
+            num_processes=opts.nproc,
+            process_id=opts.proc_rank,
+        )
+        log.info(
+            f"Distributed backend initialized with {dist.get_global_device_count():,d} total devices "
+            f"across {dist.get_process_world_size():,d} processes."
+        )
+
+    try:
+        train(
+            TransformerRecipeName(opts.recipe),
+            beaker_runtime=beaker_runtime,
+            instances_per_device=opts.batch_size,
+            vocab_size=opts.vocab_size,
+            attn_window_size=opts.attn_window_size,
+            attn_implementation=opts.attn,
+            show_model=opts.show_model,
+            mesh_type=opts.mesh_type,
+        )
+    finally:
+        if dist.is_distributed():
+            dist.teardown_distributed()
+
+
+if __name__ == "__main__":
+    main()

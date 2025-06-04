@@ -13,3 +13,14 @@ def test_cross_entropy_loss():
         loss1,
         loss2,
     ), f"{loss1} != {loss2}"
+
+
+def test_cross_entropy_loss_and_log_normalizer():
+    inputs = [[-1.24, 0.79], [2.91, -0.23], [0.27, 1.3]]
+    labels = [0, 1, -100]
+
+    expected_loss = F.cross_entropy_loss(jnp.array([inputs]), jnp.array([labels]))
+    loss, z_loss = F.cross_entropy_loss_and_log_normalizer(jnp.array([inputs]), jnp.array([labels]))
+
+    assert allclose(expected_loss, loss)
+    assert (z_loss >= 0).all().item()

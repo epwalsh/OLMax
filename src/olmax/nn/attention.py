@@ -18,8 +18,10 @@ from .rope import RotaryPositionalEmbedding, RotaryPositionalEmbeddingConfig
 class MultiheadSelfAttentionConfig:
     n_heads: int
     n_kv_heads: int | None = None
+    head_dim: int | None = None
     rope: RotaryPositionalEmbeddingConfig | None = None
     qk_norm: LayerNormConfig | None = None
+    qk_norm_headwise: bool = False
     bias: bool = True
     window_size: int | tuple[int, int] | None = None
     implementation: Literal["xla", "cudnn"] | None = None
@@ -31,8 +33,10 @@ class MultiheadSelfAttentionConfig:
         key: PRNGKeyArray,
         *,
         n_heads: int | None = None,
+        head_dim: int | None = None,
         rope: RotaryPositionalEmbeddingConfig | None = None,
         qk_norm: LayerNormConfig | None = None,
+        qk_norm_headwise: bool | None = None,
         n_kv_heads: int | None = None,
         bias: bool | None = None,
         window_size: int | tuple[int, int] | None = None,
@@ -45,8 +49,12 @@ class MultiheadSelfAttentionConfig:
             key=key,
             n_heads=n_heads if n_heads is not None else self.n_heads,
             n_kv_heads=n_kv_heads if n_kv_heads is not None else self.n_kv_heads,
+            head_dim=head_dim if head_dim is not None else self.head_dim,
             rope=rope if rope is not None else self.rope,
             qk_norm=qk_norm if qk_norm is not None else self.qk_norm,
+            qk_norm_headwise=qk_norm_headwise
+            if qk_norm_headwise is not None
+            else self.qk_norm_headwise,
             bias=bias if bias is not None else self.bias,
             window_size=window_size if window_size is not None else self.window_size,
             dtype=dtype if dtype is not None else self.dtype,
@@ -66,6 +74,7 @@ class MultiheadSelfAttention(Module):
     rope: RotaryPositionalEmbedding | None
     q_norm: LayerNorm | None
     k_norm: LayerNorm | None
+    qk_norm_headwise: bool = eqx.field(static=True)
 
     n_heads: int = eqx.field(static=True)
     n_kv_heads: int = eqx.field(static=True)
@@ -81,7 +90,9 @@ class MultiheadSelfAttention(Module):
         key: PRNGKeyArray,
         rope: RotaryPositionalEmbeddingConfig | None = None,
         qk_norm: LayerNormConfig | None = None,
+        qk_norm_headwise: bool = False,
         n_kv_heads: int | None = None,
+        head_dim: int | None = None,
         bias: bool = True,
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike = float,
@@ -91,7 +102,7 @@ class MultiheadSelfAttention(Module):
         super().__init__(mesh_resource)
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads or n_heads
-        self.head_dim = d_model // n_heads
+        self.head_dim = head_dim if head_dim is not None else d_model // n_heads
         self.window_size = window_size
         self.implementation = implementation
 
@@ -100,7 +111,7 @@ class MultiheadSelfAttention(Module):
         )
         self.w_q = Linear(
             d_model,
-            d_model,
+            self.n_heads * self.head_dim,
             w_q_key,
             bias=bias,
             dtype=dtype,
@@ -123,7 +134,7 @@ class MultiheadSelfAttention(Module):
             mesh_resource=mesh_resource,
         )
         self.w_out = Linear(
-            d_model,
+            self.n_heads * self.head_dim,
             d_model,
             w_out_key,
             bias=bias,
@@ -138,13 +149,22 @@ class MultiheadSelfAttention(Module):
         self.q_norm = (
             None
             if qk_norm is None
-            else qk_norm.build(d_model, q_norm_key, mesh_resource=mesh_resource)
+            else qk_norm.build(
+                self.head_dim if qk_norm_headwise else self.n_heads * self.head_dim,
+                q_norm_key,
+                mesh_resource=mesh_resource,
+            )
         )
         self.k_norm = (
             None
             if qk_norm is None
-            else qk_norm.build(d_model, k_norm_key, mesh_resource=mesh_resource)
+            else qk_norm.build(
+                self.head_dim if qk_norm_headwise else self.n_heads * self.head_dim,
+                k_norm_key,
+                mesh_resource=mesh_resource,
+            )
         )
+        self.qk_norm_headwise = qk_norm_headwise
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
     def __call__(self, x: Array) -> Array:
@@ -158,9 +178,9 @@ class MultiheadSelfAttention(Module):
         # shape: (batch_size, seq_len, n_kv_heads * head_dim)
         v = self.w_v(x)
 
-        if self.q_norm is not None:
+        if self.q_norm is not None and not self.qk_norm_headwise:
             q = self.q_norm(q)
-        if self.k_norm is not None:
+        if self.k_norm is not None and not self.qk_norm_headwise:
             k = self.k_norm(k)
 
         # shape: (batch_size, seq_len, n_heads, head_dim)
@@ -169,6 +189,11 @@ class MultiheadSelfAttention(Module):
         k = k.reshape(B, S, self.n_kv_heads, self.head_dim)
         # shape: (batch_size, seq_len, n_kv_heads, head_dim)
         v = v.reshape(B, S, self.n_kv_heads, self.head_dim)
+
+        if self.q_norm is not None and self.qk_norm_headwise:
+            q = self.q_norm(q)
+        if self.k_norm is not None and self.qk_norm_headwise:
+            k = self.k_norm(k)
 
         if self.rope is not None:
             q = self.rope(q, head_first=False)
@@ -184,7 +209,7 @@ class MultiheadSelfAttention(Module):
             implementation=self.implementation,
         )
 
-        # shape: (batch_size, seq_len, d_model)
+        # shape: (batch_size, seq_len, n_heads * head_dim)
         att = att.reshape(B, S, self.n_heads * self.head_dim)
 
         # shape: (batch_size, seq_len, d_model)

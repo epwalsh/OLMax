@@ -95,3 +95,31 @@ def cross_entropy_loss(
         return loss  # pyright: ignore
     else:
         raise ValueError(reduction)
+
+
+@ft.partial(jax.jit, static_argnames=("reduction",))
+def cross_entropy_loss_and_log_normalizer(
+    logits: Array,
+    labels: Array,
+    *,
+    ignore_index: int = -100,
+    reduction: Literal["sum", "mean", "none"] = "mean",
+) -> tuple[Array, Array]:
+    n_classes = logits.shape[-1]
+    labels_one_hot = jax.nn.one_hot(labels, n_classes)
+    where = jnp.expand_dims(labels != ignore_index, -1)
+
+    log_normalizer = jax.nn.logsumexp(logits, -1, where, keepdims=True)
+    log_probs = logits - log_normalizer
+    loss = -(labels_one_hot * log_probs).sum(-1, where=where)
+
+    if reduction == "sum":
+        loss = loss.sum()
+    elif reduction == "mean":
+        loss = loss.mean(where=where.squeeze(-1))
+    elif reduction == "none":
+        pass
+    else:
+        raise ValueError(reduction)
+
+    return loss, log_normalizer * where
