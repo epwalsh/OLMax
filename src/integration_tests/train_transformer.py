@@ -214,13 +214,16 @@ def main(
         )
         batch_start = batch_end
 
+    assert loss is not None
+    final_loss = loss.item()
     peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
     log.info(
-        f"Done.\n❯ Best throughput = {int(running_avg_tps_best):,d} TPS"
-        f"\n❯ Peak mem usage = {peak_mib_in_use:,d} MiB"
+        f"Done.\n"
+        f"❯ Best throughput = {int(running_avg_tps_best):,d} TPS\n"
+        f"❯ Peak mem usage = {peak_mib_in_use:,d} MiB\n"
+        f"❯ Final loss = {final_loss:.4f}"
     )
-    assert loss is not None
-    return loss.item(), int(running_avg_tps_best), peak_mib_in_use
+    return final_loss, int(running_avg_tps_best), peak_mib_in_use
 
 
 if __name__ == "__main__":
