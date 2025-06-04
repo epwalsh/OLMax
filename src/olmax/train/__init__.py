@@ -22,6 +22,7 @@ def prepare_training_environment(
     #  - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
     #  - https://docs.jax.dev/en/latest/gpu_performance_tips.html
     xla_flags = [
+        "--xla_gpu_enable_triton_gemm=false",
         "--xla_gpu_enable_latency_hiding_scheduler=true",
         "--xla_gpu_enable_while_loop_double_buffering=true",
         "--xla_gpu_enable_pipelined_all_gather=true",
