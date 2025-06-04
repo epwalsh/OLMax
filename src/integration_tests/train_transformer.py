@@ -15,10 +15,10 @@ import optax
 import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
-import olmax.nn.transformer.recipes as recipes
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree, count_params, get_peak_local_device_memory_usage
 from olmax.launch.beaker import BeakerRuntime
+from olmax.nn.transformer.recipes import TransformerRecipeName
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 from olmax.utils import bytes_to_mib, prepare_cli_environment
@@ -27,7 +27,7 @@ log = logging.getLogger("main")
 
 
 def train(
-    recipe: str,
+    recipe_name: TransformerRecipeName,
     beaker_runtime: BeakerRuntime | None = None,
     sequence_length: int | None = None,
     instances_per_device: int | None = None,
@@ -42,70 +42,24 @@ def train(
     running_avg_tps_count: int = 10,
     mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
 ) -> tuple[float, int, int]:
-    gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
+    recipe = recipe_name.get_recipe()
+    beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
+    gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
 
-    if recipe == "271M":
-        model_config = recipes.llama_like_271M(
-            vocab_size,
-            param_dtype=param_dtype,
-            attn_window_size=attn_window_size,
-            attn_implementation=attn_implementation,
-        )
-        if sequence_length is None:
-            sequence_length = 1024
-        if instances_per_device is None:
-            instances_per_device = 16
-            if gpu_architecture == "blackwell":
-                instances_per_device *= 4
-        if learning_rate is None:
-            learning_rate = 1e-3
-    elif recipe == "7B":
-        model_config = recipes.llama_like_7B(
-            vocab_size,
-            param_dtype=param_dtype,
-            attn_window_size=attn_window_size,
-            attn_implementation=attn_implementation,
-        )
-        if sequence_length is None:
-            sequence_length = 4096
-        if instances_per_device is None:
-            instances_per_device = 2
-            if gpu_architecture == "blackwell":
-                instances_per_device *= 4
-        if learning_rate is None:
-            learning_rate = 1e-4
-    elif recipe == "gemma2_27B":
-        model_config = recipes.gemma2_like_27B(
-            vocab_size,
-            param_dtype=param_dtype,
-            attn_window_size=attn_window_size,
-            attn_implementation=attn_implementation,
-        )
-        if sequence_length is None:
-            sequence_length = 4096
-        if instances_per_device is None:
-            instances_per_device = 1
-            #  if gpu_architecture == "blackwell":
-            #      instances_per_device *= 4
-        if learning_rate is None:
-            learning_rate = 1e-5
-    elif recipe == "gemma3_27B":
-        model_config = recipes.gemma3_like_27B(
-            vocab_size,
-            param_dtype=param_dtype,
-            attn_window_size=attn_window_size,
-            attn_implementation=attn_implementation,
-        )
-        if sequence_length is None:
-            sequence_length = 4096
-        if instances_per_device is None:
-            instances_per_device = 1
-            #  if gpu_architecture == "blackwell":
-            #      instances_per_device *= 4
-        if learning_rate is None:
-            learning_rate = 1e-5
-    else:
-        raise ValueError(recipe)
+    model_config = recipe.build_config(
+        vocab_size,
+        param_dtype=param_dtype,
+        attn_window_size=attn_window_size,
+        attn_implementation=attn_implementation,
+    )
+    if sequence_length is None:
+        sequence_length = recipe.default_sequence_length
+    if learning_rate is None:
+        learning_rate = recipe.default_learning_rate
+    if instances_per_device is None:
+        batch_size_per_device = recipe.get_mbz_per_device(gpu_type or "A100")
+        assert batch_size_per_device % sequence_length == 0
+        instances_per_device = batch_size_per_device // sequence_length
 
     batch_size_per_device = sequence_length * instances_per_device
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
@@ -365,7 +319,7 @@ def main():
 
     try:
         train(
-            opts.recipe,
+            TransformerRecipeName(opts.recipe),
             beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
             vocab_size=opts.vocab_size,
