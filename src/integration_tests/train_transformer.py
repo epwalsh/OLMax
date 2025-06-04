@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+import logging
 import time
 from collections import deque
 from typing import Literal
@@ -20,6 +21,8 @@ from olmax.launch.beaker import BeakerRuntime
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 from olmax.utils import bytes_to_mib, prepare_cli_environment
+
+log = logging.getLogger("main")
 
 
 def main(
@@ -90,11 +93,11 @@ def main(
     batch_size_per_device = sequence_length * instances_per_device
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
-    print(
+    log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
         f"which is {global_batch_size_instances:,d} instances of length {sequence_length:,d}."
     )
-    print(
+    log.info(
         f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
         f"which is {instances_per_device:,d} instances of length {sequence_length:,d}."
     )
@@ -103,18 +106,18 @@ def main(
     model_key, data_key = jax.random.split(key)
     mesh_resource = dist.MeshResource.FSDP()
 
-    print("Initializing model...")
+    log.info("Initializing model...")
     model = model_config.build(model_key, mesh_resource=mesh_resource)
     if show_model:
         print(model)
     num_params = count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
-    print(
+    log.info(
         f"Built model with {num_params:,d} total parameters, "
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
-    print("Initializing optimizer...")
+    log.info("Initializing optimizer...")
     optim = optax.adamw(learning_rate)
     opt_state = optim.init(model)  # pyright: ignore
 
@@ -167,7 +170,7 @@ def main(
 
         return loss, model, opt_state
 
-    print("Starting training...")
+    log.info("Starting training...")
     gc.collect()
     batch_start = time.monotonic()
     running_avg_tps: deque[float] = deque()
@@ -207,14 +210,14 @@ def main(
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
-        print(
+        log.info(
             f"[step {step + 1:03d}]",
             ", ".join(f"{name} = {value}" for name, value in metrics.items()),
         )
         batch_start = batch_end
 
     peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
-    print(
+    log.info(
         f"Done.\n❯ Best throughput = {int(running_avg_tps_best):,d} TPS"
         f"\n❯ Peak mem usage = {peak_mib_in_use:,d} MiB"
     )
@@ -301,13 +304,13 @@ if __name__ == "__main__":
         if opts.proc_rank is None:
             raise ValueError("--proc-rank is required for distributed training")
 
-        print("Initializing distributed backend...")
+        log.info("Initializing distributed backend...")
         dist.init_distributed(
             coordinator_address=opts.coordinator_address,
             num_processes=opts.nproc,
             process_id=opts.proc_rank,
         )
-        print(
+        log.info(
             f"Distributed backend initialized with {dist.get_global_device_count():,d} total devices "
             f"across {dist.get_process_world_size():,d} processes."
         )
