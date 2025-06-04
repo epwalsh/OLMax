@@ -46,12 +46,8 @@ def train(
     beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
     gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
 
-    model_config = recipe.build_config(
-        vocab_size=vocab_size,
-        param_dtype=param_dtype,
-        attn_window_size=attn_window_size,
-        attn_implementation=attn_implementation,
-    )
+    if vocab_size is None:
+        vocab_size = recipe.default_vocab_size
     if sequence_length is None:
         sequence_length = recipe.default_sequence_length
     if learning_rate is None:
@@ -60,6 +56,13 @@ def train(
         batch_size_per_device = recipe.get_mbz_per_device(gpu_type or "A100")
         assert batch_size_per_device % sequence_length == 0
         instances_per_device = batch_size_per_device // sequence_length
+
+    model_config = recipe.build_config(
+        vocab_size=vocab_size,
+        param_dtype=param_dtype,
+        attn_window_size=attn_window_size,
+        attn_implementation=attn_implementation,
+    )
 
     batch_size_per_device = sequence_length * instances_per_device
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
