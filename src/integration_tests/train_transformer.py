@@ -31,7 +31,7 @@ def train(
     beaker_runtime: BeakerRuntime | None = None,
     sequence_length: int | None = None,
     instances_per_device: int | None = None,
-    vocab_size: int = 50_304,
+    vocab_size: int | None = None,
     param_dtype: DTypeLike = float,
     compute_dtype: DTypeLike = jax.dtypes.bfloat16,
     learning_rate: float | None = None,
@@ -47,7 +47,7 @@ def train(
     gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
 
     model_config = recipe.build_config(
-        vocab_size,
+        vocab_size=vocab_size,
         param_dtype=param_dtype,
         attn_window_size=attn_window_size,
         attn_implementation=attn_implementation,
@@ -243,7 +243,7 @@ def main():
         default=TransformerRecipeName.llama_like_271M,
     )
     parser.add_argument("--batch-size", type=int)
-    parser.add_argument("--vocab-size", type=int, default=50_304)
+    parser.add_argument("--vocab-size", type=int)
     parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
 
     # Debugging.

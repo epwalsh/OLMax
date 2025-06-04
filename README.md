@@ -31,5 +31,20 @@ python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integr
 
 **Example launch command:**
 ```fish
-python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe=gemma2_like_27B --attn=cudnn --vocab-size=256000
+python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe=gemma2_like_27B --attn=cudnn
+```
+
+### Gemma3 27B
+
+**Common configuration:**
+- Sequence length: `4096`
+- Compute data type: `BF16`
+- Optimizer data type: `FP32`
+
+**Results:**
+- [ TPS/GPU]() on 2 Titan B200 nodes with full FSDP
+
+**Example launch command:**
+```fish
+python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe=gemma3_like_27B --attn=cudnn
 ```

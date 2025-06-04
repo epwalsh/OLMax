@@ -12,6 +12,7 @@ from .model import TransformerConfig
 
 
 class TransformerRecipe(metaclass=ABCMeta):
+    default_vocab_size: ClassVar[int] = 50_304
     default_learning_rate: ClassVar[float] = 1e-3
     default_sequence_length: ClassVar[int] = 4096
 
@@ -24,7 +25,7 @@ class TransformerRecipe(metaclass=ABCMeta):
     @abstractmethod
     def build_config(
         cls,
-        vocab_size: int,
+        vocab_size: int | None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
@@ -49,14 +50,14 @@ class LlamaLike271MRecipe(TransformerRecipe):
     @classmethod
     def build_config(
         cls,
-        vocab_size: int,
+        vocab_size: int | None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
         return TransformerConfig(
-            vocab_size=vocab_size,
+            vocab_size=vocab_size or cls.default_vocab_size,
             d_model=1024,
             hidden_size=2816,
             num_layers=16,
@@ -92,14 +93,14 @@ class LlamaLike7BRecipe(TransformerRecipe):
     @classmethod
     def build_config(
         cls,
-        vocab_size: int,
+        vocab_size: int | None = None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
         return TransformerConfig(
-            vocab_size=vocab_size,
+            vocab_size=vocab_size or cls.default_vocab_size,
             d_model=4096,
             hidden_size=11008,
             num_layers=32,
@@ -122,6 +123,7 @@ class LlamaLike7BRecipe(TransformerRecipe):
 
 
 class Gemma2Like27BRecipe(TransformerRecipe):
+    default_vocab_size: ClassVar[int] = 256000
     default_learning_rate: ClassVar[float] = 1e-5
 
     @classmethod
@@ -133,14 +135,14 @@ class Gemma2Like27BRecipe(TransformerRecipe):
     @classmethod
     def build_config(
         cls,
-        vocab_size: int,
+        vocab_size: int | None = None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
         return TransformerConfig(
-            vocab_size=vocab_size,
+            vocab_size=vocab_size or cls.default_vocab_size,
             d_model=4608,
             hidden_size=36864,
             num_layers=46,
@@ -165,6 +167,7 @@ class Gemma2Like27BRecipe(TransformerRecipe):
 
 
 class Gemma3Like27BRecipe(TransformerRecipe):
+    default_vocab_size: ClassVar[int] = 256000
     default_learning_rate: ClassVar[float] = 1e-5
 
     @classmethod
@@ -176,14 +179,14 @@ class Gemma3Like27BRecipe(TransformerRecipe):
     @classmethod
     def build_config(
         cls,
-        vocab_size: int,
+        vocab_size: int | None = None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
         return TransformerConfig(
-            vocab_size=vocab_size,
+            vocab_size=vocab_size or cls.default_vocab_size,
             d_model=5376,
             hidden_size=21504,
             num_layers=62,
