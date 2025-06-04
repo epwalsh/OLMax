@@ -99,3 +99,37 @@ def gemma2_like_27B(
         lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
         dtype=param_dtype,
     )
+
+
+def gemma3_like_27B(
+    vocab_size: int,
+    param_dtype: DTypeLike = float,
+    attn_window_size: int | tuple[int, int] | None = None,
+    attn_implementation: Literal["xla", "cudnn"] | None = None,
+) -> TransformerConfig:
+    norm = LayerNormConfig.rms_norm(bias=False)
+    return TransformerConfig(
+        vocab_size=vocab_size,
+        d_model=5376,
+        hidden_size=21504,
+        num_layers=62,
+        block=TransformerBlockConfig.gemma2(
+            attention=MultiheadSelfAttentionConfig(
+                n_heads=32,
+                n_kv_heads=16,
+                head_dim=128,
+                rope=RotaryPositionalEmbeddingConfig(theta=10_000),
+                bias=False,
+                dtype=param_dtype,
+                window_size=attn_window_size,
+                implementation=attn_implementation,
+                qk_norm=norm,
+                qk_norm_headwise=True,
+            ),
+            norm=norm,
+            bias=False,
+            dtype=param_dtype,
+        ),
+        lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+        dtype=param_dtype,
+    )

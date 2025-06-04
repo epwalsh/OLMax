@@ -88,6 +88,21 @@ def train(
             #      instances_per_device *= 4
         if learning_rate is None:
             learning_rate = 1e-5
+    elif recipe == "gemma3_27B":
+        model_config = recipes.gemma3_like_27B(
+            vocab_size,
+            param_dtype=param_dtype,
+            attn_window_size=attn_window_size,
+            attn_implementation=attn_implementation,
+        )
+        if sequence_length is None:
+            sequence_length = 4096
+        if instances_per_device is None:
+            instances_per_device = 1
+            #  if gpu_architecture == "blackwell":
+            #      instances_per_device *= 4
+        if learning_rate is None:
+            learning_rate = 1e-5
     else:
         raise ValueError(recipe)
 
@@ -243,7 +258,9 @@ def main():
     parser = argparse.ArgumentParser("train_transformer")
 
     # Hyperparameters.
-    parser.add_argument("--recipe", choices=["271M", "7B", "gemma2_27B"], default="271M")
+    parser.add_argument(
+        "--recipe", choices=["271M", "7B", "gemma2_27B", "gemma3_27B"], default="271M"
+    )
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int, default=50_304)
     parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
@@ -292,7 +309,7 @@ def main():
         all_gather_combine_threshold_mib = 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 1024
-    elif opts.recipe == "gemma2_27B":
+    elif opts.recipe in ("gemma2_27B", "gemma3_27B"):
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
