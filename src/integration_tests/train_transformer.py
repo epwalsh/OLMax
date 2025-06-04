@@ -211,7 +211,7 @@ def main(
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
         log.info(
-            f"[step {step + 1:03d}]",
+            f"[step {step + 1:03d}] "
             ", ".join(f"{name} = {value}" for name, value in metrics.items()),
         )
         batch_start = batch_end
