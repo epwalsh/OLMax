@@ -4,7 +4,7 @@ from typing import Literal
 
 from ..utils import mib_to_bytes, set_env_var
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 
 def prepare_training_environment(
