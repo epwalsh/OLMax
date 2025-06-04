@@ -125,6 +125,10 @@ class BeakerRuntime:
             replica=BeakerReplicaInfo.from_env(),
         )
 
+    @property
+    def cluster_nickname(self) -> str:
+        return self.node.hostname.split("-")[0]
+
     def set_description(self, description: str):
         if self.replica is not None and self.replica.rank != 0:
             return
