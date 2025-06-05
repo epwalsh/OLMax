@@ -178,7 +178,9 @@ def train(
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         updates = jax.lax.with_sharding_constraint(updates, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-        step_metrics["lr"] = jax.copy_to_host_async(opt_state.hyperparams["learning_rate"])
+        step_metrics["lr"] = jax.copy_to_host_async(
+            opt_state.hyperparams["learning_rate"]  # pyright: ignore
+        )
 
         model = eqx.apply_updates(model, updates)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
@@ -224,6 +226,8 @@ def train(
         array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
         for key, arr in array_metrics.items():
             value = arr.item()
+            if key == "loss":
+                loss = loss
             if isinstance(value, float):
                 metrics[key] = f"{value:,.4f}"
             else:
