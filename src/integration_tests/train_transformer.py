@@ -122,7 +122,8 @@ def train(
             warmup_steps=20,
             decay_steps=80,
             peak_value=learning_rate,
-            init_value=learning_rate * 0.001,
+            init_value=learning_rate * 0.01,
+            end_value=learning_rate * 0.01,
         ),
         no_decay_modules=["embedding.weight"],
     ).build(model)
