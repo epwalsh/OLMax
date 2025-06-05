@@ -145,11 +145,13 @@ def train(
     @eqx.filter_jit(donate="all")
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
-    ) -> tuple[Array, Array | None, nn.Transformer, optax.OptState]:
+    ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+
+        step_metrics: dict[str, Array] = {}
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -159,18 +161,18 @@ def train(
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-        loss = jax.copy_to_host_async(loss)
         grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+        step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
             grads = cast_tree(grads, param_dtype)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
-        g_norm: Array | None = None
+        # Maybe clip gradient norm.
         if max_grad_norm is not None:
             grads, g_norm = clip_grads_by_global_norm(grads, max_grad_norm)
-            g_norm = jax.copy_to_host_async(g_norm)
+            step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
@@ -180,7 +182,7 @@ def train(
         model = eqx.apply_updates(model, updates)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        return loss, g_norm, model, opt_state
+        return step_metrics, model, opt_state
 
     log.info("Starting training...")
     gc.collect()
@@ -218,10 +220,13 @@ def train(
             break
 
         # Do a step.
-        loss, g_norm, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        metrics["loss"] = f"{loss.item():.4f}"
-        if g_norm is not None:
-            metrics["g_norm"] = f"{g_norm.item():.4f}"
+        array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
+        for key, arr in array_metrics.items():
+            value = arr.item()
+            if isinstance(value, float):
+                metrics[key] = f"{value:,.4f}"
+            else:
+                metrics[key] = f"{value:,d}"
 
         # Maybe record memory metrics.
         if step % 5 == 0:
@@ -230,7 +235,6 @@ def train(
 
         # Maybe stop tracing.
         if step == 5 and trace_dir is not None:
-            loss.block_until_ready()
             jax.profiler.stop_trace()
 
         # Record throughput.

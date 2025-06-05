@@ -26,7 +26,7 @@ class Schedule(RegistrableConfig):
 
 @Schedule.register_subclass("constant")
 @dataclass
-class ConstantSchedule:
+class ConstantSchedule(Schedule):
     value: float
 
     def build(self) -> optax.ScalarOrSchedule:
@@ -138,7 +138,7 @@ class AdamWConfig(OptimConfig):
         if self.no_decay_modules:
             weight_decay_mask = self.build_weight_decay_mask(model, self.no_decay_modules)
 
-        optim = optax.adamw(
+        optim = optax.inject_hyperparams(optax.adamw)(
             self.lr.build(),
             b1=self.b1,
             b2=self.b2,

@@ -3,7 +3,12 @@ from typing import Callable, cast
 import jax
 
 import olmax.nn as nn
-from olmax.optim.config import AdamWConfig, OptimConfig, WarmupStableDecaySchedule
+from olmax.optim.config import (
+    AdamWConfig,
+    ConstantSchedule,
+    OptimConfig,
+    WarmupStableDecaySchedule,
+)
 
 
 def test_warmup_stable_decay_schedule():
@@ -38,7 +43,8 @@ def main():
     key = jax.random.PRNGKey(0)
     model = nn.GatedMLP(4, 8, key)
     optim, opt_state = AdamWConfig(
-        WarmupStableDecaySchedule(warmup_steps=10, stable_steps=10, decay_steps=10, peak_value=1e-2)
+        lr=ConstantSchedule(value=1e-2),
+        #  lr=WarmupStableDecaySchedule(warmup_steps=10, stable_steps=10, decay_steps=10, peak_value=1e-2)
     ).build(model)
     print(optim)
     print(opt_state)
