@@ -371,9 +371,9 @@ def main():
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
         enabled_pipelined_comms = False
     elif opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
-        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 1024
+        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 2048
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 256
-        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 1024
+        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 2048
         enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
