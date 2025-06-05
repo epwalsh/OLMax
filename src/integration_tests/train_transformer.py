@@ -25,6 +25,11 @@ from olmax.nn.transformer.recipes import (
     LlamaLike271MRecipe,
     TransformerRecipe,
 )
+from olmax.optim import (
+    AdamWConfig,
+    WarmupCosineDecaySchedule,
+    clip_grads_by_global_norm,
+)
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 from olmax.utils import bytes_to_mib, prepare_cli_environment
@@ -48,6 +53,7 @@ def train(
     running_avg_tps_count: int = 10,
     mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
     trace_dir: str | None = None,
+    max_grad_norm: float | None = None,
 ) -> tuple[float, int, int]:
     recipe: TransformerRecipe = TransformerRecipe.get_choice_class(recipe_name)
     beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
@@ -111,8 +117,16 @@ def train(
     )
 
     log.info("Initializing optimizer...")
-    optim = optax.adamw(learning_rate)
-    opt_state = optim.init(model)  # pyright: ignore
+    optim, opt_state = AdamWConfig(
+        lr=WarmupCosineDecaySchedule(
+            warmup_steps=20,
+            decay_steps=80,
+            peak_value=learning_rate,
+            init_value=learning_rate * 0.01,
+            end_value=learning_rate * 0.01,
+        ),
+        no_decay_modules=["embedding.weight"],
+    ).build(model)
 
     param_sharding = model.get_param_shardings()
     data_sharding = mesh_resource.get_data_sharding()
@@ -124,45 +138,63 @@ def train(
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
-        logits = model(input_ids)
-        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+        with jax.named_scope("compute_loss"):
+            logits = model(input_ids)
+            logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+            loss = F.cross_entropy_loss(logits, labels)
 
-        return F.cross_entropy_loss(logits, labels)
+        return loss
 
     @eqx.filter_jit(donate="all")
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
-    ) -> tuple[Array, nn.Transformer, optax.OptState]:
+    ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
+        step_metrics: dict[str, Array] = {}
+
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
-            model_with_compute_dtype = cast_tree(model, compute_dtype)
+            with jax.named_scope("cast_params"):
+                model_with_compute_dtype = cast_tree(model, compute_dtype)
         else:
             model_with_compute_dtype = model
 
         # Calculate loss and gradients.
-        loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-        loss = jax.copy_to_host_async(loss)
-        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+        with jax.named_scope("compute_loss_and_grads"):
+            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+            step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
-            grads = cast_tree(grads, param_dtype)
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+            with jax.named_scope("cast_grads"):
+                grads = cast_tree(grads, param_dtype)
+                grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+
+        # Maybe clip gradient norm.
+        if max_grad_norm is not None:
+            with jax.named_scope("clip_grads"):
+                grads, g_norm = clip_grads_by_global_norm(grads, max_grad_norm)
+                step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
-        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
-        updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        with jax.named_scope("optim_step"):
+            updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+            updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+            opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
-        model = eqx.apply_updates(model, updates)
-        model = jax.lax.with_sharding_constraint(model, param_sharding)
+            model = eqx.apply_updates(model, updates)
+            model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        return loss, model, opt_state
+        step_metrics["lr"] = jax.copy_to_host_async(
+            opt_state.hyperparams["learning_rate"]  # pyright: ignore
+        )
+
+        return step_metrics, model, opt_state
 
     log.info("Starting training...")
     gc.collect()
@@ -172,7 +204,7 @@ def train(
     all_steps_tps: list[float] = []
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
-    loss: Array | None = None
+    loss: float | None = None
 
     batches = generate_batches_of_sequential_tokens(
         data_key,
@@ -200,8 +232,15 @@ def train(
             break
 
         # Do a step.
-        loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        metrics["loss"] = f"{loss.item():.4f}"
+        array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
+        for key, arr in array_metrics.items():
+            value = arr.item()
+            if key == "loss":
+                loss = value
+            if isinstance(value, float):
+                metrics[key] = f"{value:,.7f}"
+            else:
+                metrics[key] = f"{value:,d}"
 
         # Maybe record memory metrics.
         if step % 5 == 0:
@@ -210,7 +249,6 @@ def train(
 
         # Maybe stop tracing.
         if step == 5 and trace_dir is not None:
-            loss.block_until_ready()
             jax.profiler.stop_trace()
 
         # Record throughput.
@@ -236,7 +274,6 @@ def train(
 
     # Collect final metrics.
     assert loss is not None
-    final_loss = loss.item()
     peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
     tps_arr = jnp.array(all_steps_tps)
     tps_avg = int(tps_arr.mean().item())
@@ -247,18 +284,18 @@ def train(
         f"❯ Best running avg throughput: {int(running_avg_tps_best):,d} TPS\n"
         f"❯ Actual avg throughput: {tps_avg:,d} += {2 * tps_std:,d} ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d}) TPS\n"
         f"❯ Peak mem usage: {peak_mib_in_use:,d} MiB\n"
-        f"❯ Final loss: {final_loss:.4f}"
+        f"❯ Final loss: {loss:.4f}"
     )
 
     if beaker_runtime is not None:
         beaker_runtime.set_description(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
-            f"loss = {final_loss:.4f}, "
+            f"loss = {loss:.4f}, "
             f"running best TPS = {int(running_avg_tps_best):,d}, "
             f"mem usage (MiB) = {peak_mib_in_use:,d}"
         )
 
-    return final_loss, int(running_avg_tps_best), peak_mib_in_use
+    return loss, int(running_avg_tps_best), peak_mib_in_use
 
 
 def main():
@@ -278,6 +315,7 @@ def main():
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int)
     parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
+    parser.add_argument("--max-grad-norm", type=float)
 
     # Debugging.
     parser.add_argument("--show-model", action="store_true")
@@ -380,6 +418,7 @@ def main():
             show_model=opts.show_model,
             mesh_type=opts.mesh_type,
             trace_dir=trace_dir,
+            max_grad_norm=opts.max_grad_norm,
         )
     finally:
         if dist.is_distributed():
