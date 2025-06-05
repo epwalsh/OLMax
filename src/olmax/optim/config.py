@@ -131,7 +131,6 @@ class AdamWConfig(OptimConfig):
     b2: float = 0.999
     eps: float = 1e-8
     weight_decay: float = 1e-4
-    max_grad_norm: float | None = None
     no_decay_modules: list[str] | None = None
 
     def build(self, model: PyTree) -> tuple[optax.GradientTransformation, optax.OptState]:
@@ -139,21 +138,13 @@ class AdamWConfig(OptimConfig):
         if self.no_decay_modules:
             weight_decay_mask = self.build_weight_decay_mask(model, self.no_decay_modules)
 
-        components: list[optax.GradientTransformation] = []
-        if self.max_grad_norm is not None:
-            components.append(optax.clip_by_global_norm(self.max_grad_norm))
-
-        components.append(
-            optax.adamw(
-                self.lr.build(),
-                b1=self.b1,
-                b2=self.b2,
-                eps=self.eps,
-                weight_decay=self.weight_decay,
-                mask=weight_decay_mask,
-            )
+        optim = optax.adamw(
+            self.lr.build(),
+            b1=self.b1,
+            b2=self.b2,
+            eps=self.eps,
+            weight_decay=self.weight_decay,
+            mask=weight_decay_mask,
         )
-
-        optim = optax.chain(*components)
 
         return optim, optim.init(model)

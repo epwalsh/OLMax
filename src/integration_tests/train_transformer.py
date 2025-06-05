@@ -25,7 +25,11 @@ from olmax.nn.transformer.recipes import (
     LlamaLike271MRecipe,
     TransformerRecipe,
 )
-from olmax.optim import AdamWConfig, WarmupCosineDecaySchedule
+from olmax.optim import (
+    AdamWConfig,
+    WarmupCosineDecaySchedule,
+    clip_grads_by_global_norm,
+)
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 from olmax.utils import bytes_to_mib, prepare_cli_environment
@@ -120,7 +124,6 @@ def train(
             peak_value=learning_rate,
             init_value=learning_rate * 0.001,
         ),
-        max_grad_norm=max_grad_norm,
         no_decay_modules=["embedding.weight"],
     ).build(model)
 
@@ -142,7 +145,7 @@ def train(
     @eqx.filter_jit(donate="all")
     def train_step(
         model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
-    ) -> tuple[Array, nn.Transformer, optax.OptState]:
+    ) -> tuple[Array, Array | None, nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
@@ -164,6 +167,11 @@ def train(
             grads = cast_tree(grads, param_dtype)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
+        g_norm: Array | None = None
+        if max_grad_norm is not None:
+            grads, g_norm = clip_grads_by_global_norm(grads, max_grad_norm)
+            g_norm = jax.copy_to_host_async(g_norm)
+
         # Take optimizer step.
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         updates = jax.lax.with_sharding_constraint(updates, param_sharding)
@@ -172,7 +180,7 @@ def train(
         model = eqx.apply_updates(model, updates)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        return loss, model, opt_state
+        return loss, g_norm, model, opt_state
 
     log.info("Starting training...")
     gc.collect()
@@ -210,8 +218,10 @@ def train(
             break
 
         # Do a step.
-        loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
+        loss, g_norm, model, opt_state = train_step(model, input_ids, labels, opt_state)
         metrics["loss"] = f"{loss.item():.4f}"
+        if g_norm is not None:
+            metrics["g_norm"] = f"{g_norm.item():.4f}"
 
         # Maybe record memory metrics.
         if step % 5 == 0:

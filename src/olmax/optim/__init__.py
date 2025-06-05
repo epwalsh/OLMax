@@ -6,6 +6,7 @@ from .config import (
     WarmupCosineDecaySchedule,
     WarmupStableDecaySchedule,
 )
+from .utils import clip_grads_by_global_norm
 
 __all__ = [
     "OptimConfig",
@@ -14,4 +15,5 @@ __all__ = [
     "ConstantSchedule",
     "WarmupStableDecaySchedule",
     "WarmupCosineDecaySchedule",
+    "clip_grads_by_global_norm",
 ]
