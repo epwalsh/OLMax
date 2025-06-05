@@ -140,6 +140,7 @@ def train(
 
         # Calculate loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+        loss.copy_to_host_async()
         grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads back to param dtype.
@@ -194,12 +195,12 @@ def train(
 
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
+        metrics["loss"] = f"{loss.item():.4f}"
 
         # Maybe record loss and memory statistics.
         if step % 5 == 0:
             peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
             metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
-            metrics["loss"] = f"{loss.item():.4f}"
 
         # Maybe stop tracing.
         if step == 4 and trace_dir is not None:
