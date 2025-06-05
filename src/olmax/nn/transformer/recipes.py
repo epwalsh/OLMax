@@ -56,12 +56,12 @@ class LlamaLike271MRecipe(TransformerRecipe):
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+        return TransformerConfig.default(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=1024,
             hidden_size=2816,
             num_layers=16,
-            block=TransformerBlockConfig(
+            block=TransformerBlockConfig.default(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=8,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -99,12 +99,12 @@ class LlamaLike7BRecipe(TransformerRecipe):
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+        return TransformerConfig.default(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=4096,
             hidden_size=11008,
             num_layers=32,
-            block=TransformerBlockConfig(
+            block=TransformerBlockConfig.default(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -141,12 +141,12 @@ class Gemma2Like27BRecipe(TransformerRecipe):
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+        return TransformerConfig.default(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=4608,
             hidden_size=36864,
             num_layers=46,
-            block=TransformerBlockConfig.gemma2(
+            block=TransformerBlockConfig.gemma(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     n_kv_heads=16,
@@ -185,12 +185,12 @@ class Gemma3Like27BRecipe(TransformerRecipe):
         attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> TransformerConfig:
         norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+        return TransformerConfig.default(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=5376,
             hidden_size=21504,
             num_layers=62,
-            block=TransformerBlockConfig.gemma2(
+            block=TransformerBlockConfig.gemma(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     n_kv_heads=16,

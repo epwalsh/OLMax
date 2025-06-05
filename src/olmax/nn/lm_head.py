@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Type
 
 import jax
 
@@ -9,12 +8,12 @@ from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
-from .normalization import LayerNorm, LayerNormConfig
+from .normalization import Normalizer, NormalizerConfig
 
 
 @dataclass
 class LMHeadConfig:
-    norm: LayerNormConfig | None
+    norm: NormalizerConfig | None
     bias: bool = False
     dtype: DTypeLike = float
 
@@ -23,7 +22,7 @@ class LMHeadConfig:
         d_model: int,
         vocab_size: int,
         key: PRNGKeyArray,
-        norm: LayerNormConfig | None = None,
+        norm: NormalizerConfig | None = None,
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
@@ -40,9 +39,7 @@ class LMHeadConfig:
 
 
 class LMHead(Module):
-    Config: ClassVar[Type[LMHeadConfig]] = LMHeadConfig
-
-    norm: LayerNorm | None
+    norm: Normalizer | None
     w_out: Linear
 
     def __init__(
@@ -50,7 +47,7 @@ class LMHead(Module):
         d_model: int,
         vocab_size: int,
         key: PRNGKeyArray,
-        norm: LayerNormConfig | None,
+        norm: NormalizerConfig | None,
         bias: bool = False,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
@@ -63,6 +60,10 @@ class LMHead(Module):
         self.norm = (
             None if norm is None else norm.build(d_model, norm_key, mesh_resource=mesh_resource)
         )
+
+    @classmethod
+    def Config(cls, **kwargs) -> LMHeadConfig:
+        return LMHeadConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.LMHead")
     def __call__(self, x: Array) -> Array:

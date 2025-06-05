@@ -1,82 +1,25 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Callable, ClassVar, Type
+from typing import Callable, Generic, Type, TypeVar
 
 import jax
-from typing_extensions import Self
 
+from ...config import RegistrableConfig
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
 from ..mlp import GatedMLP
 from ..module import Module
-from ..normalization import LayerNorm, LayerNormConfig
-
-
-class TransformerBlockType(StrEnum):
-    default = "default"
-    reordered_norm = "reordered_norm"
-    gemma2 = "gemma2"
-
-    def get_class(self) -> Type[TransformerBlock]:
-        if self == self.default:
-            return TransformerBlock
-        elif self == self.reordered_norm:
-            return ReorderedNormTransformerBlock
-        elif self == self.gemma2:
-            return Gemma2TransformerBlock
-        else:
-            raise ValueError(self)
-
-
-@dataclass
-class TransformerBlockConfig:
-    attention: MultiheadSelfAttentionConfig
-    norm: LayerNormConfig
-    bias: bool = False
-    dtype: DTypeLike = float
-    name: TransformerBlockType = TransformerBlockType.default
-
-    @classmethod
-    def reordered_norm(cls, **kwargs) -> Self:
-        return cls(name=TransformerBlockType.reordered_norm, **kwargs)
-
-    @classmethod
-    def gemma2(cls, **kwargs) -> Self:
-        return cls(name=TransformerBlockType.gemma2, **kwargs)
-
-    def build(
-        self,
-        d_model: int,
-        hidden_size: int,
-        key: PRNGKeyArray,
-        attention: MultiheadSelfAttentionConfig | None = None,
-        norm: LayerNormConfig | None = None,
-        bias: bool | None = None,
-        dtype: DTypeLike | None = None,
-        mesh_resource: MeshResource | None = None,
-    ) -> TransformerBlock:
-        return self.name.get_class()(
-            d_model,
-            hidden_size,
-            key,
-            attention=attention if attention is not None else self.attention,
-            norm=norm if norm is not None else self.norm,
-            bias=bias if bias is not None else self.bias,
-            dtype=dtype if dtype is not None else self.dtype,
-            mesh_resource=mesh_resource,
-        )
+from ..normalization import LayerNormConfig, Normalizer, NormalizerConfig
 
 
 class TransformerBlock(Module):
-    Config: ClassVar[Type[TransformerBlockConfig]] = TransformerBlockConfig
-
     mlp: GatedMLP
-    mlp_norm: LayerNorm
+    mlp_norm: Normalizer
     attention: MultiheadSelfAttention
-    attention_norm: LayerNorm
+    attention_norm: Normalizer
 
     def __init__(
         self,
@@ -84,7 +27,7 @@ class TransformerBlock(Module):
         hidden_size: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig,
-        norm: LayerNormConfig,
+        norm: NormalizerConfig,
         bias: bool = False,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
@@ -119,6 +62,10 @@ class TransformerBlock(Module):
             mesh_resource=mesh_resource,
         )
 
+    @classmethod
+    def Config(cls, **kwargs) -> TransformerBlockConfig:
+        return DefaultTransformerBlockConfig(**kwargs)
+
     @jax.named_scope("olmax.nn.TransformerBlock")
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
@@ -128,6 +75,10 @@ class TransformerBlock(Module):
 
 
 class ReorderedNormTransformerBlock(TransformerBlock):
+    @classmethod
+    def Config(cls, **kwargs) -> ReorderedNormTransformerBlockConfig:
+        return ReorderedNormTransformerBlockConfig(**kwargs)
+
     @jax.named_scope("olmax.nn.ReorderedTransformerBlock")
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
@@ -136,9 +87,9 @@ class ReorderedNormTransformerBlock(TransformerBlock):
         return h
 
 
-class Gemma2TransformerBlock(TransformerBlock):
-    attention_input_norm: LayerNorm
-    mlp_input_norm: LayerNorm
+class GemmaTransformerBlock(TransformerBlock):
+    attention_input_norm: Normalizer
+    mlp_input_norm: Normalizer
 
     def __init__(
         self,
@@ -146,7 +97,7 @@ class Gemma2TransformerBlock(TransformerBlock):
         hidden_size: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig,
-        norm: LayerNormConfig,
+        norm: NormalizerConfig,
         bias: bool = False,
         dtype: DTypeLike = float,
         activation: Callable[[Array], Array] = jax.nn.gelu,
@@ -175,9 +126,87 @@ class Gemma2TransformerBlock(TransformerBlock):
             mesh_resource=mesh_resource,
         )
 
+    @classmethod
+    def Config(cls, **kwargs) -> GemmaTransformerBlockConfig:
+        return GemmaTransformerBlockConfig(**kwargs)
+
     @jax.named_scope("olmax.nn.Gemma2TransformerBlock")
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(self.attention_input_norm(x)))
         h = h + self.mlp_norm(self.mlp(self.mlp_input_norm(h)))
         return h
+
+
+B = TypeVar("B", bound=TransformerBlock)
+
+
+@dataclass
+class TransformerBlockConfig(RegistrableConfig, Generic[B]):
+    attention: MultiheadSelfAttentionConfig
+    norm: NormalizerConfig
+    bias: bool = False
+    dtype: DTypeLike = float
+
+    @classmethod
+    @abstractmethod
+    def get_class(cls) -> Type[B]:
+        raise NotImplementedError
+
+    @classmethod
+    def default(cls, **kwargs) -> DefaultTransformerBlockConfig:
+        return DefaultTransformerBlockConfig(**kwargs)
+
+    @classmethod
+    def reordered_norm(cls, **kwargs) -> ReorderedNormTransformerBlockConfig:
+        return ReorderedNormTransformerBlockConfig(**kwargs)
+
+    @classmethod
+    def gemma(cls, **kwargs) -> GemmaTransformerBlockConfig:
+        return GemmaTransformerBlockConfig(**kwargs)
+
+    def build(
+        self,
+        d_model: int,
+        hidden_size: int,
+        key: PRNGKeyArray,
+        attention: MultiheadSelfAttentionConfig | None = None,
+        norm: LayerNormConfig | None = None,
+        bias: bool | None = None,
+        dtype: DTypeLike | None = None,
+        mesh_resource: MeshResource | None = None,
+    ) -> B:
+        return self.get_class()(
+            d_model,
+            hidden_size,
+            key,
+            attention=attention if attention is not None else self.attention,
+            norm=norm if norm is not None else self.norm,
+            bias=bias if bias is not None else self.bias,
+            dtype=dtype if dtype is not None else self.dtype,
+            mesh_resource=mesh_resource,
+        )
+
+
+@TransformerBlockConfig.register_subclass("default")
+@dataclass
+class DefaultTransformerBlockConfig(TransformerBlockConfig[TransformerBlock]):
+    @classmethod
+    def get_class(cls) -> Type[TransformerBlock]:
+        return TransformerBlock
+
+
+@TransformerBlockConfig.register_subclass("reordered_norm")
+@dataclass
+class ReorderedNormTransformerBlockConfig(TransformerBlockConfig[ReorderedNormTransformerBlock]):
+    @classmethod
+    def get_class(cls) -> Type[ReorderedNormTransformerBlock]:
+        return ReorderedNormTransformerBlock
+
+
+@TransformerBlockConfig.register_subclass("gemma")
+@dataclass
+class GemmaTransformerBlockConfig(TransformerBlockConfig[GemmaTransformerBlock]):
+    @classmethod
+    def get_class(cls) -> Type[GemmaTransformerBlock]:
+        return GemmaTransformerBlock

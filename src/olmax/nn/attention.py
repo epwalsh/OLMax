@@ -1,79 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Type
+from typing import Generic, Literal, TypeVar
 
 import equinox as eqx
 import jax
 
+from ..config import RegistrableConfig
 from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
-from .normalization import LayerNorm, LayerNormConfig
+from .normalization import Normalizer, NormalizerConfig
 from .rope import RotaryPositionalEmbedding, RotaryPositionalEmbeddingConfig
 
 
-@dataclass
-class MultiheadSelfAttentionConfig:
-    n_heads: int
-    n_kv_heads: int | None = None
-    head_dim: int | None = None
-    rope: RotaryPositionalEmbeddingConfig | None = None
-    qk_norm: LayerNormConfig | None = None
-    qk_norm_headwise: bool = False
-    bias: bool = True
-    window_size: int | tuple[int, int] | None = None
-    implementation: Literal["xla", "cudnn"] | None = None
-    dtype: DTypeLike = float
-
-    def build(
-        self,
-        d_model: int,
-        key: PRNGKeyArray,
-        *,
-        n_heads: int | None = None,
-        head_dim: int | None = None,
-        rope: RotaryPositionalEmbeddingConfig | None = None,
-        qk_norm: LayerNormConfig | None = None,
-        qk_norm_headwise: bool | None = None,
-        n_kv_heads: int | None = None,
-        bias: bool | None = None,
-        window_size: int | tuple[int, int] | None = None,
-        dtype: DTypeLike | None = None,
-        implementation: Literal["xla", "cudnn"] | None = None,
-        mesh_resource: MeshResource | None = None,
-    ) -> MultiheadSelfAttention:
-        return MultiheadSelfAttention(
-            d_model=d_model,
-            key=key,
-            n_heads=n_heads if n_heads is not None else self.n_heads,
-            n_kv_heads=n_kv_heads if n_kv_heads is not None else self.n_kv_heads,
-            head_dim=head_dim if head_dim is not None else self.head_dim,
-            rope=rope if rope is not None else self.rope,
-            qk_norm=qk_norm if qk_norm is not None else self.qk_norm,
-            qk_norm_headwise=qk_norm_headwise
-            if qk_norm_headwise is not None
-            else self.qk_norm_headwise,
-            bias=bias if bias is not None else self.bias,
-            window_size=window_size if window_size is not None else self.window_size,
-            dtype=dtype if dtype is not None else self.dtype,
-            implementation=implementation if implementation is not None else self.implementation,
-            mesh_resource=mesh_resource,
-        )
+class Attention(Module):
+    pass
 
 
-class MultiheadSelfAttention(Module):
-    Config: ClassVar[Type[MultiheadSelfAttentionConfig]] = MultiheadSelfAttentionConfig
-
+class MultiheadSelfAttention(Attention):
     w_q: Linear
     w_k: Linear
     w_v: Linear
     w_out: Linear
 
     rope: RotaryPositionalEmbedding | None
-    q_norm: LayerNorm | None
-    k_norm: LayerNorm | None
+    q_norm: Normalizer | None
+    k_norm: Normalizer | None
     qk_norm_headwise: bool = eqx.field(static=True)
 
     n_heads: int = eqx.field(static=True)
@@ -89,7 +43,7 @@ class MultiheadSelfAttention(Module):
         n_heads: int,
         key: PRNGKeyArray,
         rope: RotaryPositionalEmbeddingConfig | None = None,
-        qk_norm: LayerNormConfig | None = None,
+        qk_norm: NormalizerConfig | None = None,
         qk_norm_headwise: bool = False,
         n_kv_heads: int | None = None,
         head_dim: int | None = None,
@@ -166,6 +120,10 @@ class MultiheadSelfAttention(Module):
         )
         self.qk_norm_headwise = qk_norm_headwise
 
+    @classmethod
+    def Config(cls, **kwargs) -> MultiheadSelfAttentionConfig:
+        return MultiheadSelfAttentionConfig(**kwargs)
+
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3  # (batch_size, seq_len, d_model)
@@ -216,3 +174,61 @@ class MultiheadSelfAttention(Module):
         out = self.w_out(att)
 
         return out
+
+
+A = TypeVar("A", bound=Attention)
+
+
+@dataclass
+class AttentionConfig(RegistrableConfig, Generic[A]):
+    pass
+
+
+@AttentionConfig.register_subclass("msa")
+@dataclass
+class MultiheadSelfAttentionConfig(AttentionConfig[MultiheadSelfAttention]):
+    n_heads: int
+    n_kv_heads: int | None = None
+    head_dim: int | None = None
+    rope: RotaryPositionalEmbeddingConfig | None = None
+    qk_norm: NormalizerConfig | None = None
+    qk_norm_headwise: bool = False
+    bias: bool = True
+    window_size: int | tuple[int, int] | None = None
+    implementation: Literal["xla", "cudnn"] | None = None
+    dtype: DTypeLike = float
+
+    def build(
+        self,
+        d_model: int,
+        key: PRNGKeyArray,
+        *,
+        n_heads: int | None = None,
+        head_dim: int | None = None,
+        rope: RotaryPositionalEmbeddingConfig | None = None,
+        qk_norm: NormalizerConfig | None = None,
+        qk_norm_headwise: bool | None = None,
+        n_kv_heads: int | None = None,
+        bias: bool | None = None,
+        window_size: int | tuple[int, int] | None = None,
+        dtype: DTypeLike | None = None,
+        implementation: Literal["xla", "cudnn"] | None = None,
+        mesh_resource: MeshResource | None = None,
+    ) -> MultiheadSelfAttention:
+        return MultiheadSelfAttention(
+            d_model=d_model,
+            key=key,
+            n_heads=n_heads if n_heads is not None else self.n_heads,
+            n_kv_heads=n_kv_heads if n_kv_heads is not None else self.n_kv_heads,
+            head_dim=head_dim if head_dim is not None else self.head_dim,
+            rope=rope if rope is not None else self.rope,
+            qk_norm=qk_norm if qk_norm is not None else self.qk_norm,
+            qk_norm_headwise=qk_norm_headwise
+            if qk_norm_headwise is not None
+            else self.qk_norm_headwise,
+            bias=bias if bias is not None else self.bias,
+            window_size=window_size if window_size is not None else self.window_size,
+            dtype=dtype if dtype is not None else self.dtype,
+            implementation=implementation if implementation is not None else self.implementation,
+            mesh_resource=mesh_resource,
+        )
