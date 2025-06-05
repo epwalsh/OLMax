@@ -24,12 +24,11 @@ class MultiheadSelfAttention(Attention):
     w_k: Linear
     w_v: Linear
     w_out: Linear
-
     rope: RotaryPositionalEmbedding | None
     q_norm: Normalizer | None
     k_norm: Normalizer | None
-    qk_norm_headwise: bool = eqx.field(static=True)
 
+    qk_norm_headwise: bool = eqx.field(static=True)
     n_heads: int = eqx.field(static=True)
     n_kv_heads: int = eqx.field(static=True)
     head_dim: int = eqx.field(static=True)

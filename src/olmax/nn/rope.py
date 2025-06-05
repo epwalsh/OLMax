@@ -41,6 +41,7 @@ class RotaryPositionalEmbeddingConfig:
 
 class RotaryPositionalEmbedding(Module):
     Config: ClassVar[Type[RotaryPositionalEmbeddingConfig]] = RotaryPositionalEmbeddingConfig
+
     head_dim: int = eqx.field(static=True)
     theta: float = eqx.field(static=True, default=10_000.0)
     dtype: DTypeLike = eqx.field(static=True, default=float)
