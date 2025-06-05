@@ -372,7 +372,7 @@ def main():
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
-        enabled_pipelined_comms = True
+        enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
 
