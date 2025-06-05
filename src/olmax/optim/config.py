@@ -94,7 +94,7 @@ class OptimConfig(RegistrableConfig):
                 if isinstance(kp, jax.tree_util.GetAttrKey):
                     name_parts.append(kp.name)
                 elif isinstance(kp, jax.tree_util.SequenceKey):
-                    name_parts.append(str(kp[0]))
+                    name_parts.append(str(kp.idx))
                 else:
                     assert False, kp
             name = ".".join(name_parts)
