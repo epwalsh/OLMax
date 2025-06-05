@@ -263,7 +263,9 @@ def main():
     # Debugging.
     parser.add_argument("--show-model", action="store_true")
     parser.add_argument("--no-jit", action="store_true")
-    parser.add_argument("--trace", action="store_true")
+    parser.add_argument(
+        "--trace", action=argparse.BooleanOptionalAction, default=beaker_runtime is not None
+    )
     parser.add_argument("--trace-dir", type=str)
 
     # Performance.
