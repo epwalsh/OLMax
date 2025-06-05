@@ -184,7 +184,7 @@ def train(
         metrics: dict[str, str] = {}
 
         # Maybe start tracing.
-        if step == 1 and trace_dir is not None:
+        if step == 3 and trace_dir is not None:
             jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
 
         # Get batch.
@@ -203,7 +203,7 @@ def train(
             metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
 
         # Maybe stop tracing.
-        if step == 4 and trace_dir is not None:
+        if step == 5 and trace_dir is not None:
             loss.block_until_ready()
             jax.profiler.stop_trace()
 
