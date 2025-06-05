@@ -14,7 +14,8 @@ def prepare_training_environment(
     all_gather_combine_threshold_mib: float = 256,
     reduce_scatter_combine_threshold_mib: float = 128,
     all_reduce_combine_threshold_mib: float = 256,
-    enabled_pipelined_comms: bool = True,
+    enable_pipelined_comms: bool = True,
+    enable_nccl_user_buffers: bool = False,  # uses more memory
     disable_jit: bool = False,
     disable_remat: bool = False,
     gpu_architecture: Literal["hopper", "blackwell", "ampere"] | None = None,
@@ -28,16 +29,16 @@ def prepare_training_environment(
     if xla_flags == "recommended":
         xla_flags_ = [
             "--xla_gpu_enable_latency_hiding_scheduler=true",
-            f"--xla_gpu_enable_pipelined_all_gather={str(enabled_pipelined_comms).lower()}",
-            f"--xla_gpu_enable_pipelined_reduce_scatter={str(enabled_pipelined_comms).lower()}",
-            f"--xla_gpu_enable_pipelined_all_reduce={str(enabled_pipelined_comms).lower()}",
+            f"--xla_gpu_enable_pipelined_all_gather={str(enable_pipelined_comms).lower()}",
+            f"--xla_gpu_enable_pipelined_reduce_scatter={str(enable_pipelined_comms).lower()}",
+            f"--xla_gpu_enable_pipelined_all_reduce={str(enable_pipelined_comms).lower()}",
             "--xla_gpu_enable_all_gather_combine_by_dim=false",
             "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
             f"--xla_gpu_all_gather_combine_threshold_bytes={mib_to_bytes(all_gather_combine_threshold_mib)}",
             f"--xla_gpu_reduce_scatter_combine_threshold_bytes={mib_to_bytes(reduce_scatter_combine_threshold_mib)}",
             f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
+            f"--xla_gpu_enable_nccl_user_buffers=f{str(enable_nccl_user_buffers).lower()}",
             #  "--xla_gpu_enable_while_loop_double_buffering=true",
-            #  "--xla_gpu_enable_nccl_user_buffers=true",  # takes up more memory
             #  "--xla_gpu_enable_command_buffer=",
             #  "--xla_gpu_enable_triton_gemm=false",
         ]

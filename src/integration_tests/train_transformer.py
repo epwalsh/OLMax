@@ -356,7 +356,8 @@ def main():
     all_gather_combine_threshold_mib: float
     reduce_scatter_combine_threshold_mib: float
     all_reduce_combine_threshold_mib: float
-    enabled_pipelined_comms: bool = True
+    enable_pipelined_comms: bool = True
+    enable_nccl_user_buffers: bool = False
     if opts.recipe == TransformerRecipe.get_choice_name(LlamaLike271MRecipe):
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
@@ -369,12 +370,13 @@ def main():
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
-        enabled_pipelined_comms = False
+        enable_pipelined_comms = False
     elif opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
-        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 2048
-        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 256
-        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 2048
-        enabled_pipelined_comms = False
+        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
+        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
+        enable_pipelined_comms = False
+        enable_nccl_user_buffers = True
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
 
@@ -388,7 +390,8 @@ def main():
         all_gather_combine_threshold_mib=all_gather_combine_threshold_mib,
         reduce_scatter_combine_threshold_mib=reduce_scatter_combine_threshold_mib,
         all_reduce_combine_threshold_mib=all_reduce_combine_threshold_mib,
-        enabled_pipelined_comms=enabled_pipelined_comms,
+        enable_pipelined_comms=enable_pipelined_comms,
+        enable_nccl_user_buffers=enable_nccl_user_buffers,
         gpu_architecture=None if beaker_runtime is None else beaker_runtime.node.gpu_architecture,
     )
 
