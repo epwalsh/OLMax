@@ -25,6 +25,7 @@ from olmax.nn.transformer.recipes import (
     LlamaLike271MRecipe,
     TransformerRecipe,
 )
+from olmax.optim import AdamWConfig, WarmupCosineDecaySchedule
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 from olmax.utils import bytes_to_mib, prepare_cli_environment
@@ -111,8 +112,17 @@ def train(
     )
 
     log.info("Initializing optimizer...")
-    optim = optax.adamw(learning_rate)
-    opt_state = optim.init(model)  # pyright: ignore
+    optim, opt_state = AdamWConfig(
+        lr=WarmupCosineDecaySchedule(
+            warmup_steps=20,
+            decay_steps=80,
+            peak_value=learning_rate,
+            init_value=learning_rate * 0.001,
+        ),
+        no_decay_modules=["embedding.weight"],
+    ).build(model)
+    #  optim = optax.adamw(learning_rate)
+    #  opt_state = optim.init(model)  # pyright: ignore
 
     param_sharding = model.get_param_shardings()
     data_sharding = mesh_resource.get_data_sharding()
