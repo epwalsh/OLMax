@@ -89,7 +89,12 @@ class OptimConfig(RegistrableConfig):
     @classmethod
     def build_weight_decay_mask(cls, model: PyTree, no_decay_modules: list[str]) -> PyTree:
         def should_decay(key_path: tuple[Any, ...], _: Any) -> bool:
-            name = ".".join([kp.name for kp in key_path])
+            if isinstance(key_path, jax.tree_util.GetAttrKey):
+                name = ".".join([kp.name for kp in key_path])
+            elif isinstance(key_path, jax.tree_util.SequenceKey):
+                assert False, key_path
+            else:
+                assert False, key_path
             for pattern in no_decay_modules:
                 if fnmatch.fnmatch(name, pattern):
                     return False
