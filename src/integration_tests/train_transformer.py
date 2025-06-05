@@ -49,6 +49,7 @@ def train(
     running_avg_tps_count: int = 10,
     mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
     trace_dir: str | None = None,
+    max_grad_norm: float | None = None,
 ) -> tuple[float, int, int]:
     recipe: TransformerRecipe = TransformerRecipe.get_choice_class(recipe_name)
     beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
@@ -119,6 +120,7 @@ def train(
             peak_value=learning_rate,
             init_value=learning_rate * 0.001,
         ),
+        max_grad_norm=max_grad_norm,
         no_decay_modules=["embedding.weight"],
     ).build(model)
 
@@ -286,6 +288,7 @@ def main():
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int)
     parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
+    parser.add_argument("--max-grad-norm", type=float)
 
     # Debugging.
     parser.add_argument("--show-model", action="store_true")
@@ -388,6 +391,7 @@ def main():
             show_model=opts.show_model,
             mesh_type=opts.mesh_type,
             trace_dir=trace_dir,
+            max_grad_norm=opts.max_grad_norm,
         )
     finally:
         if dist.is_distributed():
