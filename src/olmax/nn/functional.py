@@ -98,13 +98,16 @@ def cross_entropy_loss(
 
 
 @ft.partial(jax.jit, static_argnames=("reduction",))
-def cross_entropy_loss_and_log_normalizer(
+def fused_cross_entropy_loss(
     logits: Array,
     labels: Array,
     *,
     ignore_index: int = -100,
     reduction: Literal["sum", "mean", "none"] = "mean",
 ) -> tuple[Array, Array]:
+    """
+    Computes CE loss along with the log softmax normalizer (Z loss) term.
+    """
     n_classes = logits.shape[-1]
     labels_one_hot = jax.nn.one_hot(labels, n_classes)
     where = jnp.expand_dims(labels != ignore_index, -1)
