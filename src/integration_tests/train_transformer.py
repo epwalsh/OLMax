@@ -365,12 +365,15 @@ def main():
         all_gather_combine_threshold_mib = 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 1024
-    elif opts.recipe == TransformerRecipe.get_choice_name(
-        Gemma2Like27BRecipe
-    ) or opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
+    elif opts.recipe == TransformerRecipe.get_choice_name(Gemma2Like27BRecipe):
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
+        enabled_pipelined_comms = False
+    elif opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
+        all_gather_combine_threshold_mib = 512
+        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 256
+        all_reduce_combine_threshold_mib = 512
         enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
