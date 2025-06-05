@@ -1,17 +1,19 @@
-from abc import ABCMeta, abstractmethod
-from enum import StrEnum
-from typing import ClassVar, Literal, Type
+from abc import abstractmethod
+from dataclasses import dataclass
+from typing import ClassVar, Literal
 
+from ...config import RegistrableConfig
 from ...types import DTypeLike
 from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
-from ..normalization import LayerNormConfig
+from ..normalization import RMSNormConfig
 from ..rope import RotaryPositionalEmbeddingConfig
-from .block import TransformerBlockConfig
-from .model import TransformerConfig
+from .block import DefaultTransformerBlockConfig, GemmaTransformerBlockConfig
+from .model import DefaultTransformerConfig, TransformerConfig
 
 
-class TransformerRecipe(metaclass=ABCMeta):
+@dataclass
+class TransformerRecipe(RegistrableConfig):
     default_vocab_size: ClassVar[int] = 50_304
     default_learning_rate: ClassVar[float] = 1e-3
     default_sequence_length: ClassVar[int] = 4096
@@ -33,6 +35,8 @@ class TransformerRecipe(metaclass=ABCMeta):
         raise NotImplementedError
 
 
+@TransformerRecipe.register_subclass("llama_like_271M")
+@dataclass
 class LlamaLike271MRecipe(TransformerRecipe):
     default_learning_rate: ClassVar[float] = 1e-3
     default_sequence_length: ClassVar[int] = 1024
@@ -54,14 +58,14 @@ class LlamaLike271MRecipe(TransformerRecipe):
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> TransformerConfig:
-        norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+    ) -> DefaultTransformerConfig:
+        norm = RMSNormConfig(bias=False)
+        return DefaultTransformerConfig(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=1024,
             hidden_size=2816,
             num_layers=16,
-            block=TransformerBlockConfig(
+            block=DefaultTransformerBlockConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=8,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -79,6 +83,8 @@ class LlamaLike271MRecipe(TransformerRecipe):
         )
 
 
+@TransformerRecipe.register_subclass("llama_like_7B")
+@dataclass
 class LlamaLike7BRecipe(TransformerRecipe):
     default_learning_rate: ClassVar[float] = 1e-4
 
@@ -97,14 +103,14 @@ class LlamaLike7BRecipe(TransformerRecipe):
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> TransformerConfig:
-        norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+    ) -> DefaultTransformerConfig:
+        norm = RMSNormConfig(bias=False)
+        return DefaultTransformerConfig(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=4096,
             hidden_size=11008,
             num_layers=32,
-            block=TransformerBlockConfig(
+            block=DefaultTransformerBlockConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -122,6 +128,8 @@ class LlamaLike7BRecipe(TransformerRecipe):
         )
 
 
+@TransformerRecipe.register_subclass("gemma2_like_27B")
+@dataclass
 class Gemma2Like27BRecipe(TransformerRecipe):
     default_vocab_size: ClassVar[int] = 256000
     default_learning_rate: ClassVar[float] = 1e-5
@@ -139,14 +147,14 @@ class Gemma2Like27BRecipe(TransformerRecipe):
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> TransformerConfig:
-        norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+    ) -> DefaultTransformerConfig:
+        norm = RMSNormConfig(bias=False)
+        return DefaultTransformerConfig(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=4608,
             hidden_size=36864,
             num_layers=46,
-            block=TransformerBlockConfig.gemma2(
+            block=GemmaTransformerBlockConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     n_kv_heads=16,
@@ -166,6 +174,8 @@ class Gemma2Like27BRecipe(TransformerRecipe):
         )
 
 
+@TransformerRecipe.register_subclass("gemma3_like_27B")
+@dataclass
 class Gemma3Like27BRecipe(TransformerRecipe):
     default_vocab_size: ClassVar[int] = 256000
     default_learning_rate: ClassVar[float] = 1e-5
@@ -183,14 +193,14 @@ class Gemma3Like27BRecipe(TransformerRecipe):
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> TransformerConfig:
-        norm = LayerNormConfig.rms_norm(bias=False)
-        return TransformerConfig(
+    ) -> DefaultTransformerConfig:
+        norm = RMSNormConfig(bias=False)
+        return DefaultTransformerConfig(
             vocab_size=vocab_size or cls.default_vocab_size,
             d_model=5376,
             hidden_size=21504,
             num_layers=62,
-            block=TransformerBlockConfig.gemma2(
+            block=GemmaTransformerBlockConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     n_kv_heads=16,
@@ -210,22 +220,3 @@ class Gemma3Like27BRecipe(TransformerRecipe):
             lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )
-
-
-class TransformerRecipeName(StrEnum):
-    llama_like_271M = "llama_like_271M"
-    llama_like_7B = "llama_like_7B"
-    gemma2_like_27B = "gemma2_like_27B"
-    gemma3_like_27B = "gemma3_like_27B"
-
-    def get_recipe(self) -> Type[TransformerRecipe]:
-        if self == self.llama_like_271M:
-            return LlamaLike271MRecipe
-        elif self == self.llama_like_7B:
-            return LlamaLike7BRecipe
-        elif self == self.gemma2_like_27B:
-            return Gemma2Like27BRecipe
-        elif self == self.gemma3_like_27B:
-            return Gemma3Like27BRecipe
-        else:
-            raise NotImplementedError(self)

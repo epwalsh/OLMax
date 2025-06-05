@@ -18,7 +18,13 @@ import olmax.nn.functional as F
 from olmax.data.utils import generate_batches_of_sequential_tokens
 from olmax.jax_utils import cast_tree, count_params, get_peak_local_device_memory_usage
 from olmax.launch.beaker import BeakerRuntime
-from olmax.nn.transformer.recipes import TransformerRecipeName
+from olmax.nn.transformer.recipes import (
+    Gemma2Like27BRecipe,
+    Gemma3Like27BRecipe,
+    LlamaLike7BRecipe,
+    LlamaLike271MRecipe,
+    TransformerRecipe,
+)
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
 from olmax.utils import bytes_to_mib, prepare_cli_environment
@@ -27,7 +33,7 @@ log = logging.getLogger("main")
 
 
 def train(
-    recipe_name: TransformerRecipeName,
+    recipe_name: str,
     beaker_runtime: BeakerRuntime | None = None,
     sequence_length: int | None = None,
     instances_per_device: int | None = None,
@@ -43,7 +49,7 @@ def train(
     mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
     trace_dir: str | None = None,
 ) -> tuple[float, int, int]:
-    recipe = recipe_name.get_recipe()
+    recipe: TransformerRecipe = TransformerRecipe.get_choice_class(recipe_name)
     beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
     gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
 
@@ -266,8 +272,8 @@ def main():
     # Hyperparameters.
     parser.add_argument(
         "--recipe",
-        choices=[r.name for r in TransformerRecipeName],
-        default=TransformerRecipeName.llama_like_271M,
+        choices=list(TransformerRecipe.get_known_choices().keys()),
+        default=TransformerRecipe.get_choice_name(LlamaLike271MRecipe),
     )
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int)
@@ -314,18 +320,17 @@ def main():
     reduce_scatter_combine_threshold_mib: float
     all_reduce_combine_threshold_mib: float
     enabled_pipelined_comms: bool = True
-    if opts.recipe == TransformerRecipeName.llama_like_271M:
+    if opts.recipe == TransformerRecipe.get_choice_name(LlamaLike271MRecipe):
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
-    elif opts.recipe == TransformerRecipeName.llama_like_7B:
+    elif opts.recipe == TransformerRecipe.get_choice_name(LlamaLike7BRecipe):
         all_gather_combine_threshold_mib = 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 1024
-    elif (
-        opts.recipe == TransformerRecipeName.gemma2_like_27B
-        or opts.recipe == TransformerRecipeName.gemma3_like_27B
-    ):
+    elif opts.recipe == TransformerRecipe.get_choice_name(
+        Gemma2Like27BRecipe
+    ) or opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
         all_gather_combine_threshold_mib = 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = 256
@@ -366,7 +371,7 @@ def main():
 
     try:
         train(
-            TransformerRecipeName(opts.recipe),
+            opts.recipe,
             beaker_runtime=beaker_runtime,
             instances_per_device=opts.batch_size,
             vocab_size=opts.vocab_size,
