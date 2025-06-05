@@ -138,7 +138,7 @@ def train(
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
-        with jax.named_scope("olmax::compute_loss"):
+        with jax.named_scope("compute_loss"):
             logits = model(input_ids)
             logits = jax.lax.with_sharding_constraint(logits, data_sharding)
             loss = F.cross_entropy_loss(logits, labels)
@@ -158,31 +158,31 @@ def train(
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
-            with jax.named_scope("olmax::cast_params"):
+            with jax.named_scope("cast_params"):
                 model_with_compute_dtype = cast_tree(model, compute_dtype)
         else:
             model_with_compute_dtype = model
 
         # Calculate loss and gradients.
-        with jax.named_scope("olmax::compute_loss_and_grads"):
+        with jax.named_scope("compute_loss_and_grads"):
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
             step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
-            with jax.named_scope("olmax::cast_grads"):
+            with jax.named_scope("cast_grads"):
                 grads = cast_tree(grads, param_dtype)
                 grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Maybe clip gradient norm.
         if max_grad_norm is not None:
-            with jax.named_scope("olmax::clip_grads"):
+            with jax.named_scope("clip_grads"):
                 grads, g_norm = clip_grads_by_global_norm(grads, max_grad_norm)
                 step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
-        with jax.named_scope("olmax::optim_step"):
+        with jax.named_scope("optim_step"):
             updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
@@ -238,7 +238,7 @@ def train(
             if key == "loss":
                 loss = value
             if isinstance(value, float):
-                metrics[key] = f"{value:,.4f}"
+                metrics[key] = f"{value:,.7f}"
             else:
                 metrics[key] = f"{value:,d}"
 
