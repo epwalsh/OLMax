@@ -178,6 +178,7 @@ def train(
         updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
         updates = jax.lax.with_sharding_constraint(updates, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        step_metrics["lr"] = jax.copy_to_host_async(opt_state.hyperparams["learning_rate"])
 
         model = eqx.apply_updates(model, updates)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
