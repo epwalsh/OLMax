@@ -32,7 +32,7 @@ from olmax.optim import (
 )
 from olmax.train import prepare_training_environment
 from olmax.types import Array, DTypeLike
-from olmax.utils import bytes_to_mib, prepare_cli_environment
+from olmax.utils import bytes_to_mib, format_scalar, prepare_cli_environment
 
 log = logging.getLogger("main")
 
@@ -219,7 +219,7 @@ def train(
         # Bookkeeping.
         batch_start = time.monotonic()
         step += 1
-        metrics: dict[str, str] = {}
+        metrics_to_log: dict[str, float | int] = {}
 
         # Maybe start tracing.
         if step == 3 and trace_dir is not None:
@@ -237,15 +237,12 @@ def train(
             value = arr.item()
             if key == "loss":
                 loss = value
-            if isinstance(value, float):
-                metrics[key] = f"{value:,.7f}"
-            else:
-                metrics[key] = f"{value:,d}"
+            metrics_to_log[key] = value
 
         # Maybe record memory metrics.
         if step % 5 == 0:
             peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
-            metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
+            metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
         # Maybe stop tracing.
         if step == 5 and trace_dir is not None:
@@ -254,7 +251,7 @@ def train(
         # Record throughput.
         batch_end = time.monotonic()
         tps = batch_size_per_device / (batch_end - batch_start)
-        metrics["TPS"] = f"{int(tps):,d}"
+        metrics_to_log["TPS"] = int(tps)
         if step > 5:
             running_avg_tps.append(tps)
             all_steps_tps.append(tps)
@@ -267,7 +264,9 @@ def train(
         # Log metrics.
         log.info(
             f"[step {step:03d}] "
-            + ", ".join(f"{name} = {value}" for name, value in metrics.items()),
+            + ", ".join(
+                f"{name} = {format_scalar(value)}" for name, value in metrics_to_log.items()
+            ),
         )
 
     gc.collect()
@@ -292,7 +291,7 @@ def train(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
             f"loss = {loss:.4f}, "
             f"running best TPS = {int(running_avg_tps_best):,d}, "
-            f"mem usage (MiB) = {peak_mib_in_use:,d}"
+            f"peak mem usage (MiB) = {peak_mib_in_use:,d}"
         )
 
     return loss, int(running_avg_tps_best), peak_mib_in_use

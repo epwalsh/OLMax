@@ -16,3 +16,4 @@ __all__ = [
 PyTree = Any
 Specs = Any
 PathOrStr = os.PathLike | str
+Scalar = float | int | Array

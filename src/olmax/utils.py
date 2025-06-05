@@ -2,8 +2,9 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any, Type
+from typing import Any, Type, cast
 
+import equinox as eqx
 import rich
 from rich.console import Console, ConsoleRenderable
 from rich.highlighter import NullHighlighter
@@ -11,6 +12,7 @@ from rich.text import Text
 from rich.traceback import Traceback
 
 from .exceptions import OLMaxError
+from .types import Array, Scalar
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +133,37 @@ def mib_to_bytes(mb: float) -> int:
 
 def bytes_to_mib(b: int) -> float:
     return b / (1024 * 1024)
+
+
+def format_scalar(value: Scalar) -> str:
+    if eqx.is_array(value):
+        value = cast(Array, value)
+        assert value.ndim == 0
+        value = value.item()
+
+    if isinstance(value, float):
+        return format_float(value)
+    elif isinstance(value, int):
+        return f"{value:,d}"
+    else:
+        return str(value)
+
+
+def format_float(value: float) -> str:
+    if value == 0.0:
+        return "0.0"
+    elif value < 0.0001:
+        return f"{value:.2E}"
+    elif value > 1000:
+        return f"{int(value):,d}"
+    elif value > 100:
+        return f"{value:.1f}"
+    elif value > 10:
+        return f"{value:.2f}"
+    elif value > 1:
+        return f"{value:.3f}"
+    else:
+        return f"{value:.4f}"
 
 
 class _RichHandler(logging.Handler):
