@@ -121,8 +121,6 @@ def train(
         ),
         no_decay_modules=["embedding.weight"],
     ).build(model)
-    #  optim = optax.adamw(learning_rate)
-    #  opt_state = optim.init(model)  # pyright: ignore
 
     param_sharding = model.get_param_shardings()
     data_sharding = mesh_resource.get_data_sharding()

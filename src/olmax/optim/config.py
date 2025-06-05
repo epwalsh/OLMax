@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import fnmatch
+import logging
+import warnings
 from abc import abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +13,8 @@ import optax
 
 from ..config import RegistrableConfig
 from ..types import PyTree
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -88,6 +93,8 @@ class OptimConfig(RegistrableConfig):
 
     @classmethod
     def build_weight_decay_mask(cls, model: PyTree, no_decay_modules: list[str]) -> PyTree:
+        not_decaying: dict[str, list[str]] = defaultdict(list)
+
         def should_decay(key_path: tuple[Any, ...], _: Any) -> bool:
             name_parts = []
             for kp in key_path:
@@ -96,14 +103,24 @@ class OptimConfig(RegistrableConfig):
                 elif isinstance(kp, jax.tree_util.SequenceKey):
                     name_parts.append(str(kp.idx))
                 else:
-                    assert False, kp
+                    raise ValueError(kp)
             name = ".".join(name_parts)
             for pattern in no_decay_modules:
                 if fnmatch.fnmatch(name, pattern):
+                    not_decaying[pattern].append(name)
                     return False
             return True
 
-        return jax.tree.map_with_path(should_decay, model)
+        result = jax.tree.map_with_path(should_decay, model)
+
+        for pattern in no_decay_modules:
+            if pattern not in not_decaying:
+                warnings.warn(f"no decay pattern '{pattern}' did not match any parameters")
+            else:
+                for name in not_decaying[pattern]:
+                    log.info(f"Weight decay will not be applied to parameter '{name}'")
+
+        return result
 
 
 @OptimConfig.register_subclass("adamw")
