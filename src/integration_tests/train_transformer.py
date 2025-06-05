@@ -161,22 +161,33 @@ def train(
     gc.collect()
 
     # Bookkeeping variables.
-    batch_start = time.monotonic()
+    step = 0
     all_steps_tps: list[float] = []
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
     loss: Array | None = None
 
-    for step, (input_ids, labels) in enumerate(
-        generate_batches_of_sequential_tokens(
-            data_key,
-            vocab_size=vocab_size,
-            sequence_length=sequence_length,
-            global_batch_size_instances=global_batch_size_instances,
-            total_batches=train_steps,
-            mesh_resource=mesh_resource,
-        )
-    ):
+    batches = generate_batches_of_sequential_tokens(
+        data_key,
+        vocab_size=vocab_size,
+        sequence_length=sequence_length,
+        global_batch_size_instances=global_batch_size_instances,
+        total_batches=train_steps,
+        mesh_resource=mesh_resource,
+    )
+
+    while True:
+        batch_start = time.monotonic()
+        step += 1
+
+        if step == 1 and trace_dir is not None:
+            jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
+
+        try:
+            input_ids, labels = next(batches)
+        except StopIteration:
+            break
+
         # Do a step.
         loss, model, opt_state = train_step(model, input_ids, labels, opt_state)
 
@@ -188,15 +199,13 @@ def train(
             metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
             metrics["loss"] = f"{loss.item():.4f}"
 
+        if step == 4 and trace_dir is not None:
+            loss.block_until_ready()
+            jax.profiler.stop_trace()
+
         batch_end = time.monotonic()
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
-
-        if step == 1 and trace_dir is not None:
-            jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
-        elif step == 4 and trace_dir is not None:
-            loss.block_until_ready()
-            jax.profiler.stop_trace()
 
         if step > 5:
             running_avg_tps.append(tps)
@@ -210,7 +219,6 @@ def train(
             f"[step {step + 1:03d}] "
             + ", ".join(f"{name} = {value}" for name, value in metrics.items()),
         )
-        batch_start = batch_end
 
     gc.collect()
 
