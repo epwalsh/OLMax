@@ -195,7 +195,7 @@ def train(
     all_steps_tps: list[float] = []
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
-    loss: Array | None = None
+    loss: float | None = None
 
     batches = generate_batches_of_sequential_tokens(
         data_key,
@@ -227,7 +227,7 @@ def train(
         for key, arr in array_metrics.items():
             value = arr.item()
             if key == "loss":
-                loss = loss
+                loss = value
             if isinstance(value, float):
                 metrics[key] = f"{value:,.4f}"
             else:
@@ -265,7 +265,6 @@ def train(
 
     # Collect final metrics.
     assert loss is not None
-    final_loss = loss.item()
     peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
     tps_arr = jnp.array(all_steps_tps)
     tps_avg = int(tps_arr.mean().item())
@@ -276,18 +275,18 @@ def train(
         f"❯ Best running avg throughput: {int(running_avg_tps_best):,d} TPS\n"
         f"❯ Actual avg throughput: {tps_avg:,d} += {2 * tps_std:,d} ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d}) TPS\n"
         f"❯ Peak mem usage: {peak_mib_in_use:,d} MiB\n"
-        f"❯ Final loss: {final_loss:.4f}"
+        f"❯ Final loss: {loss:.4f}"
     )
 
     if beaker_runtime is not None:
         beaker_runtime.set_description(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
-            f"loss = {final_loss:.4f}, "
+            f"loss = {loss:.4f}, "
             f"running best TPS = {int(running_avg_tps_best):,d}, "
             f"mem usage (MiB) = {peak_mib_in_use:,d}"
         )
 
-    return final_loss, int(running_avg_tps_best), peak_mib_in_use
+    return loss, int(running_avg_tps_best), peak_mib_in_use
 
 
 def main():
