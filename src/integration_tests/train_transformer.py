@@ -194,7 +194,7 @@ def train(
         # Log progress.
         metrics: dict[str, str] = {}
 
-        if (step + 1) % 5 == 0:
+        if step % 5 == 0:
             peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
             metrics["peak mem usage"] = f"{peak_mib_in_use:,d} MiB"
             metrics["loss"] = f"{loss.item():.4f}"
@@ -216,7 +216,7 @@ def train(
             avg_tps = sum(running_avg_tps) / len(running_avg_tps)
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
         log.info(
-            f"[step {step + 1:03d}] "
+            f"[step {step:03d}] "
             + ", ".join(f"{name} = {value}" for name, value in metrics.items()),
         )
 
