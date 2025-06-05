@@ -181,7 +181,9 @@ A = TypeVar("A", bound=Attention)
 
 @dataclass
 class AttentionConfig(RegistrableConfig, Generic[A]):
-    pass
+    @classmethod
+    def MultiheadSelfAttention(cls, **kwargs) -> MultiheadSelfAttentionConfig:
+        return MultiheadSelfAttentionConfig(**kwargs)
 
 
 @AttentionConfig.register_subclass("msa")

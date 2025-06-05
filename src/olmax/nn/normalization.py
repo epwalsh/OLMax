@@ -74,7 +74,7 @@ class LayerNorm(Normalizer):
         return layer_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
 
 
-class RMSNorm(LayerNorm):
+class RMSNorm(Normalizer):
     @classmethod
     def Config(cls, **kwargs) -> RMSNormConfig:
         return RMSNormConfig(**kwargs)
@@ -100,11 +100,11 @@ class NormalizerConfig(RegistrableConfig, Generic[N]):
         raise NotImplementedError
 
     @classmethod
-    def layer_norm(cls, **kwargs) -> LayerNormConfig:
+    def LayerNorm(cls, **kwargs) -> LayerNormConfig:
         return LayerNormConfig(**kwargs)
 
     @classmethod
-    def rms_norm(cls, **kwargs) -> RMSNormConfig:
+    def RMSNorm(cls, **kwargs) -> RMSNormConfig:
         return RMSNormConfig(**kwargs)
 
     def build(

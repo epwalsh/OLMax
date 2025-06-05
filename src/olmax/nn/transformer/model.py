@@ -93,7 +93,7 @@ class TransformerConfig(RegistrableConfig, Generic[T]):
         raise NotImplementedError
 
     @classmethod
-    def default(cls, **kwargs) -> DefaultTransformerConfig:
+    def Default(cls, **kwargs) -> DefaultTransformerConfig:
         return DefaultTransformerConfig(**kwargs)
 
     def build(

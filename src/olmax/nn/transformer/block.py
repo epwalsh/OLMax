@@ -154,15 +154,15 @@ class TransformerBlockConfig(RegistrableConfig, Generic[B]):
         raise NotImplementedError
 
     @classmethod
-    def default(cls, **kwargs) -> DefaultTransformerBlockConfig:
+    def Default(cls, **kwargs) -> DefaultTransformerBlockConfig:
         return DefaultTransformerBlockConfig(**kwargs)
 
     @classmethod
-    def reordered_norm(cls, **kwargs) -> ReorderedNormTransformerBlockConfig:
+    def ReorderedNorm(cls, **kwargs) -> ReorderedNormTransformerBlockConfig:
         return ReorderedNormTransformerBlockConfig(**kwargs)
 
     @classmethod
-    def gemma(cls, **kwargs) -> GemmaTransformerBlockConfig:
+    def Gemma(cls, **kwargs) -> GemmaTransformerBlockConfig:
         return GemmaTransformerBlockConfig(**kwargs)
 
     def build(
