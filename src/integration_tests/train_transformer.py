@@ -158,8 +158,7 @@ def train(
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
-            with jax.named_scope("cast_params"):
-                model_with_compute_dtype = cast_tree(model, compute_dtype)
+            model_with_compute_dtype = cast_tree(model, compute_dtype)
         else:
             model_with_compute_dtype = model
 
@@ -171,9 +170,8 @@ def train(
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
-            with jax.named_scope("cast_grads"):
-                grads = cast_tree(grads, param_dtype)
-                grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+            grads = cast_tree(grads, param_dtype)
+            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Maybe clip gradient norm.
         if max_grad_norm is not None:
@@ -326,7 +324,9 @@ def main():
 
     # Performance.
     parser.add_argument("--no-remat", action="store_true")
+    parser.add_argument("--all-gather-combine-threshold-mib", type=int)
     parser.add_argument("--reduce-scatter-combine-threshold-mib", type=int)
+    parser.add_argument("--all-reduce-combine-threshold-mib", type=int)
     parser.add_argument(
         "--xla-flags", choices=["recommended", "system_default"], default="recommended"
     )
@@ -358,22 +358,22 @@ def main():
     all_reduce_combine_threshold_mib: float
     enabled_pipelined_comms: bool = True
     if opts.recipe == TransformerRecipe.get_choice_name(LlamaLike271MRecipe):
-        all_gather_combine_threshold_mib = 256
+        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = 256
+        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
     elif opts.recipe == TransformerRecipe.get_choice_name(LlamaLike7BRecipe):
-        all_gather_combine_threshold_mib = 1024
+        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = 1024
+        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 1024
     elif opts.recipe == TransformerRecipe.get_choice_name(Gemma2Like27BRecipe):
-        all_gather_combine_threshold_mib = 256
+        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = 256
+        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
         enabled_pipelined_comms = False
     elif opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
-        all_gather_combine_threshold_mib = 512
+        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 256
-        all_reduce_combine_threshold_mib = 512
+        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 1024
         enabled_pipelined_comms = False
     else:
         raise ValueError(opts.recipe)  # need to tune for model size
