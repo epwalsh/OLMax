@@ -192,16 +192,15 @@ def train(
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics["TPS"] = f"{int(tps):,d}"
 
-        if step > 2:
-            running_avg_tps.append(tps)
-            all_steps_tps.append(tps)
-
         if step == 1 and trace_dir is not None:
             jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
         elif step == 4 and trace_dir is not None:
             loss.block_until_ready()
             jax.profiler.stop_trace()
 
+        if step > 5:
+            running_avg_tps.append(tps)
+            all_steps_tps.append(tps)
         if len(running_avg_tps) > running_avg_tps_count:
             running_avg_tps.popleft()
         if len(running_avg_tps) >= running_avg_tps_count:
