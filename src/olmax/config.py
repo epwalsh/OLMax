@@ -20,7 +20,7 @@ C = TypeVar("C", bound="_EnvConfig")
 class _EnvConfig:
     @classmethod
     @abstractmethod
-    def recommend(cls: Type[C], gpu_architecture: GPUArchitecture | None, **overrides) -> C:
+    def recommended(cls: Type[C], gpu_architecture: GPUArchitecture | None, **overrides) -> C:
         raise NotImplementedError
 
     @abstractmethod
@@ -154,7 +154,7 @@ class NCCLConfig(_EnvConfig):
     PROTO: str = "SIMPLE,LL,LL128"
 
     @classmethod
-    def recommend(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> NCCLConfig:
+    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> NCCLConfig:
         del gpu_architecture
         return cls(**overrides)
 
@@ -184,7 +184,7 @@ class CUDAConfig(_EnvConfig):
     device_max_connections: int | None
 
     @classmethod
-    def recommend(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> CUDAConfig:
+    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> CUDAConfig:
         if gpu_architecture != GPUArchitecture.blackwell:
             return cls(device_max_connections=1, **overrides)
         return cls(**overrides)
@@ -216,7 +216,7 @@ class JAXConfig(_EnvConfig):
     compiler_enable_remat_pass: bool | None = None
 
     @classmethod
-    def recommend(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> JAXConfig:
+    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> JAXConfig:
         del gpu_architecture
         return cls(**overrides)
 

@@ -32,21 +32,21 @@ def prepare_training_environment(
     if isinstance(nccl_config, NCCLConfig):
         nccl_config.apply()
     elif nccl_config == "recommended":
-        NCCLConfig.recommend(gpu_architecture).apply()
+        NCCLConfig.recommended(gpu_architecture).apply()
     elif nccl_config != "system_default":
         raise ValueError(nccl_config)
 
     if isinstance(cuda_config, CUDAConfig):
         cuda_config.apply()
     elif cuda_config == "recommended":
-        NCCLConfig.recommend(gpu_architecture).apply()
+        NCCLConfig.recommended(gpu_architecture).apply()
     elif cuda_config != "system_default":
         raise ValueError(cuda_config)
 
     if isinstance(jax_config, JAXConfig):
         jax_config.apply()
     elif jax_config == "recommended":
-        NCCLConfig.recommend(gpu_architecture).apply()
+        NCCLConfig.recommended(gpu_architecture).apply()
     elif jax_config != "system_default":
         raise ValueError(jax_config)
 
