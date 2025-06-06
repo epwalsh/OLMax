@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
 import equinox as eqx
 import jax
 
-from ..config import RegistrableConfig
 from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
@@ -175,19 +174,8 @@ class MultiheadSelfAttention(Attention):
         return out
 
 
-A = TypeVar("A", bound=Attention)
-
-
 @dataclass
-class AttentionConfig(RegistrableConfig, Generic[A]):
-    @classmethod
-    def MultiheadSelfAttention(cls, **kwargs) -> MultiheadSelfAttentionConfig:
-        return MultiheadSelfAttentionConfig(**kwargs)
-
-
-@AttentionConfig.register_subclass("msa")
-@dataclass
-class MultiheadSelfAttentionConfig(AttentionConfig[MultiheadSelfAttention]):
+class MultiheadSelfAttentionConfig:
     n_heads: int
     n_kv_heads: int | None = None
     head_dim: int | None = None

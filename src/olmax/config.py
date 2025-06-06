@@ -6,7 +6,7 @@ import os
 import tempfile
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Sequence, Type, TypeVar
+from typing import Any, Generator, Sequence, Type, TypeVar
 
 import draccus
 import jax
@@ -20,6 +20,62 @@ RegistrableConfig = draccus.ChoiceRegistry
 C = TypeVar("C")
 
 
+def encode(
+    data: Any,
+    *,
+    exclude_none: bool = False,
+    exclude_private_fields: bool = False,
+    json_safe: bool = False,
+    recurse: bool = True,
+) -> dict[str, Any]:
+    """
+    Convert into a regular Python dictionary.
+
+    :param exclude_none: Don't include values that are ``None``.
+    :param exclude_private_fields: Don't include private fields.
+    :param json_safe: Output only JSON-safe types.
+    :param recurse: Recurse into fields that are also configs/dataclasses.
+    """
+
+    def iter_fields(d) -> Generator[tuple[str, Any], None, None]:
+        for field in dataclasses.fields(d):
+            value = getattr(d, field.name)
+            if exclude_none and value is None:
+                continue
+            elif exclude_private_fields and field.name.startswith("_"):
+                continue
+            else:
+                yield (field.name, value)
+
+    def as_dict(d: Any, recurse: bool = True) -> Any:
+        if dataclasses.is_dataclass(d):
+            if recurse:
+                out = {k: as_dict(v) for k, v in iter_fields(d)}
+            else:
+                out = {k: v for k, v in iter_fields(d)}
+            if isinstance(d, RegistrableConfig):
+                out["type"] = d.get_choice_name(d.__class__)
+            return out
+        elif isinstance(d, dict):
+            return {k: as_dict(v) for k, v in d.items()}
+        elif isinstance(d, (list, tuple, set)):
+            if json_safe:
+                return [as_dict(x) for x in d]
+            else:
+                return d.__class__((as_dict(x) for x in d))
+        elif d is None or isinstance(d, (float, int, bool, str)):
+            return d
+        elif json_safe:
+            if hasattr(d, "__name__"):
+                return d.__name__
+            else:
+                return str(d)
+        else:
+            return d
+
+    return as_dict(data, recurse=recurse)
+
+
 def parse_config_from_args(
     config_class: Type[C],
     default: C | None = None,
@@ -30,10 +86,13 @@ def parse_config_from_args(
     """
     Parse a config dataclass from command-line args.
     """
+    draccus.encode.register(type(float), lambda x, _=None: x.__name__)
+    draccus.decode.register(DTypeLike, lambda r, _: r)
+
     defaults_path: PathOrStr | None = None
     if default is not None:
         with tempfile.NamedTemporaryFile("w+t", delete=False) as tmp_file:
-            json_safe = draccus.encode(dataclasses.asdict(default), config_class)  # pyright: ignore
+            json_safe = encode(default, json_safe=True)
             json.dump(json_safe, tmp_file)
             defaults_path = tmp_file.name
 

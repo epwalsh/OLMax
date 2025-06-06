@@ -1,4 +1,4 @@
-from . import functional, init
+from . import functional, init, transformer
 from .attention import MultiheadSelfAttention
 from .embedding import Embedding
 from .linear import Linear
@@ -36,4 +36,6 @@ __all__ = [
     "functional",
     # Initialization module.
     "init",
+    # Transformer module.
+    "transformer",
 ]
