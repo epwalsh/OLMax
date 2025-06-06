@@ -38,6 +38,8 @@ def prepare_training_environment(
             f"--xla_gpu_reduce_scatter_combine_threshold_bytes={mib_to_bytes(reduce_scatter_combine_threshold_mib)}",
             f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
             f"--xla_gpu_enable_nccl_user_buffers={str(enable_nccl_user_buffers).lower()}",
+            "--xla_gpu_enable_nccl_comm_splitting=true",
+            "--xla_gpu_enable_nccl_per_stream_comms=false",
             #  "--xla_gpu_enable_while_loop_double_buffering=true",
             #  "--xla_gpu_enable_command_buffer=",
             #  "--xla_gpu_enable_triton_gemm=false",
