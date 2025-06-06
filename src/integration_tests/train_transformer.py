@@ -12,27 +12,13 @@ import jax
 import jax.numpy as jnp
 import optax
 
+import olmax
 import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
-from olmax.data.utils import generate_batches_of_sequential_tokens
-from olmax.jax_utils import cast_tree, count_params, get_peak_local_device_memory_usage
+import olmax.nn.transformer.recipes as recipes
 from olmax.launch.beaker import BeakerRuntime
-from olmax.nn.transformer.recipes import (
-    Gemma2Like27BRecipe,
-    Gemma3Like27BRecipe,
-    LlamaLike7BRecipe,
-    LlamaLike271MRecipe,
-    TransformerRecipe,
-)
-from olmax.optim import (
-    AdamWConfig,
-    WarmupCosineDecaySchedule,
-    clip_grads_by_global_norm,
-)
-from olmax.train import prepare_training_environment
-from olmax.types import Array, DTypeLike
-from olmax.utils import bytes_to_mib, format_scalar, prepare_cli_environment
+from olmax.types import *
 
 log = logging.getLogger("main")
 
@@ -55,7 +41,7 @@ def train(
     trace_dir: str | None = None,
     max_grad_norm: float | None = None,
 ) -> tuple[float, int, int]:
-    recipe: TransformerRecipe = TransformerRecipe.get_choice_class(recipe_name)
+    recipe: recipes.TransformerRecipe = recipes.TransformerRecipe.get_choice_class(recipe_name)
     beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
     gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
 
@@ -109,7 +95,7 @@ def train(
     model = model_config.build(model_key, mesh_resource=mesh_resource)
     if show_model:
         print(model)
-    num_params = count_params(model)
+    num_params = olmax.jax_utils.count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     log.info(
         f"Built model with {num_params:,d} total parameters, "
@@ -117,8 +103,8 @@ def train(
     )
 
     log.info("Initializing optimizer...")
-    optim, opt_state = AdamWConfig(
-        lr=WarmupCosineDecaySchedule(
+    optim, opt_state = olmax.optim.AdamWConfig(
+        lr=olmax.optim.WarmupCosineDecaySchedule(
             warmup_steps=20,
             decay_steps=80,
             peak_value=learning_rate,
@@ -158,7 +144,7 @@ def train(
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
-            model_with_compute_dtype = cast_tree(model, compute_dtype)
+            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, compute_dtype)
         else:
             model_with_compute_dtype = model
 
@@ -170,13 +156,13 @@ def train(
 
         # Cast grads back to param dtype.
         if compute_dtype != param_dtype:
-            grads = cast_tree(grads, param_dtype)
+            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Maybe clip gradient norm.
         if max_grad_norm is not None:
             with jax.named_scope("clip_grads"):
-                grads, g_norm = clip_grads_by_global_norm(grads, max_grad_norm)
+                grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, max_grad_norm)
                 step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
@@ -204,7 +190,7 @@ def train(
     running_avg_tps_best: float = 0.0
     loss: float | None = None
 
-    batches = generate_batches_of_sequential_tokens(
+    batches = olmax.data.utils.generate_batches_of_sequential_tokens(
         data_key,
         vocab_size=vocab_size,
         sequence_length=sequence_length,
@@ -239,7 +225,9 @@ def train(
 
         # Maybe record memory metrics.
         if step % 5 == 0:
-            peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+            peak_mib_in_use = int(
+                olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+            )
             metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
         # Maybe stop tracing.
@@ -263,7 +251,8 @@ def train(
         log.info(
             f"[step {step:03d}] "
             + ", ".join(
-                f"{name} = {format_scalar(value)}" for name, value in metrics_to_log.items()
+                f"{name} = {olmax.utils.format_scalar(value)}"
+                for name, value in metrics_to_log.items()
             ),
         )
 
@@ -271,7 +260,9 @@ def train(
 
     # Collect final metrics.
     assert loss is not None
-    peak_mib_in_use = int(bytes_to_mib(get_peak_local_device_memory_usage()))
+    peak_mib_in_use = int(
+        olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+    )
     tps_arr = jnp.array(all_steps_tps)
     tps_avg = int(tps_arr.mean().item())
     tps_std = int(tps_arr.std().item())
@@ -296,7 +287,7 @@ def train(
 
 
 def main():
-    prepare_cli_environment()
+    olmax.utils.prepare_cli_environment()
 
     beaker_runtime = BeakerRuntime.from_env()
     replica = None if beaker_runtime is None else beaker_runtime.replica
@@ -306,8 +297,8 @@ def main():
     # Hyperparameters.
     parser.add_argument(
         "--recipe",
-        choices=list(TransformerRecipe.get_known_choices().keys()),
-        default=TransformerRecipe.get_choice_name(LlamaLike271MRecipe),
+        choices=list(recipes.TransformerRecipe.get_known_choices().keys()),
+        default=recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike271MRecipe),
     )
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--vocab-size", type=int)
@@ -357,19 +348,19 @@ def main():
     all_gather_combine_threshold_mib: float
     reduce_scatter_combine_threshold_mib: float
     all_reduce_combine_threshold_mib: float
-    if opts.recipe == TransformerRecipe.get_choice_name(LlamaLike271MRecipe):
+    if opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike271MRecipe):
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
-    elif opts.recipe == TransformerRecipe.get_choice_name(LlamaLike7BRecipe):
+    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike7BRecipe):
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 1024
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 1024
-    elif opts.recipe == TransformerRecipe.get_choice_name(Gemma2Like27BRecipe):
+    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.Gemma2Like27BRecipe):
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
-    elif opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
+    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.Gemma3Like27BRecipe):
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
@@ -379,7 +370,7 @@ def main():
     if beaker_runtime is not None:
         log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
 
-    prepare_training_environment(
+    olmax.train.prepare_training_environment(
         disable_jit=opts.no_jit,
         disable_remat=opts.no_remat,
         xla_mem_frac=opts.xla_mem_frac,
