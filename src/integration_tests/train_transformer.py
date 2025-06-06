@@ -77,7 +77,7 @@ def train(
 
     log.info(f"Using mesh with axes {config.mesh.get_mesh_axes_repr()}")
 
-    if beaker_runtime is not None:
+    if beaker_runtime is not None and beaker_runtime.is_experiment:
         beaker_runtime.set_description(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}..."
         )
@@ -268,7 +268,7 @@ def train(
         f"❯ Final loss: {loss:.4f}"
     )
 
-    if beaker_runtime is not None:
+    if beaker_runtime is not None and beaker_runtime.is_experiment:
         beaker_runtime.set_description(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
             f"loss = {loss:.4f}, "

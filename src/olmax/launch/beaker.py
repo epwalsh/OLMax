@@ -132,6 +132,10 @@ class BeakerRuntime:
     def cluster_nickname(self) -> str:
         return self.node.hostname.split("-")[0]
 
+    @property
+    def is_experiment(self) -> bool:
+        return self.workload.task_id is not None
+
     def set_description(self, description: str):
         if self.replica is not None and self.replica.rank != 0:
             return
