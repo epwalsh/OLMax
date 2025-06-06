@@ -330,6 +330,7 @@ def main():
     parser.add_argument(
         "--xla-flags", choices=["recommended", "system_default"], default="recommended"
     )
+    parser.add_argument("--xla-mem-frac", type=float, default=0.95)
 
     # Attention settings.
     parser.add_argument("--attn-window-size", type=int)
@@ -386,6 +387,7 @@ def main():
     prepare_training_environment(
         disable_jit=opts.no_jit,
         disable_remat=opts.no_remat,
+        xla_mem_frac=opts.xla_mem_frac,
         xla_flags=opts.xla_flags,
         all_gather_combine_threshold_mib=all_gather_combine_threshold_mib,
         reduce_scatter_combine_threshold_mib=reduce_scatter_combine_threshold_mib,
