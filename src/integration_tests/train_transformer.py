@@ -343,13 +343,13 @@ def main():
         else:
             raise ValueError("--trace-dir is required!")
 
-    jax_config = olmax.JAXConfig.recommend(gpu_architecture)
+    jax_config = olmax.JAXConfig.recommended(gpu_architecture)
     if opts.no_jit:
         jax_config.disable_jit = True
     if opts.no_remat:
         jax_config.compiler_enable_remat_pass = False
 
-    xla_config = olmax.XLAConfig.recommend(gpu_architecture)
+    xla_config = olmax.XLAConfig.recommended(gpu_architecture)
     if opts.xla_mem_frac is not None:
         xla_config.python_client_mem_fraction = opts.xla_mem_frac
     # All-gather threshold.
