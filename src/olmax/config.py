@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Type, TypeVar
@@ -13,14 +14,16 @@ from .utils import bytes_to_mib, mib_to_bytes, set_env_var
 RegistrableConfig = draccus.ChoiceRegistry
 
 
-C = TypeVar("C", bound="_EnvConfig")
+C = TypeVar("C", bound="_EnvBaseConfig")
 
 
 @dataclass
-class _EnvConfig:
+class _EnvBaseConfig:
     @classmethod
     @abstractmethod
-    def recommended(cls: Type[C], gpu_architecture: GPUArchitecture | None, **overrides) -> C:
+    def recommended(
+        cls: Type[C], gpu_architecture: GPUArchitecture | None = None, **overrides
+    ) -> C:
         raise NotImplementedError
 
     @abstractmethod
@@ -32,7 +35,7 @@ class _EnvConfig:
 
 
 @dataclass
-class XLAConfig(_EnvConfig):
+class XLAConfig(_EnvBaseConfig):
     """
     XLA environment configuration.
     """
@@ -66,7 +69,7 @@ class XLAConfig(_EnvConfig):
     gpu_enable_triton_gemm: bool = False
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> XLAConfig:
+    def recommended(cls, gpu_architecture: GPUArchitecture | None = None, **overrides) -> XLAConfig:
         if gpu_architecture == GPUArchitecture.blackwell:
             return cls(
                 #  gpu_enable_command_buffer="FUSION,CUSTOM_CALL",
@@ -148,13 +151,15 @@ class XLAConfig(_EnvConfig):
 
 
 @dataclass
-class NCCLConfig(_EnvConfig):
+class NCCLConfig(_EnvBaseConfig):
     LL128_BUFFSIZE: int = -2
     LL_BUFFSIZE: int = -2
     PROTO: str = "SIMPLE,LL,LL128"
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> NCCLConfig:
+    def recommended(
+        cls, gpu_architecture: GPUArchitecture | None = None, **overrides
+    ) -> NCCLConfig:
         del gpu_architecture
         return cls(**overrides)
 
@@ -180,11 +185,13 @@ class NCCLConfig(_EnvConfig):
 
 
 @dataclass
-class CUDAConfig(_EnvConfig):
-    device_max_connections: int | None
+class CUDAConfig(_EnvBaseConfig):
+    device_max_connections: int | None = None
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> CUDAConfig:
+    def recommended(
+        cls, gpu_architecture: GPUArchitecture | None = None, **overrides
+    ) -> CUDAConfig:
         if gpu_architecture != GPUArchitecture.blackwell:
             return cls(device_max_connections=1, **overrides)
         return cls(**overrides)
@@ -211,12 +218,12 @@ class CUDAConfig(_EnvConfig):
 
 
 @dataclass
-class JAXConfig(_EnvConfig):
+class JAXConfig(_EnvBaseConfig):
     disable_jit: bool | None = None
     compiler_enable_remat_pass: bool | None = None
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None, **overrides) -> JAXConfig:
+    def recommended(cls, gpu_architecture: GPUArchitecture | None = None, **overrides) -> JAXConfig:
         del gpu_architecture
         return cls(**overrides)
 
@@ -225,3 +232,37 @@ class JAXConfig(_EnvConfig):
             if value is None:
                 continue
             jax.config.update(f"jax_{name}", value)
+
+
+@dataclass
+class EnvConfig(_EnvBaseConfig):
+    xla: XLAConfig = dataclasses.field(default_factory=XLAConfig)
+    jax: JAXConfig = dataclasses.field(default_factory=JAXConfig)
+    nccl: NCCLConfig = dataclasses.field(default_factory=NCCLConfig)
+    cuda: CUDAConfig = dataclasses.field(default_factory=CUDAConfig)
+
+    @classmethod
+    def recommended(cls, gpu_architecture: GPUArchitecture | None = None) -> EnvConfig:  # type: ignore[override]
+        return cls(
+            xla=XLAConfig.recommended(gpu_architecture),
+            jax=JAXConfig.recommended(gpu_architecture),
+            nccl=NCCLConfig.recommended(gpu_architecture),
+            cuda=CUDAConfig.recommended(gpu_architecture),
+        )
+
+    def apply(self):
+        self.xla.apply()
+        self.jax.apply()
+        self.nccl.apply()
+        self.cuda.apply()
+
+
+def _main():
+    from rich import print
+
+    cfg = draccus.parse(config_class=EnvConfig)
+    print(cfg)
+
+
+if __name__ == "__main__":
+    _main()

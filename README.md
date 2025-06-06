@@ -10,9 +10,9 @@
 - Optimizer data type: `FP32`
 
 **Results:**
-- [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes with full FSDP
-- [10,924 TPS/GPU](https://beaker.org/ex/01JWYHDW51H9R9H1Z0X3AZZW9D) on 2 Augusta H100 nodes with full FSDP
-- [12,157 TPS/GPU](https://beaker.org/ex/01JWY6Q9PRD5QZ8176K2FS8QP0) on 1 Augusta H100 node with full FSDP
+- [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+- [10,924 TPS/GPU](https://beaker.org/ex/01JWYHDW51H9R9H1Z0X3AZZW9D) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+- [12,157 TPS/GPU](https://beaker.org/ex/01JWY6Q9PRD5QZ8176K2FS8QP0) on 1 Augusta H100 node with full FSDP, micro-batch size of 2 instances/GPU
 
 **Example launch command:**
 ```fish
@@ -27,7 +27,8 @@ python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integr
 - Optimizer data type: `FP32`
 
 **Results:**
-- [4,767 TPS/GPU](https://beaker.org/ex/01JWY650NCVWEBPW97V14K1SJN) on 2 Titan B200 nodes with full FSDP
+- [4,617 TPS/GPU](https://beaker.org/ex/01JX3DF7HVHTMXNZD2P2SRQZFE) on 2 Titan B200 nodes with full FSDP, micro-batch size of 1 instance/GPU
+- [5,358 TPS/GPU](https://beaker.org/ex/01JX3D0TECNJ28WVZE4Q5DKHKM) on 2 Titan B200 nodes with full FSDP, micro-batch size of 2 instances/GPU
 
 **Example launch command:**
 ```fish
@@ -42,7 +43,8 @@ python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integratio
 - Optimizer data type: `FP32`
 
 **Results:**
-- [4,221 TPS/GPU](https://beaker.org/ex/01JWYJFCJSEGX7TXD2JGVH2W4A) on 2 Titan B200 nodes with full FSDP
+- [4,027 TPS/GPU](https://beaker.org/ex/01JX33WC54YRG2X4943VGQSGZQ) on 2 Titan B200 nodes with full FSDP, micro-batch size of 1 instance/GPU
+- [4,917 TPS/GPU](https://beaker.org/ex/01JX3CB9A4PD69Q715RPMDYWNY) on 2 Titan B200 nodes with full FSDP, micro-batch size of 2 instances/GPU
 
 **Example launch command:**
 ```fish

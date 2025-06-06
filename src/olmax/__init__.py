@@ -13,7 +13,14 @@ from . import (
     utils,
     version,
 )
-from .config import CUDAConfig, JAXConfig, NCCLConfig, RegistrableConfig, XLAConfig
+from .config import (
+    CUDAConfig,
+    EnvConfig,
+    JAXConfig,
+    NCCLConfig,
+    RegistrableConfig,
+    XLAConfig,
+)
 from .train import prepare_training_environment
 from .utils import prepare_cli_environment
 
@@ -34,6 +41,7 @@ __all__ = [
     "version",
     # Classes.
     "RegistrableConfig",
+    "EnvConfig",
     "XLAConfig",
     "NCCLConfig",
     "CUDAConfig",
