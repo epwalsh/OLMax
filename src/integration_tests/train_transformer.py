@@ -27,24 +27,21 @@ log = logging.getLogger("main")
 @dataclass
 class IntegrationTestConfig:
     recipe: nn.transformer.recipes.TransformerRecipe
-    env: olmax.EnvConfig
+    vocab_size: int | None = None
+
+    env: olmax.EnvConfig = dataclasses.field(default_factory=olmax.EnvConfig.recommended)
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
+    dist: dist.DistConfig | None = None
 
     steps: int = 100
     learning_rate: float | None = None
-    vocab_size: int | None = None
     sequence_length: int | None = None
     batch_size_per_device: int | None = None
-
+    max_grad_norm: float | None = None
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
 
-    max_grad_norm: float | None = None
-
-    dist: dist.DistConfig | None = None
-
     trace_dir: str | None = None
-
     show_config: bool = False
     show_model: bool = False
 
