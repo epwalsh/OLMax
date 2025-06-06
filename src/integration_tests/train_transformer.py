@@ -45,11 +45,13 @@ class IntegrationTestConfig:
 
     trace_dir: str | None = None
 
+    show_config: bool = False
+    show_model: bool = False
+
 
 def train(
     config: IntegrationTestConfig,
     beaker_runtime: BeakerRuntime | None = None,
-    show_model: bool = False,
     running_avg_tps_count: int = 10,
 ) -> tuple[float, int, int]:
     recipe_name = recipes.TransformerRecipe.get_choice_name(config.recipe.__class__)
@@ -85,7 +87,7 @@ def train(
     log.info("Initializing model...")
     model_config = config.recipe.build_config(vocab_size=vocab_size, param_dtype=config.param_dtype)
     model = model_config.build(model_key, mesh_resource=config.mesh)
-    if show_model:
+    if config.show_model:
         print(model)
 
     num_params = olmax.jax_utils.count_params(model)
@@ -296,7 +298,8 @@ def main():
         trace_dir=None if beaker_runtime is None else beaker_runtime.workload.result_dataset_path,
     )
     config = parse_config_from_args(IntegrationTestConfig, config)
-    log.info(config)
+    if config.show_config:
+        print(config)
 
     olmax.prepare_training_environment(
         jax_config=config.env.jax,
