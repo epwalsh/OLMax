@@ -10,6 +10,7 @@ from .parallel import (
 )
 from .utils import (
     SHARED_FS_DIRS_ENV_VAR,
+    DistConfig,
     barrier,
     get_global_device_count,
     get_local_device_count,
@@ -24,6 +25,7 @@ from .utils import (
 )
 
 __all__ = [
+    "DistConfig",
     "init_distributed",
     "teardown_distributed",
     "is_distributed",

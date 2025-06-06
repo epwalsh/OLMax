@@ -1,6 +1,7 @@
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence, TypeVar
+from typing import Sequence, TypeVar, overload
 
 import jax
 import jax.experimental.multihost_utils as multihost_utils
@@ -14,7 +15,39 @@ SHARED_FS_DIRS_ENV_VAR = "OLMAX_SHARED_FS_DIRS"
 _DIST_INITIALIZED = False
 
 
+@dataclass
+class DistConfig:
+    coordinator_address: str | None = None
+    num_processes: int | None = None
+    process_id: int | None = None
+    local_device_ids: int | Sequence[int] | None = None
+    cluster_detection_method: str | None = None
+    initialization_timeout: int = 300
+    coordinator_bind_address: str | None = None
+
+
+@overload
+def init_distributed(dist_config: DistConfig):
+    ...
+
+
+@overload
 def init_distributed(
+    *,
+    coordinator_address: str | None = None,
+    num_processes: int | None = None,
+    process_id: int | None = None,
+    local_device_ids: int | Sequence[int] | None = None,
+    cluster_detection_method: str | None = None,
+    initialization_timeout: int = 300,
+    coordinator_bind_address: str | None = None,
+):
+    ...
+
+
+def init_distributed(
+    dist_config: DistConfig | None = None,
+    *,
     coordinator_address: str | None = None,
     num_processes: int | None = None,
     process_id: int | None = None,
@@ -24,16 +57,29 @@ def init_distributed(
     coordinator_bind_address: str | None = None,
 ):
     global _DIST_INITIALIZED
+
     if _DIST_INITIALIZED:
         raise RuntimeError("a distributed backend has already been initialized!")
+
+    if dist_config is None:
+        dist_config = DistConfig(
+            coordinator_address=coordinator_address,
+            num_processes=num_processes,
+            process_id=process_id,
+            local_device_ids=local_device_ids,
+            cluster_detection_method=cluster_detection_method,
+            initialization_timeout=initialization_timeout,
+            coordinator_bind_address=coordinator_bind_address,
+        )
+
     jax.distributed.initialize(
-        coordinator_address=coordinator_address,
-        num_processes=num_processes,
-        process_id=process_id,
-        local_device_ids=local_device_ids,
-        cluster_detection_method=cluster_detection_method,
-        initialization_timeout=initialization_timeout,
-        coordinator_bind_address=coordinator_bind_address,
+        coordinator_address=dist_config.coordinator_address,
+        num_processes=dist_config.num_processes,
+        process_id=dist_config.process_id,
+        local_device_ids=dist_config.local_device_ids,
+        cluster_detection_method=dist_config.cluster_detection_method,
+        initialization_timeout=dist_config.initialization_timeout,
+        coordinator_bind_address=dist_config.coordinator_bind_address,
     )
     _DIST_INITIALIZED = True
 

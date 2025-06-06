@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from beaker import Beaker, BeakerGpuType
 from gantry.api import launch_experiment
 
+from ..config import EnvConfig
+from ..distributed import DistConfig
 from ..types import *
 from ..utils import prepare_cli_environment
 
@@ -18,8 +20,8 @@ B200_CLUSTERS = {""}
 @dataclass
 class BeakerWorkloadInfo:
     id: str
-    task_id: str
     job_id: str
+    task_id: str | None
     result_dataset_id: str | None
     result_dataset_path: str | None
 
@@ -27,7 +29,7 @@ class BeakerWorkloadInfo:
     def from_env(cls) -> BeakerWorkloadInfo:
         return cls(
             id=os.environ["BEAKER_WORKLOAD_ID"],
-            task_id=os.environ["BEAKER_TASK_ID"],
+            task_id=os.environ.get("BEAKER_TASK_ID"),
             job_id=os.environ["BEAKER_JOB_ID"],
             result_dataset_id=os.environ.get("BEAKER_RESULT_DATASET_ID"),
             result_dataset_path=os.environ.get("RESULTS_DIR"),
@@ -60,13 +62,14 @@ class BeakerNodeInfo:
         )
 
     @ft.cached_property
-    def gpu_type(self) -> BeakerGpuType | None:
+    def gpu_type(self) -> GPUType | None:
         with Beaker.from_env() as beaker:
             node = beaker.node.get(self.id)
             try:
-                return BeakerGpuType(node.node_resources.gpu_type)
+                beaker_gpu_type = BeakerGpuType(node.node_resources.gpu_type)
             except ValueError:
                 return None
+        return GPUType(beaker_gpu_type.name)
 
     @property
     def gpu_architecture(self) -> GPUArchitecture | None:
@@ -115,7 +118,7 @@ class BeakerRuntime:
 
     @classmethod
     def from_env(cls) -> BeakerRuntime | None:
-        if "BEAKER_WORKLOAD_ID" not in os.environ or "BEAKER_TASK_ID" not in os.environ:
+        if "BEAKER_WORKLOAD_ID" not in os.environ:
             return None
 
         return cls(
@@ -136,6 +139,19 @@ class BeakerRuntime:
         with Beaker.from_env() as beaker:
             workload = beaker.workload.get(self.workload.id)
             beaker.workload.update(workload, description=description)
+
+    def get_dist_config(self) -> DistConfig | None:
+        if self.replica is None:
+            return None
+        else:
+            return DistConfig(
+                coordinator_address=f"{self.replica.leader_node.hostname}:29400",
+                num_processes=self.replica.count,
+                process_id=self.replica.rank,
+            )
+
+    def get_env_config(self) -> EnvConfig:
+        return EnvConfig.recommended(self.node.gpu_architecture)
 
 
 def _parse_args():

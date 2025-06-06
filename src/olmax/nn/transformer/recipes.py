@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal
 
 from ...config import RegistrableConfig
-from ...types import DTypeLike
+from ...types import *
 from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
 from ..normalization import RMSNormConfig
@@ -20,7 +20,7 @@ class TransformerRecipe(RegistrableConfig):
 
     @classmethod
     @abstractmethod
-    def get_mbz_per_device(cls, device_type: str) -> int:
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
         raise NotImplementedError
 
     @classmethod
@@ -42,14 +42,13 @@ class LlamaLike271MRecipe(TransformerRecipe):
     default_sequence_length: ClassVar[int] = 1024
 
     @classmethod
-    def get_mbz_per_device(cls, device_type: str) -> int:
-        device_type = device_type.lower()
-        mbz = 16 * 1024
-        if "h100" in device_type:
-            mbz *= 2
-        elif "b200" in device_type:
-            mbz *= 4
-        return mbz
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
+        if device_type == GPUType.NVIDIA_H100:
+            return 32 * 1024
+        elif device_type == GPUType.NVIDIA_B200:
+            return 64 * 1024
+        else:
+            return 16 * 1024
 
     @classmethod
     def build_config(
@@ -89,12 +88,13 @@ class LlamaLike7BRecipe(TransformerRecipe):
     default_learning_rate: ClassVar[float] = 1e-4
 
     @classmethod
-    def get_mbz_per_device(cls, device_type: str) -> int:
-        device_type = device_type.lower()
-        mbz = 2 * 4096
-        if "b200" in device_type:
-            mbz *= 2
-        return mbz
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
+        if device_type == GPUType.NVIDIA_H100:
+            return 2 * 4096
+        elif device_type == GPUType.NVIDIA_B200:
+            return 4 * 4096
+        else:
+            return 1 * 4096
 
     @classmethod
     def build_config(
@@ -135,10 +135,11 @@ class Gemma2Like27BRecipe(TransformerRecipe):
     default_learning_rate: ClassVar[float] = 1e-5
 
     @classmethod
-    def get_mbz_per_device(cls, device_type: str) -> int:
-        del device_type
-        mbz = 1 * 4096
-        return mbz
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
+        if device_type == GPUType.NVIDIA_B200:
+            return 2 * 4096
+        else:
+            return 1 * 4096
 
     @classmethod
     def build_config(
@@ -181,10 +182,11 @@ class Gemma3Like27BRecipe(TransformerRecipe):
     default_learning_rate: ClassVar[float] = 1e-5
 
     @classmethod
-    def get_mbz_per_device(cls, device_type: str) -> int:
-        del device_type
-        mbz = 1 * 4096
-        return mbz
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
+        if device_type == GPUType.NVIDIA_B200:
+            return 2 * 4096
+        else:
+            return 1 * 4096
 
     @classmethod
     def build_config(

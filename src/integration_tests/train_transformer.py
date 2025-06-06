@@ -42,8 +42,6 @@ def train(
     max_grad_norm: float | None = None,
 ) -> tuple[float, int, int]:
     recipe: recipes.TransformerRecipe = recipes.TransformerRecipe.get_choice_class(recipe_name)
-    beaker_gpu_type = None if beaker_runtime is None else beaker_runtime.node.gpu_type
-    gpu_type = None if beaker_gpu_type is None else beaker_gpu_type.name.lower()
 
     if vocab_size is None:
         vocab_size = recipe.default_vocab_size
@@ -52,7 +50,9 @@ def train(
     if learning_rate is None:
         learning_rate = recipe.default_learning_rate
     if instances_per_device is None:
-        batch_size_per_device = recipe.get_mbz_per_device(gpu_type or "A100")
+        batch_size_per_device = recipe.get_mbz_per_device(
+            None if beaker_runtime is None else beaker_runtime.node.gpu_type
+        )
         assert batch_size_per_device % sequence_length == 0
         instances_per_device = batch_size_per_device // sequence_length
 
