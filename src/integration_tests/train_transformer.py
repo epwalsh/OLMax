@@ -371,7 +371,7 @@ def main():
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
         all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
-        enable_pipelined_comms = False
+        #  enable_pipelined_comms = False
     elif opts.recipe == TransformerRecipe.get_choice_name(Gemma3Like27BRecipe):
         all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
         reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
