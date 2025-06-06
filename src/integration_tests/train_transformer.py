@@ -52,7 +52,7 @@ def train(
     show_model: bool = False,
     running_avg_tps_count: int = 10,
 ) -> tuple[float, int, int]:
-    recipe_name = recipes.TransformerRecipe.get_choice_name(config.recipe)
+    recipe_name = recipes.TransformerRecipe.get_choice_name(config.recipe.__class__)
     vocab_size = config.vocab_size or config.recipe.default_vocab_size
     learning_rate = config.learning_rate or config.recipe.default_learning_rate
     sequence_length = config.sequence_length or config.recipe.default_sequence_length
