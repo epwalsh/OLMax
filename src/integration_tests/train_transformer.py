@@ -36,7 +36,7 @@ class IntegrationTestConfig:
     sequence_length: int | None = None
     batch_size_per_device: int | None = None
 
-    param_dtype: DTypeLike = "float"
+    param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
 
     max_grad_norm: float | None = None
