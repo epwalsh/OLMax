@@ -27,7 +27,7 @@ class TransformerRecipe(RegistrableConfig):
     @abstractmethod
     def build_config(
         cls,
-        vocab_size: int | None,
+        vocab_size: int | None = None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,
@@ -53,7 +53,7 @@ class LlamaLike271MRecipe(TransformerRecipe):
     @classmethod
     def build_config(
         cls,
-        vocab_size: int | None,
+        vocab_size: int | None = None,
         param_dtype: DTypeLike = float,
         attn_window_size: int | tuple[int, int] | None = None,
         attn_implementation: Literal["xla", "cudnn"] | None = None,

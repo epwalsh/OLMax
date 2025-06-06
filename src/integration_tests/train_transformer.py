@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import argparse
+import dataclasses
 import gc
 import logging
 import time
 from collections import deque
-from typing import Literal
+from dataclasses import dataclass
 
 import equinox as eqx
 import jax
@@ -17,55 +17,52 @@ import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
 import olmax.nn.transformer.recipes as recipes
+from olmax.config import parse_config_from_args
 from olmax.launch.beaker import BeakerRuntime
 from olmax.types import *
 
 log = logging.getLogger("main")
 
 
+@dataclass
+class IntegrationTestConfig:
+    recipe: nn.transformer.recipes.TransformerRecipe
+    env: olmax.EnvConfig
+    mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
+
+    steps: int = 100
+    learning_rate: float | None = None
+    vocab_size: int | None = None
+    sequence_length: int | None = None
+    batch_size_per_device: int | None = None
+
+    param_dtype: DTypeLike = "float"
+    compute_dtype: DTypeLike = "bfloat16"
+
+    max_grad_norm: float | None = None
+
+    dist: dist.DistConfig | None = None
+
+    trace_dir: str | None = None
+
+
 def train(
-    recipe_name: str,
+    config: IntegrationTestConfig,
     beaker_runtime: BeakerRuntime | None = None,
-    sequence_length: int | None = None,
-    instances_per_device: int | None = None,
-    vocab_size: int | None = None,
-    param_dtype: DTypeLike = float,
-    compute_dtype: DTypeLike = jax.dtypes.bfloat16,
-    learning_rate: float | None = None,
-    train_steps: int = 100,
-    attn_window_size: int | tuple[int, int] | None = None,
-    attn_implementation: Literal["xla", "cudnn"] | None = None,
     show_model: bool = False,
     running_avg_tps_count: int = 10,
-    mesh_type: Literal["FSDP", "HSDP"] = "FSDP",
-    trace_dir: str | None = None,
-    max_grad_norm: float | None = None,
 ) -> tuple[float, int, int]:
-    recipe: recipes.TransformerRecipe = recipes.TransformerRecipe.get_choice_class(recipe_name)
-
-    if vocab_size is None:
-        vocab_size = recipe.default_vocab_size
-    if sequence_length is None:
-        sequence_length = recipe.default_sequence_length
-    if learning_rate is None:
-        learning_rate = recipe.default_learning_rate
-    if instances_per_device is None:
-        batch_size_per_device = recipe.get_mbz_per_device(
-            None if beaker_runtime is None else beaker_runtime.node.gpu_type
-        )
-        assert batch_size_per_device % sequence_length == 0
-        instances_per_device = batch_size_per_device // sequence_length
-
-    model_config = recipe.build_config(
-        vocab_size=vocab_size,
-        param_dtype=param_dtype,
-        attn_window_size=attn_window_size,
-        attn_implementation=attn_implementation,
+    recipe_name = recipes.TransformerRecipe.get_choice_name(config.recipe)
+    vocab_size = config.vocab_size or config.recipe.default_vocab_size
+    learning_rate = config.learning_rate or config.recipe.default_learning_rate
+    sequence_length = config.sequence_length or config.recipe.default_sequence_length
+    batch_size_per_device = config.batch_size_per_device or config.recipe.get_mbz_per_device(
+        None if beaker_runtime is None else beaker_runtime.node.gpu_type
     )
-
-    batch_size_per_device = sequence_length * instances_per_device
+    instances_per_device = batch_size_per_device // sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
+
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
         f"which is {global_batch_size_instances:,d} instances of length {sequence_length:,d}."
@@ -78,13 +75,7 @@ def train(
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
 
-    if mesh_type == "FSDP":
-        mesh_resource = dist.MeshResource.FSDP()
-    elif mesh_type == "HSDP":
-        mesh_resource = dist.MeshResource.HSDP(8)
-    else:
-        raise ValueError(mesh_type)
-    log.info(f"Build mesh with axes {mesh_resource.get_mesh_axes_repr()}")
+    log.info(f"Using mesh with axes {config.mesh.get_mesh_axes_repr()}")
 
     if beaker_runtime is not None:
         beaker_runtime.set_description(
@@ -92,9 +83,11 @@ def train(
         )
 
     log.info("Initializing model...")
-    model = model_config.build(model_key, mesh_resource=mesh_resource)
+    model_config = config.recipe.build_config(vocab_size=vocab_size, param_dtype=config.param_dtype)
+    model = model_config.build(model_key, mesh_resource=config.mesh)
     if show_model:
         print(model)
+
     num_params = olmax.jax_utils.count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     log.info(
@@ -115,8 +108,8 @@ def train(
     ).build(model)
 
     param_sharding = model.get_param_shardings()
-    data_sharding = mesh_resource.get_data_sharding()
-    opt_state_sharding = mesh_resource.get_opt_state_sharding(opt_state)
+    data_sharding = config.mesh.get_data_sharding()
+    opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -143,8 +136,8 @@ def train(
         step_metrics: dict[str, Array] = {}
 
         # Cast model to lower precision compute dtype.
-        if compute_dtype != param_dtype:
-            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, compute_dtype)
+        if config.compute_dtype != config.param_dtype:
+            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, config.compute_dtype)
         else:
             model_with_compute_dtype = model
 
@@ -155,14 +148,14 @@ def train(
             step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Cast grads back to param dtype.
-        if compute_dtype != param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
+        if config.compute_dtype != config.param_dtype:
+            grads = olmax.jax_utils.cast_tree(grads, config.param_dtype)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Maybe clip gradient norm.
-        if max_grad_norm is not None:
+        if config.max_grad_norm is not None:
             with jax.named_scope("clip_grads"):
-                grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, max_grad_norm)
+                grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, config.max_grad_norm)
                 step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
@@ -195,8 +188,8 @@ def train(
         vocab_size=vocab_size,
         sequence_length=sequence_length,
         global_batch_size_instances=global_batch_size_instances,
-        total_batches=train_steps,
-        mesh_resource=mesh_resource,
+        total_batches=config.steps,
+        mesh_resource=config.mesh,
     )
 
     while True:
@@ -206,8 +199,8 @@ def train(
         metrics_to_log: dict[str, float | int] = {}
 
         # Maybe start tracing.
-        if step == 3 and trace_dir is not None:
-            jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
+        if step == 3 and config.trace_dir is not None:
+            jax.profiler.start_trace(config.trace_dir, create_perfetto_trace=True)
 
         # Get batch.
         try:
@@ -231,7 +224,7 @@ def train(
             metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
         # Maybe stop tracing.
-        if step == 5 and trace_dir is not None:
+        if step == 5 and config.trace_dir is not None:
             jax.profiler.stop_trace()
 
         # Record throughput.
@@ -290,123 +283,38 @@ def main():
     olmax.prepare_cli_environment()
 
     beaker_runtime = BeakerRuntime.from_env()
-    replica = None if beaker_runtime is None else beaker_runtime.replica
-    gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
-
-    parser = argparse.ArgumentParser("train_transformer")
-
-    # Hyperparameters.
-    parser.add_argument(
-        "--recipe",
-        choices=list(recipes.TransformerRecipe.get_known_choices().keys()),
-        default=recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike271MRecipe),
-    )
-    parser.add_argument("--batch-size", type=int)
-    parser.add_argument("--vocab-size", type=int)
-    parser.add_argument("--mesh-type", choices=["FSDP", "HSDP"], default="FSDP")
-    parser.add_argument("--max-grad-norm", type=float)
-
-    # Debugging.
-    parser.add_argument("--show-model", action="store_true")
-    parser.add_argument("--no-jit", action="store_true")
-    parser.add_argument(
-        "--trace", action=argparse.BooleanOptionalAction, default=beaker_runtime is not None
-    )
-    parser.add_argument("--trace-dir", type=str)
-
-    # Performance.
-    parser.add_argument("--no-remat", action="store_true")
-    parser.add_argument("--all-gather-combine-threshold-mib", type=int)
-    parser.add_argument("--reduce-scatter-combine-threshold-mib", type=int)
-    parser.add_argument("--all-reduce-combine-threshold-mib", type=int)
-    parser.add_argument("--xla-mem-frac", type=float, default=0.95)
-
-    # Attention settings.
-    parser.add_argument("--attn-window-size", type=int)
-    parser.add_argument("--attn", choices=["xla", "cudnn"])
-
-    # Distributed settings.
-    parser.add_argument("--nproc", type=int, default=1 if replica is None else replica.count)
-    parser.add_argument("--proc-rank", type=int, default=None if replica is None else replica.rank)
-    parser.add_argument(
-        "--coordinator-address",
-        type=str,
-        default=None if replica is None else f"{replica.leader_node.hostname}:29400",
-    )
-
-    opts = parser.parse_args()
-
-    trace_dir = opts.trace_dir
-    if opts.trace and opts.trace_dir is None:
-        if beaker_runtime is not None:
-            trace_dir = beaker_runtime.workload.result_dataset_path
-        else:
-            raise ValueError("--trace-dir is required!")
-
-    jax_config = olmax.JAXConfig.recommended(gpu_architecture)
-    if opts.no_jit:
-        jax_config.disable_jit = True
-    if opts.no_remat:
-        jax_config.compiler_enable_remat_pass = False
-
-    xla_config = olmax.XLAConfig.recommended(gpu_architecture)
-    if opts.xla_mem_frac is not None:
-        xla_config.python_client_mem_fraction = opts.xla_mem_frac
-    # All-gather threshold.
-    if opts.all_gather_combine_threshold_mib is not None:
-        xla_config.gpu_all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib
-    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike7BRecipe):
-        xla_config.gpu_all_gather_combine_threshold_mib = 1024
-    # Reduce-scatter threshold.
-    if opts.reduce_scatter_combine_threshold_mib is not None:
-        xla_config.gpu_reduce_scatter_combine_threshold_mib = (
-            opts.reduce_scatter_combine_threshold_mib
-        )
-    # All-reduce threshold.
-    if opts.all_reduce_combine_threshold_mib is not None:
-        xla_config.gpu_all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib
-    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike7BRecipe):
-        xla_config.gpu_all_reduce_combine_threshold_mib = 1024
-
     if beaker_runtime is not None:
         log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
 
+    config = IntegrationTestConfig(
+        recipe=nn.transformer.recipes.LlamaLike271MRecipe(),
+        env=olmax.EnvConfig.recommended()
+        if beaker_runtime is None
+        else beaker_runtime.get_env_config(),
+        mesh=dist.MeshResource.FSDP(),
+        dist=None if beaker_runtime is None else beaker_runtime.get_dist_config(),
+        trace_dir=None if beaker_runtime is None else beaker_runtime.workload.result_dataset_path,
+    )
+    config = parse_config_from_args(IntegrationTestConfig, config)
+    log.info(config)
+
     olmax.prepare_training_environment(
-        jax_config=jax_config,
-        xla_config=xla_config,
-        gpu_architecture=gpu_architecture,
+        jax_config=config.env.jax,
+        xla_config=config.env.xla,
+        nccl_config=config.env.nccl,
+        cuda_config=config.env.cuda,
     )
 
-    if opts.nproc > 1:
-        if opts.coordinator_address is None:
-            raise ValueError("--coordinator-address is required for distributed training")
-        if opts.proc_rank is None:
-            raise ValueError("--proc-rank is required for distributed training")
-
+    if config.dist is not None:
         log.info("Initializing distributed backend...")
-        dist.init_distributed(
-            coordinator_address=opts.coordinator_address,
-            num_processes=opts.nproc,
-            process_id=opts.proc_rank,
-        )
+        dist.init_distributed(config.dist)
         log.info(
             f"Distributed backend initialized with {dist.get_global_device_count():,d} total devices "
             f"across {dist.get_process_world_size():,d} processes."
         )
 
     try:
-        train(
-            opts.recipe,
-            beaker_runtime=beaker_runtime,
-            instances_per_device=opts.batch_size,
-            vocab_size=opts.vocab_size,
-            attn_window_size=opts.attn_window_size,
-            attn_implementation=opts.attn,
-            show_model=opts.show_model,
-            mesh_type=opts.mesh_type,
-            trace_dir=trace_dir,
-            max_grad_norm=opts.max_grad_norm,
-        )
+        train(config, beaker_runtime)
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()
