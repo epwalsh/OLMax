@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+import json
+import os
+import tempfile
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Type, TypeVar
+from typing import Sequence, Type, TypeVar
 
 import draccus
 import jax
@@ -14,7 +17,33 @@ from .utils import bytes_to_mib, mib_to_bytes, set_env_var
 RegistrableConfig = draccus.ChoiceRegistry
 
 
-C = TypeVar("C", bound="_EnvBaseConfig")
+C = TypeVar("C")
+
+
+def parse_config_from_args(
+    config_class: Type[C],
+    default: C | None = None,
+    *,
+    args: Sequence[str] | None = None,
+    prog: str | None = None,
+) -> C:
+    """
+    Parse a config dataclass from command-line args.
+    """
+    defaults_path: PathOrStr | None = None
+    if default is not None:
+        with tempfile.NamedTemporaryFile("w+t", delete=False) as tmp_file:
+            json_safe = draccus.encode(dataclasses.asdict(default), config_class)  # pyright: ignore
+            json.dump(json_safe, tmp_file)
+            defaults_path = tmp_file.name
+
+    try:
+        return draccus.parse(
+            config_class=config_class, config_path=defaults_path, args=args, prog=prog
+        )
+    finally:
+        if defaults_path is not None:
+            os.remove(defaults_path)
 
 
 @dataclass
@@ -38,11 +67,11 @@ class _EnvBaseConfig:
 class XLAConfig(_EnvBaseConfig):
     """
     XLA environment configuration.
-    """
 
-    # See here for good defaults:
-    # - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
-    # - https://docs.jax.dev/en/latest/gpu_performance_tips.html
+    See here for good defaults:
+    - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
+    - https://docs.jax.dev/en/latest/gpu_performance_tips.html
+    """
 
     python_client_mem_fraction: float = 0.95
 
@@ -152,9 +181,9 @@ class XLAConfig(_EnvBaseConfig):
 
 @dataclass
 class NCCLConfig(_EnvBaseConfig):
-    LL128_BUFFSIZE: int = -2
-    LL_BUFFSIZE: int = -2
-    PROTO: str = "SIMPLE,LL,LL128"
+    LL128_buffsize: int = -2
+    LL_buffsize: int = -2
+    proto: str = "SIMPLE,LL,LL128"
 
     @classmethod
     def recommended(
@@ -260,7 +289,7 @@ class EnvConfig(_EnvBaseConfig):
 def _main():
     from rich import print
 
-    cfg = draccus.parse(config_class=EnvConfig)
+    cfg = parse_config_from_args(EnvConfig, EnvConfig(cuda=CUDAConfig(device_max_connections=1)))
     print(cfg)
 
 
