@@ -5,11 +5,11 @@ import functools as ft
 import os
 import sys
 from dataclasses import dataclass
-from typing import Literal
 
 from beaker import Beaker, BeakerGpuType
 from gantry.api import launch_experiment
 
+from ..types import *
 from ..utils import prepare_cli_environment
 
 B200_CLUSTERS = {""}
@@ -69,16 +69,16 @@ class BeakerNodeInfo:
                 return None
 
     @property
-    def gpu_architecture(self) -> Literal["hopper", "blackwell", "ampere"] | None:
+    def gpu_architecture(self) -> GPUArchitecture | None:
         gpu_type = self.gpu_type
         if gpu_type is None:
             return None
         elif "H100" in gpu_type.name:
-            return "hopper"
+            return GPUArchitecture.hopper
         elif "B200" in gpu_type.name:
-            return "blackwell"
+            return GPUArchitecture.blackwell
         elif "A100" in gpu_type.name:
-            return "ampere"
+            return GPUArchitecture.ampere
         else:
             raise ValueError(f"unexpected GPU type {gpu_type}")
 

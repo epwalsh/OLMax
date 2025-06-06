@@ -1,73 +1,54 @@
+from __future__ import annotations
+
 import logging
 import os
 from typing import Literal
 
-from ..utils import mib_to_bytes, set_env_var
+from ..config import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
+from ..types import *
 
 log = logging.getLogger(__name__)
 
 
 def prepare_training_environment(
     *,
-    xla_mem_frac: float = 0.95,
-    xla_flags: Literal["recommended", "system_default"] = "recommended",
-    all_gather_combine_threshold_mib: float = 256,
-    reduce_scatter_combine_threshold_mib: float = 128,
-    all_reduce_combine_threshold_mib: float = 256,
-    enable_pipelined_comms: bool = True,
-    enable_nccl_user_buffers: bool = False,  # uses more memory
-    disable_jit: bool = False,
-    disable_remat: bool = False,
-    gpu_architecture: Literal["hopper", "blackwell", "ampere"] | None = None,
+    xla_config: Literal["recommended", "system_default"] | XLAConfig = "recommended",
+    nccl_config: Literal["recommended", "system_default"] | NCCLConfig = "recommended",
+    cuda_config: Literal["recommended", "system_default"] | CUDAConfig = "recommended",
+    jax_config: Literal["recommended", "system_default"] | JAXConfig = "recommended",
+    gpu_architecture: GPUArchitecture | None = None,
 ):
-    assert 0 <= xla_mem_frac <= 1.0
-
     # See:
     # - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
     # - https://docs.jax.dev/en/latest/gpu_performance_tips.html
 
-    if xla_flags == "recommended":
-        xla_flags_ = [
-            "--xla_gpu_enable_latency_hiding_scheduler=true",
-            f"--xla_gpu_enable_pipelined_all_gather={str(enable_pipelined_comms).lower()}",
-            f"--xla_gpu_enable_pipelined_reduce_scatter={str(enable_pipelined_comms).lower()}",
-            f"--xla_gpu_enable_pipelined_all_reduce={str(enable_pipelined_comms).lower()}",
-            "--xla_gpu_enable_all_gather_combine_by_dim=false",
-            "--xla_gpu_enable_reduce_scatter_combine_by_dim=false",
-            f"--xla_gpu_all_gather_combine_threshold_bytes={mib_to_bytes(all_gather_combine_threshold_mib)}",
-            f"--xla_gpu_reduce_scatter_combine_threshold_bytes={mib_to_bytes(reduce_scatter_combine_threshold_mib)}",
-            f"--xla_gpu_all_reduce_combine_threshold_bytes={mib_to_bytes(all_reduce_combine_threshold_mib)}",
-            f"--xla_gpu_enable_nccl_user_buffers={str(enable_nccl_user_buffers).lower()}",
-            "--xla_gpu_enable_nccl_comm_splitting=true",
-            "--xla_gpu_enable_nccl_per_stream_comms=false",
-            #  "--xla_gpu_enable_while_loop_double_buffering=true",
-            #  "--xla_gpu_enable_command_buffer=",
-            #  "--xla_gpu_enable_triton_gemm=false",
-        ]
-        #  if gpu_architecture == "blackwell":
-        #      xla_flags_.append("--xla_gpu_enable_command_buffer=FUSION,CUSTOM_CALL")
-        set_env_var("XLA_FLAGS", " ".join(xla_flags_), override=True)
-    elif xla_flags != "system_default":
-        raise ValueError(
-            f"invalid value for 'xla_flags', expected one of 'recommended', 'system_default', but got '{xla_flags}'"
-        )
+    if isinstance(xla_config, XLAConfig):
+        xla_config.apply()
+    elif xla_config == "recommended":
+        XLAConfig.recommended(gpu_architecture).apply()
+    elif xla_config != "system_default":
+        raise ValueError(xla_config)
 
-    set_env_var("XLA_PYTHON_CLIENT_MEM_FRACTION", f"{round(xla_mem_frac, 2):.2f}", override=True)
+    if isinstance(nccl_config, NCCLConfig):
+        nccl_config.apply()
+    elif nccl_config == "recommended":
+        NCCLConfig.recommend(gpu_architecture).apply()
+    elif nccl_config != "system_default":
+        raise ValueError(nccl_config)
 
-    set_env_var("NCCL_LL128_BUFFSIZE", "-2")
-    set_env_var("NCCL_LL_BUFFSIZE", "-2")
-    set_env_var("NCCL_PROTO", "SIMPLE,LL,LL128")
+    if isinstance(cuda_config, CUDAConfig):
+        cuda_config.apply()
+    elif cuda_config == "recommended":
+        NCCLConfig.recommend(gpu_architecture).apply()
+    elif cuda_config != "system_default":
+        raise ValueError(cuda_config)
 
-    if gpu_architecture != "blackwell":
-        set_env_var("CUDA_DEVICE_MAX_CONNECTIONS", "1")
-
-    import jax
-
-    if disable_jit:
-        jax.config.update("jax_disable_jit", True)
-
-    if disable_remat:
-        jax.config.update("jax_compiler_enable_remat_pass", False)
+    if isinstance(jax_config, JAXConfig):
+        jax_config.apply()
+    elif jax_config == "recommended":
+        NCCLConfig.recommend(gpu_architecture).apply()
+    elif jax_config != "system_default":
+        raise ValueError(jax_config)
 
     all_xla_env_vars = []
     for name, value in os.environ.items():

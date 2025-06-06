@@ -287,10 +287,11 @@ def train(
 
 
 def main():
-    olmax.utils.prepare_cli_environment()
+    olmax.prepare_cli_environment()
 
     beaker_runtime = BeakerRuntime.from_env()
     replica = None if beaker_runtime is None else beaker_runtime.replica
+    gpu_architecture = None if beaker_runtime is None else beaker_runtime.node.gpu_architecture
 
     parser = argparse.ArgumentParser("train_transformer")
 
@@ -318,9 +319,6 @@ def main():
     parser.add_argument("--all-gather-combine-threshold-mib", type=int)
     parser.add_argument("--reduce-scatter-combine-threshold-mib", type=int)
     parser.add_argument("--all-reduce-combine-threshold-mib", type=int)
-    parser.add_argument(
-        "--xla-flags", choices=["recommended", "system_default"], default="recommended"
-    )
     parser.add_argument("--xla-mem-frac", type=float, default=0.95)
 
     # Attention settings.
@@ -345,40 +343,38 @@ def main():
         else:
             raise ValueError("--trace-dir is required!")
 
-    all_gather_combine_threshold_mib: float
-    reduce_scatter_combine_threshold_mib: float
-    all_reduce_combine_threshold_mib: float
-    if opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike271MRecipe):
-        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
-        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
+    jax_config = olmax.JAXConfig.recommend(gpu_architecture)
+    if opts.no_jit:
+        jax_config.disable_jit = True
+    if opts.no_remat:
+        jax_config.compiler_enable_remat_pass = False
+
+    xla_config = olmax.XLAConfig.recommend(gpu_architecture)
+    if opts.xla_mem_frac is not None:
+        xla_config.python_client_mem_fraction = opts.xla_mem_frac
+    # All-gather threshold.
+    if opts.all_gather_combine_threshold_mib is not None:
+        xla_config.gpu_all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib
     elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike7BRecipe):
-        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 1024
-        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 1024
-    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.Gemma2Like27BRecipe):
-        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
-        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
-    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.Gemma3Like27BRecipe):
-        all_gather_combine_threshold_mib = opts.all_gather_combine_threshold_mib or 256
-        reduce_scatter_combine_threshold_mib = opts.reduce_scatter_combine_threshold_mib or 128
-        all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib or 256
-    else:
-        raise ValueError(opts.recipe)  # need to tune for model size
+        xla_config.gpu_all_gather_combine_threshold_mib = 1024
+    # Reduce-scatter threshold.
+    if opts.reduce_scatter_combine_threshold_mib is not None:
+        xla_config.gpu_reduce_scatter_combine_threshold_mib = (
+            opts.reduce_scatter_combine_threshold_mib
+        )
+    # All-reduce threshold.
+    if opts.all_reduce_combine_threshold_mib is not None:
+        xla_config.gpu_all_reduce_combine_threshold_mib = opts.all_reduce_combine_threshold_mib
+    elif opts.recipe == recipes.TransformerRecipe.get_choice_name(recipes.LlamaLike7BRecipe):
+        xla_config.gpu_all_reduce_combine_threshold_mib = 1024
 
     if beaker_runtime is not None:
         log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
 
-    olmax.train.prepare_training_environment(
-        disable_jit=opts.no_jit,
-        disable_remat=opts.no_remat,
-        xla_mem_frac=opts.xla_mem_frac,
-        xla_flags=opts.xla_flags,
-        all_gather_combine_threshold_mib=all_gather_combine_threshold_mib,
-        reduce_scatter_combine_threshold_mib=reduce_scatter_combine_threshold_mib,
-        all_reduce_combine_threshold_mib=all_reduce_combine_threshold_mib,
-        gpu_architecture=None if beaker_runtime is None else beaker_runtime.node.gpu_architecture,
+    olmax.prepare_training_environment(
+        jax_config=jax_config,
+        xla_config=xla_config,
+        gpu_architecture=gpu_architecture,
     )
 
     if opts.nproc > 1:
