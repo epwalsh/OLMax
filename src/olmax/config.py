@@ -58,7 +58,7 @@ class XLAConfig(_EnvConfig):
 
     gpu_enable_nccl_user_buffers: bool = False
     gpu_enable_nccl_comm_splitting: bool = True
-    gpu_enable_nccl_per_stream_comms: bool = False
+    gpu_enable_nccl_per_stream_comms: bool | None = None
 
     gpu_enable_while_loop_double_buffering: bool = True
     gpu_enable_command_buffer: str | None = None
