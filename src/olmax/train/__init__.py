@@ -58,13 +58,13 @@ def prepare_training_environment(
                 all_xla_env_vars.append(flag.replace("--", "", 1))
         elif name.startswith("XLA_"):
             all_xla_env_vars.append(f"{name}={value}")
-    log.info("XLA environment:\n- " + "\n- ".join(all_xla_env_vars))
+    log.info("XLA environment:\n❯ " + "\n❯ ".join(all_xla_env_vars))
 
     all_cuda_env_vars = []
     for name, value in os.environ.items():
         if name.startswith("CUDA_"):
             all_cuda_env_vars.append(f"{name}={value}")
-    log.info("CUDA environment:\n- " + "\n- ".join(all_cuda_env_vars))
+    log.info("CUDA environment:\n❯ " + "\n❯ ".join(all_cuda_env_vars))
 
     log.info(f"cuDNN version: {get_cudnn_version()}")
 
@@ -72,4 +72,4 @@ def prepare_training_environment(
     for name, value in os.environ.items():
         if name.startswith("NCCL_"):
             all_nccl_env_vars.append(f"{name}={value}")
-    log.info("NCCL environment:\n- " + "\n- ".join(all_nccl_env_vars))
+    log.info("NCCL environment:\n❯ " + "\n❯ ".join(all_nccl_env_vars))
