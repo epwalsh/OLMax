@@ -5,6 +5,7 @@ import os
 from typing import Literal
 
 from ..config import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
+from ..jax_utils import get_cudnn_version
 from ..types import *
 
 log = logging.getLogger(__name__)
@@ -64,6 +65,8 @@ def prepare_training_environment(
         if name.startswith("CUDA_"):
             all_cuda_env_vars.append(f"{name}={value}")
     log.info("CUDA environment:\n- " + "\n- ".join(all_cuda_env_vars))
+
+    log.info(f"cuDNN version: {get_cudnn_version()}")
 
     all_nccl_env_vars = []
     for name, value in os.environ.items():

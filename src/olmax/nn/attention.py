@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import Literal
 
@@ -7,6 +8,7 @@ import equinox as eqx
 import jax
 
 from ..distributed.parallel import MeshResource
+from ..jax_utils import get_cudnn_version
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .linear import Linear
 from .module import Module
@@ -52,6 +54,15 @@ class MultiheadSelfAttention(Attention):
         mesh_resource: MeshResource | None = None,
     ):
         super().__init__(mesh_resource)
+
+        if implementation is None and jax.default_backend() == "gpu":
+            if get_cudnn_version() is not None:
+                implementation = "cudnn"
+            else:
+                warnings.warn(
+                    "cuDNN not detected, falling back to slower XLA attention implementation"
+                )
+
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads or n_heads
         self.head_dim = head_dim if head_dim is not None else d_model // n_heads

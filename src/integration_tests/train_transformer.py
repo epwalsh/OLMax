@@ -44,6 +44,7 @@ class IntegrationTestConfig:
     trace_dir: str | None = None
     show_config: bool = False
     show_model: bool = False
+    dry_run: bool = False
 
 
 def train(
@@ -85,7 +86,7 @@ def train(
     model_config = config.recipe.build_config(vocab_size=vocab_size, param_dtype=config.param_dtype)
     model = model_config.build(model_key, mesh_resource=config.mesh)
     if config.show_model:
-        print(model)
+        log.info(model)
 
     num_params = olmax.jax_utils.count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
@@ -283,7 +284,10 @@ def main():
 
     beaker_runtime = BeakerRuntime.from_env()
     if beaker_runtime is not None:
-        log.info(f"Running in Beaker on node '{beaker_runtime.node.hostname}'")
+        log.info(
+            f"Running in Beaker on node '{beaker_runtime.node.hostname}'\n"
+            f"❯ Resources: {beaker_runtime.resources.gpu_count} {beaker_runtime.node.gpu_type}"
+        )
 
     config = IntegrationTestConfig(
         recipe=nn.transformer.recipes.LlamaLike271MRecipe(),
@@ -295,8 +299,10 @@ def main():
         trace_dir=None if beaker_runtime is None else beaker_runtime.workload.result_dataset_path,
     )
     config = parse_config_from_args(IntegrationTestConfig, config)
-    if config.show_config:
-        print(config)
+    if config.show_config or config.dry_run:
+        log.info(config)
+    if config.dry_run:
+        return
 
     olmax.prepare_training_environment(
         jax_config=config.env.jax,

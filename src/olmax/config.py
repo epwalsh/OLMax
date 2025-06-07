@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import sys
 import tempfile
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -13,6 +14,9 @@ import jax
 
 from .types import *
 from .utils import bytes_to_mib, mib_to_bytes, set_env_var
+
+draccus.encode.register(type(float), lambda x, _=None: x.__name__)
+draccus.decode.register(DTypeLike, lambda r, _: r)
 
 RegistrableConfig = draccus.ChoiceRegistry
 
@@ -76,6 +80,18 @@ def encode(
     return as_dict(data, recurse=recurse)
 
 
+def _clean_opts(opts: Sequence[str]) -> list[str]:
+    return [_clean_opt(s) for s in opts]
+
+
+def _clean_opt(arg: str) -> str:
+    if "=" not in arg:
+        arg = f"{arg}=True"
+    name, val = arg.split("=", 1)
+    name = name.strip("-").replace("-", "_")
+    return f"--{name}={val}"
+
+
 def parse_config_from_args(
     config_class: Type[C],
     default: C | None = None,
@@ -86,8 +102,6 @@ def parse_config_from_args(
     """
     Parse a config dataclass from command-line args.
     """
-    draccus.encode.register(type(float), lambda x, _=None: x.__name__)
-    draccus.decode.register(DTypeLike, lambda r, _: r)
 
     defaults_path: PathOrStr | None = None
     if default is not None:
@@ -95,6 +109,15 @@ def parse_config_from_args(
             json_safe = encode(default, json_safe=True)
             json.dump(json_safe, tmp_file)
             defaults_path = tmp_file.name
+
+    if args is None and sys.argv:
+        args = sys.argv[1:]
+
+    if prog is None and sys.argv:
+        prog = sys.argv[0]
+
+    if args:
+        args = _clean_opts(args)
 
     try:
         return draccus.parse(

@@ -72,3 +72,10 @@ def abs_sq(x: Array) -> Array:
     if not isinstance(x, (np.ndarray, jnp.ndarray)):
         raise ValueError(f"`abs_sq` accepts only NDarrays, got: {x}.")
     return (x.conj() * x).real
+
+
+def get_cudnn_version() -> int | None:
+    cuda_versions = jax._src.lib.cuda_versions  # pyright: ignore
+    if cuda_versions is None:
+        return None
+    return cuda_versions.cudnn_get_version()
