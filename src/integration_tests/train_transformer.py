@@ -284,12 +284,6 @@ def train(
 
 
 def main():
-    if beaker_runtime is not None:
-        log.info(
-            f"Running in Beaker on node '{beaker_runtime.node.hostname}'\n"
-            f"❯ Resources: {beaker_runtime.resources.gpu_count} {beaker_runtime.node.gpu_type}"
-        )
-
     config = parse_config_from_args(IntegrationTestConfig)
     config.recipe.set_env_defaults(config.env)
 

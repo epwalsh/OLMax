@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import functools as ft
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ from ..config import EnvConfig
 from ..distributed import DistConfig
 from ..types import *
 from ..utils import prepare_cli_environment
+
+log = logging.getLogger(__name__)
 
 B200_CLUSTERS = {""}
 
@@ -34,6 +37,12 @@ class BeakerWorkloadInfo:
             result_dataset_id=os.environ.get("BEAKER_RESULT_DATASET_ID"),
             result_dataset_path=os.environ.get("RESULTS_DIR"),
         )
+
+    @ft.cached_property
+    def url(self) -> str:
+        with Beaker.from_env() as beaker:
+            workload = beaker.workload.get(self.id)
+            return beaker.workload.url(workload)
 
 
 @dataclass
@@ -121,12 +130,30 @@ class BeakerRuntime:
         if "BEAKER_WORKLOAD_ID" not in os.environ:
             return None
 
-        return cls(
+        beaker_runtime = cls(
             workload=BeakerWorkloadInfo.from_env(),
             resources=BeakerResourcesInfo.from_env(),
             node=BeakerNodeInfo.from_env(),
             replica=BeakerReplicaInfo.from_env(),
         )
+
+        info = [
+            f"Running in Beaker on node '{beaker_runtime.node.hostname}'"
+            f"❯ Workload: {beaker_runtime.workload.url}"
+        ]
+        if (gpu_count := beaker_runtime.resources.gpu_count) > 0 and (
+            gpu_type := beaker_runtime.node.gpu_type
+        ) is not None:
+            arch = beaker_runtime.node.gpu_architecture
+            info.append(
+                f"❯ Resources: {gpu_count} {gpu_type.replace('_', ' ')} GPU(s) ({arch} architecture)"
+            )
+        if (replica := beaker_runtime.replica) is not None:
+            info.append(f"❯ Replicas: {replica.count}")
+
+        log.info("\n".join(info))
+
+        return beaker_runtime
 
     @property
     def cluster_nickname(self) -> str:
