@@ -138,8 +138,8 @@ class BeakerRuntime:
         )
 
         info = [
-            f"Running in Beaker on node '{beaker_runtime.node.hostname}'"
-            f"❯ Workload: {beaker_runtime.workload.url}"
+            f"Running in Beaker on node '{beaker_runtime.node.hostname}'",
+            f"❯ Workload: {beaker_runtime.workload.url}",
         ]
         if (gpu_count := beaker_runtime.resources.gpu_count) > 0 and (
             gpu_type := beaker_runtime.node.gpu_type
