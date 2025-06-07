@@ -1,8 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import ClassVar, Literal
 
-from ...config import RegistrableConfig
+from ...config import EnvConfig, RegistrableConfig
 from ...types import *
 from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
@@ -14,32 +13,29 @@ from .model import DefaultTransformerConfig, TransformerConfig
 
 @dataclass
 class TransformerRecipe(RegistrableConfig):
-    default_vocab_size: ClassVar[int] = 50_304
-    default_learning_rate: ClassVar[float] = 1e-3
-    default_sequence_length: ClassVar[int] = 4096
+    vocab_size: int
+    learning_rate: float
+    sequence_length: int
 
     @classmethod
     @abstractmethod
     def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
         raise NotImplementedError
 
-    @classmethod
     @abstractmethod
-    def build_config(
-        cls,
-        vocab_size: int | None = None,
-        param_dtype: DTypeLike = float,
-        attn_window_size: int | tuple[int, int] | None = None,
-        attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> TransformerConfig:
+    def build_config(self, param_dtype: DTypeLike = float) -> TransformerConfig:
         raise NotImplementedError
+
+    def set_env_defaults(self, env: EnvConfig):
+        del env
 
 
 @TransformerRecipe.register_subclass("llama_like_271M")
 @dataclass
 class LlamaLike271MRecipe(TransformerRecipe):
-    default_learning_rate: ClassVar[float] = 1e-3
-    default_sequence_length: ClassVar[int] = 1024
+    vocab_size: int = 50_304
+    learning_rate: float = 1e-3
+    sequence_length: int = 1024
 
     @classmethod
     def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
@@ -50,17 +46,10 @@ class LlamaLike271MRecipe(TransformerRecipe):
         else:
             return 16 * 1024
 
-    @classmethod
-    def build_config(
-        cls,
-        vocab_size: int | None = None,
-        param_dtype: DTypeLike = float,
-        attn_window_size: int | tuple[int, int] | None = None,
-        attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> DefaultTransformerConfig:
+    def build_config(self, param_dtype: DTypeLike = float) -> DefaultTransformerConfig:
         norm = RMSNormConfig(bias=False)
         return DefaultTransformerConfig(
-            vocab_size=vocab_size or cls.default_vocab_size,
+            vocab_size=self.vocab_size,
             d_model=1024,
             hidden_size=2816,
             num_layers=16,
@@ -70,8 +59,6 @@ class LlamaLike271MRecipe(TransformerRecipe):
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
                     bias=False,
                     dtype=param_dtype,
-                    window_size=attn_window_size,
-                    implementation=attn_implementation,
                 ),
                 norm=norm,
                 bias=False,
@@ -85,7 +72,9 @@ class LlamaLike271MRecipe(TransformerRecipe):
 @TransformerRecipe.register_subclass("llama_like_7B")
 @dataclass
 class LlamaLike7BRecipe(TransformerRecipe):
-    default_learning_rate: ClassVar[float] = 1e-4
+    vocab_size: int = 50_304
+    learning_rate: float = 1e-4
+    sequence_length: int = 4096
 
     @classmethod
     def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
@@ -96,17 +85,13 @@ class LlamaLike7BRecipe(TransformerRecipe):
         else:
             return 1 * 4096
 
-    @classmethod
     def build_config(
-        cls,
-        vocab_size: int | None = None,
+        self,
         param_dtype: DTypeLike = float,
-        attn_window_size: int | tuple[int, int] | None = None,
-        attn_implementation: Literal["xla", "cudnn"] | None = None,
     ) -> DefaultTransformerConfig:
         norm = RMSNormConfig(bias=False)
         return DefaultTransformerConfig(
-            vocab_size=vocab_size or cls.default_vocab_size,
+            vocab_size=self.vocab_size,
             d_model=4096,
             hidden_size=11008,
             num_layers=32,
@@ -116,8 +101,6 @@ class LlamaLike7BRecipe(TransformerRecipe):
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
                     bias=False,
                     dtype=param_dtype,
-                    window_size=attn_window_size,
-                    implementation=attn_implementation,
                 ),
                 norm=norm,
                 bias=False,
@@ -127,12 +110,19 @@ class LlamaLike7BRecipe(TransformerRecipe):
             dtype=param_dtype,
         )
 
+    def set_env_defaults(self, env: EnvConfig):
+        if env.xla.gpu_all_gather_combine_threshold_mib is None:
+            env.xla.gpu_all_gather_combine_threshold_mib = 1024
+        if env.xla.gpu_all_reduce_combine_threshold_mib is None:
+            env.xla.gpu_all_reduce_combine_threshold_mib = 1024
+
 
 @TransformerRecipe.register_subclass("gemma2_like_27B")
 @dataclass
 class Gemma2Like27BRecipe(TransformerRecipe):
-    default_vocab_size: ClassVar[int] = 256000
-    default_learning_rate: ClassVar[float] = 1e-5
+    vocab_size: int = 256000
+    learning_rate: float = 1e-5
+    sequence_length: int = 4096
 
     @classmethod
     def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
@@ -141,17 +131,10 @@ class Gemma2Like27BRecipe(TransformerRecipe):
         else:
             return 1 * 4096
 
-    @classmethod
-    def build_config(
-        cls,
-        vocab_size: int | None = None,
-        param_dtype: DTypeLike = float,
-        attn_window_size: int | tuple[int, int] | None = None,
-        attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> DefaultTransformerConfig:
+    def build_config(self, param_dtype: DTypeLike = float) -> DefaultTransformerConfig:
         norm = RMSNormConfig(bias=False)
         return DefaultTransformerConfig(
-            vocab_size=vocab_size or cls.default_vocab_size,
+            vocab_size=self.vocab_size,
             d_model=4608,
             hidden_size=36864,
             num_layers=46,
@@ -163,8 +146,6 @@ class Gemma2Like27BRecipe(TransformerRecipe):
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
                     bias=False,
                     dtype=param_dtype,
-                    window_size=attn_window_size,
-                    implementation=attn_implementation,
                 ),
                 norm=norm,
                 bias=False,
@@ -178,8 +159,9 @@ class Gemma2Like27BRecipe(TransformerRecipe):
 @TransformerRecipe.register_subclass("gemma3_like_27B")
 @dataclass
 class Gemma3Like27BRecipe(TransformerRecipe):
-    default_vocab_size: ClassVar[int] = 256000
-    default_learning_rate: ClassVar[float] = 1e-5
+    vocab_size: int = 256000
+    learning_rate: float = 1e-5
+    sequence_length: int = 4096
 
     @classmethod
     def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
@@ -188,17 +170,10 @@ class Gemma3Like27BRecipe(TransformerRecipe):
         else:
             return 1 * 4096
 
-    @classmethod
-    def build_config(
-        cls,
-        vocab_size: int | None = None,
-        param_dtype: DTypeLike = float,
-        attn_window_size: int | tuple[int, int] | None = None,
-        attn_implementation: Literal["xla", "cudnn"] | None = None,
-    ) -> DefaultTransformerConfig:
+    def build_config(self, param_dtype: DTypeLike = float) -> DefaultTransformerConfig:
         norm = RMSNormConfig(bias=False)
         return DefaultTransformerConfig(
-            vocab_size=vocab_size or cls.default_vocab_size,
+            vocab_size=self.vocab_size,
             d_model=5376,
             hidden_size=21504,
             num_layers=62,
@@ -210,8 +185,6 @@ class Gemma3Like27BRecipe(TransformerRecipe):
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
                     bias=False,
                     dtype=param_dtype,
-                    window_size=attn_window_size,
-                    implementation=attn_implementation,
                     qk_norm=norm,
                     qk_norm_headwise=True,
                 ),

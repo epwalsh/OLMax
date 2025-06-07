@@ -22,26 +22,34 @@ from olmax.launch.beaker import BeakerRuntime
 from olmax.types import *
 
 log = logging.getLogger("main")
+beaker_runtime: BeakerRuntime | None = None
 
 
 @dataclass
 class IntegrationTestConfig:
     recipe: nn.transformer.recipes.TransformerRecipe
-    vocab_size: int | None = None
 
-    env: olmax.EnvConfig = dataclasses.field(default_factory=olmax.EnvConfig.recommended)
+    env: olmax.EnvConfig = dataclasses.field(
+        default_factory=lambda: olmax.EnvConfig.recommended()
+        if beaker_runtime is None
+        else beaker_runtime.get_env_config()
+    )
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
-    dist: dist.DistConfig | None = None
+    distributed: dist.DistConfig | None = dataclasses.field(
+        default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
+    )
 
     steps: int = 100
-    learning_rate: float | None = None
-    sequence_length: int | None = None
     batch_size_per_device: int | None = None
     max_grad_norm: float | None = None
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
 
-    trace_dir: str | None = None
+    trace_dir: str | None = dataclasses.field(
+        default_factory=lambda: None
+        if beaker_runtime is None
+        else beaker_runtime.workload.result_dataset_path
+    )
     show_config: bool = False
     show_model: bool = False
     dry_run: bool = False
@@ -49,27 +57,23 @@ class IntegrationTestConfig:
 
 def train(
     config: IntegrationTestConfig,
-    beaker_runtime: BeakerRuntime | None = None,
     running_avg_tps_count: int = 10,
 ) -> tuple[float, int, int]:
     recipe_name = recipes.TransformerRecipe.get_choice_name(config.recipe.__class__)
-    vocab_size = config.vocab_size or config.recipe.default_vocab_size
-    learning_rate = config.learning_rate or config.recipe.default_learning_rate
-    sequence_length = config.sequence_length or config.recipe.default_sequence_length
     batch_size_per_device = config.batch_size_per_device or config.recipe.get_mbz_per_device(
         None if beaker_runtime is None else beaker_runtime.node.gpu_type
     )
-    instances_per_device = batch_size_per_device // sequence_length
+    instances_per_device = batch_size_per_device // config.recipe.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
-        f"which is {global_batch_size_instances:,d} instances of length {sequence_length:,d}."
+        f"which is {global_batch_size_instances:,d} instances of length {config.recipe.sequence_length:,d}."
     )
     log.info(
         f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
-        f"which is {instances_per_device:,d} instances of length {sequence_length:,d}."
+        f"which is {instances_per_device:,d} instances of length {config.recipe.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
@@ -83,7 +87,7 @@ def train(
         )
 
     log.info("Initializing model...")
-    model_config = config.recipe.build_config(vocab_size=vocab_size, param_dtype=config.param_dtype)
+    model_config = config.recipe.build_config(param_dtype=config.param_dtype)
     model = model_config.build(model_key, mesh_resource=config.mesh)
     if config.show_model:
         log.info(model)
@@ -100,9 +104,9 @@ def train(
         lr=olmax.optim.WarmupCosineDecaySchedule(
             warmup_steps=20,
             decay_steps=80,
-            peak_value=learning_rate,
-            init_value=learning_rate * 0.01,
-            end_value=learning_rate * 0.01,
+            peak_value=config.recipe.learning_rate,
+            init_value=config.recipe.learning_rate * 0.01,
+            end_value=config.recipe.learning_rate * 0.01,
         ),
         no_decay_modules=["embedding.weight"],
     ).build(model)
@@ -185,8 +189,8 @@ def train(
 
     batches = olmax.data.utils.generate_batches_of_sequential_tokens(
         data_key,
-        vocab_size=vocab_size,
-        sequence_length=sequence_length,
+        vocab_size=config.recipe.vocab_size,
+        sequence_length=config.recipe.sequence_length,
         global_batch_size_instances=global_batch_size_instances,
         total_batches=config.steps,
         mesh_resource=config.mesh,
@@ -280,25 +284,15 @@ def train(
 
 
 def main():
-    olmax.prepare_cli_environment()
-
-    beaker_runtime = BeakerRuntime.from_env()
     if beaker_runtime is not None:
         log.info(
             f"Running in Beaker on node '{beaker_runtime.node.hostname}'\n"
             f"❯ Resources: {beaker_runtime.resources.gpu_count} {beaker_runtime.node.gpu_type}"
         )
 
-    config = IntegrationTestConfig(
-        recipe=nn.transformer.recipes.LlamaLike271MRecipe(),
-        env=olmax.EnvConfig.recommended()
-        if beaker_runtime is None
-        else beaker_runtime.get_env_config(),
-        mesh=dist.MeshResource.FSDP(),
-        dist=None if beaker_runtime is None else beaker_runtime.get_dist_config(),
-        trace_dir=None if beaker_runtime is None else beaker_runtime.workload.result_dataset_path,
-    )
-    config = parse_config_from_args(IntegrationTestConfig, config)
+    config = parse_config_from_args(IntegrationTestConfig)
+    config.recipe.set_env_defaults(config.env)
+
     if config.show_config or config.dry_run:
         log.info(config)
     if config.dry_run:
@@ -311,20 +305,22 @@ def main():
         cuda_config=config.env.cuda,
     )
 
-    if config.dist is not None:
+    if config.distributed is not None:
         log.info("Initializing distributed backend...")
-        dist.init_distributed(config.dist)
+        dist.init_distributed(config.distributed)
         log.info(
             f"Distributed backend initialized with {dist.get_global_device_count():,d} total devices "
             f"across {dist.get_process_world_size():,d} processes."
         )
 
     try:
-        train(config, beaker_runtime)
+        train(config)
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()
 
 
 if __name__ == "__main__":
+    olmax.prepare_cli_environment()
+    beaker_runtime = BeakerRuntime.from_env()
     main()

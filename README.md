@@ -16,7 +16,7 @@
 
 **Example launch command:**
 ```fish
-python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integration_tests/train_transformer.py --recipe=llama_like_7B --attn=cudnn
+python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integration_tests/train_transformer.py --recipe.type=llama_like_7B
 ```
 
 ### Gemma2 27B
@@ -32,7 +32,7 @@ python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integr
 
 **Example launch command:**
 ```fish
-python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe=gemma2_like_27B --attn=cudnn
+python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe.type=gemma2_like_27B
 ```
 
 ### Gemma3 27B
@@ -48,5 +48,5 @@ python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integratio
 
 **Example launch command:**
 ```fish
-python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe=gemma3_like_27B --attn=cudnn
+python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py --recipe.type=gemma3_like_27B
 ```
