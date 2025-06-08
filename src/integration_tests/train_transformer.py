@@ -198,7 +198,7 @@ def train(
 
     while True:
         # Bookkeeping.
-        batch_start = time.monotonic()
+        batch_start = time.perf_counter()
         step += 1
         metrics_to_log: dict[str, float | int] = {}
 
@@ -232,7 +232,7 @@ def train(
             jax.profiler.stop_trace()
 
         # Record throughput.
-        batch_end = time.monotonic()
+        batch_end = time.perf_counter()
         tps = batch_size_per_device / (batch_end - batch_start)
         metrics_to_log["TPS"] = int(tps)
         if step > 5:
