@@ -7,7 +7,11 @@ from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
 from ..normalization import RMSNormConfig
 from ..rope import RotaryPositionalEmbeddingConfig
-from .block import DefaultTransformerBlockConfig, GemmaTransformerBlockConfig
+from .block import (
+    DefaultTransformerBlockConfig,
+    GemmaTransformerBlockConfig,
+    ReorderedNormTransformerBlockConfig,
+)
 from .model import DefaultTransformerConfig, TransformerConfig
 
 
@@ -99,6 +103,56 @@ class LlamaLike7BRecipe(TransformerRecipe):
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
+                    bias=False,
+                    dtype=param_dtype,
+                ),
+                norm=norm,
+                bias=False,
+                dtype=param_dtype,
+            ),
+            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            dtype=param_dtype,
+        )
+
+    def set_env_defaults(self, env: EnvConfig):
+        if env.xla.gpu_all_gather_combine_threshold_mib is None:
+            env.xla.gpu_all_gather_combine_threshold_mib = 1024
+        if env.xla.gpu_all_reduce_combine_threshold_mib is None:
+            env.xla.gpu_all_reduce_combine_threshold_mib = 1024
+
+
+@TransformerRecipe.register_subclass("olmo_7B")
+@dataclass
+class OLMo7BRecipe(TransformerRecipe):
+    vocab_size: int = 100278
+    learning_rate: float = 1e-4
+    sequence_length: int = 4096
+
+    @classmethod
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
+        if device_type == GPUType.NVIDIA_H100:
+            return 2 * 4096
+        elif device_type == GPUType.NVIDIA_B200:
+            return 4 * 4096
+        else:
+            return 1 * 4096
+
+    def build_config(
+        self,
+        param_dtype: DTypeLike = float,
+    ) -> DefaultTransformerConfig:
+        norm = RMSNormConfig(bias=False)
+        return DefaultTransformerConfig(
+            vocab_size=self.vocab_size,
+            d_model=4096,
+            hidden_size=11008,
+            num_layers=32,
+            block=ReorderedNormTransformerBlockConfig(
+                attention=MultiheadSelfAttentionConfig(
+                    n_heads=32,
+                    rope=RotaryPositionalEmbeddingConfig(theta=10_000),
+                    qk_norm=norm,
+                    qk_norm_headwise=True,
                     bias=False,
                     dtype=param_dtype,
                 ),
