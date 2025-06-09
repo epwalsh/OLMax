@@ -1,7 +1,8 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 
-from ...config import EnvConfig, RegistrableConfig
+from ...config import RegistrableConfig
+from ...env import EnvConfig
 from ...types import *
 from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
@@ -17,9 +18,9 @@ from .model import DefaultTransformerConfig, TransformerConfig
 
 @dataclass
 class TransformerRecipe(RegistrableConfig):
-    vocab_size: int
-    learning_rate: float
-    sequence_length: int
+    vocab_size: int = 0
+    learning_rate: float = 0.0
+    sequence_length: int = 0
 
     @classmethod
     @abstractmethod
@@ -34,7 +35,7 @@ class TransformerRecipe(RegistrableConfig):
         del env
 
 
-@TransformerRecipe.register_subclass("llama_like_271M")
+@TransformerRecipe.register("llama_like_271M")
 @dataclass
 class LlamaLike271MRecipe(TransformerRecipe):
     vocab_size: int = 50_304
@@ -73,7 +74,7 @@ class LlamaLike271MRecipe(TransformerRecipe):
         )
 
 
-@TransformerRecipe.register_subclass("llama_like_7B")
+@TransformerRecipe.register("llama_like_7B")
 @dataclass
 class LlamaLike7BRecipe(TransformerRecipe):
     vocab_size: int = 50_304
@@ -121,7 +122,7 @@ class LlamaLike7BRecipe(TransformerRecipe):
             env.xla.gpu_all_reduce_combine_threshold_mib = 1024
 
 
-@TransformerRecipe.register_subclass("olmo_7B")
+@TransformerRecipe.register("olmo_7B")
 @dataclass
 class OLMo7BRecipe(TransformerRecipe):
     vocab_size: int = 100278
@@ -171,7 +172,7 @@ class OLMo7BRecipe(TransformerRecipe):
             env.xla.gpu_all_reduce_combine_threshold_mib = 1024
 
 
-@TransformerRecipe.register_subclass("gemma2_like_27B")
+@TransformerRecipe.register("gemma2_like_27B")
 @dataclass
 class Gemma2Like27BRecipe(TransformerRecipe):
     vocab_size: int = 256000
@@ -210,7 +211,7 @@ class Gemma2Like27BRecipe(TransformerRecipe):
         )
 
 
-@TransformerRecipe.register_subclass("gemma3_like_27B")
+@TransformerRecipe.register("gemma3_like_27B")
 @dataclass
 class Gemma3Like27BRecipe(TransformerRecipe):
     vocab_size: int = 256000

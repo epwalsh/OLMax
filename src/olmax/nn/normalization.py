@@ -131,7 +131,7 @@ class NormalizerConfig(RegistrableConfig, Generic[N]):
         )
 
 
-@NormalizerConfig.register_subclass("layer_norm")
+@NormalizerConfig.register("layer_norm")
 @dataclass
 class LayerNormConfig(NormalizerConfig[LayerNorm]):
     @classmethod
@@ -139,7 +139,7 @@ class LayerNormConfig(NormalizerConfig[LayerNorm]):
         return LayerNorm
 
 
-@NormalizerConfig.register_subclass("rms_norm")
+@NormalizerConfig.register("rms_norm")
 @dataclass
 class RMSNormConfig(NormalizerConfig[RMSNorm]):
     @classmethod

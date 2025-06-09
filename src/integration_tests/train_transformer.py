@@ -60,7 +60,7 @@ def train(
     config: IntegrationTestConfig,
     running_avg_tps_count: int = 10,
 ) -> tuple[float, int, int]:
-    recipe_name = recipes.TransformerRecipe.get_choice_name(config.recipe.__class__)
+    recipe_name = recipes.TransformerRecipe.get_registered_name(config.recipe.__class__)
     batch_size_per_device = config.batch_size_per_device or config.recipe.get_mbz_per_device(
         None if beaker_runtime is None else beaker_runtime.node.gpu_type
     )
@@ -287,19 +287,20 @@ def train(
 
 
 def main():
-    recipe_names = list(recipes.TransformerRecipe.get_known_choices().keys())
+    recipe_names = recipes.TransformerRecipe.get_registered_names()
     if len(sys.argv) < 2 or (recipe_name := sys.argv[1]) not in recipe_names:
         print(
-            f"RECIPE_NAME is required, which should be one of {recipe_names}",
+            f"usage: {sys.argv[0]} RECIPE_NAME [OVERRIDES...]\n\n"
+            f"Where RECIPE_NAME should be one of {recipe_names}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    config = IntegrationTestConfig(recipe=recipes.TransformerRecipe.get_choice_class(recipe_name)())
-    config = parse_config_from_args(
-        IntegrationTestConfig, config, prog="train_transformer.py RECIPE_NAME", args=sys.argv[2:]
+    config = IntegrationTestConfig(
+        recipe=recipes.TransformerRecipe.get_registered_class(recipe_name)()
     )
     config.recipe.set_env_defaults(config.env)
+    config = parse_config_from_args(IntegrationTestConfig, config, args=sys.argv[2:])
 
     if config.show_config or config.dry_run:
         log.info(config)

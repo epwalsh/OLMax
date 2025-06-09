@@ -13,14 +13,8 @@ from . import (
     utils,
     version,
 )
-from .config import (
-    CUDAConfig,
-    EnvConfig,
-    JAXConfig,
-    NCCLConfig,
-    RegistrableConfig,
-    XLAConfig,
-)
+from .config import RegistrableConfig
+from .env import CUDAConfig, EnvConfig, JAXConfig, NCCLConfig, XLAConfig
 from .train import prepare_training_environment
 from .utils import prepare_cli_environment
 

@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Literal
 
-from ..config import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
+from ..env import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
 from ..jax_utils import get_cudnn_version
 from ..types import *
 

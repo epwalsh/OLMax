@@ -13,7 +13,7 @@ from .normalization import Normalizer, NormalizerConfig
 
 @dataclass
 class LMHeadConfig:
-    norm: NormalizerConfig | None
+    norm: NormalizerConfig | None = None
     bias: bool = False
     dtype: DTypeLike = float
 

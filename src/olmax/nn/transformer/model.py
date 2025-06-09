@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
@@ -79,12 +80,12 @@ T = TypeVar("T", bound=Transformer)
 
 @dataclass
 class TransformerConfig(RegistrableConfig, Generic[T]):
-    d_model: int
-    hidden_size: int
-    vocab_size: int
-    num_layers: int
-    block: TransformerBlockConfig
-    lm_head: LMHeadConfig
+    d_model: int = 0
+    hidden_size: int = 0
+    vocab_size: int = 0
+    num_layers: int = 0
+    block: TransformerBlockConfig = dataclasses.field(default_factory=TransformerBlockConfig)
+    lm_head: LMHeadConfig = dataclasses.field(default_factory=LMHeadConfig)
     dtype: DTypeLike = float
 
     @classmethod
@@ -122,7 +123,7 @@ class TransformerConfig(RegistrableConfig, Generic[T]):
         )
 
 
-@TransformerConfig.register_subclass("default")
+@TransformerConfig.register("default")
 @dataclass
 class DefaultTransformerConfig(TransformerConfig[Transformer]):
     @classmethod

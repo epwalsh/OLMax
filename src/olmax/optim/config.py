@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import fnmatch
 import logging
 import warnings
@@ -24,21 +25,21 @@ class Schedule(RegistrableConfig):
         raise NotImplementedError
 
 
-@Schedule.register_subclass("constant")
+@Schedule.register("constant")
 @dataclass
 class ConstantSchedule(Schedule):
-    value: float
+    value: float = 0.0
 
     def build(self) -> optax.ScalarOrSchedule:
         return self.value
 
 
-@Schedule.register_subclass("warmup_cosine_decay")
+@Schedule.register("warmup_cosine_decay")
 @dataclass
 class WarmupCosineDecaySchedule(Schedule):
-    warmup_steps: int
-    decay_steps: int
-    peak_value: float
+    warmup_steps: int = 0
+    decay_steps: int = 0
+    peak_value: float = 0.0
     init_value: float = 0.0
     end_value: float = 0.0
 
@@ -53,13 +54,13 @@ class WarmupCosineDecaySchedule(Schedule):
         )
 
 
-@Schedule.register_subclass("warmup_stable_decay")
+@Schedule.register("warmup_stable_decay")
 @dataclass
 class WarmupStableDecaySchedule(Schedule):
-    warmup_steps: int
-    stable_steps: int
-    decay_steps: int
-    peak_value: float
+    warmup_steps: int = 0
+    stable_steps: int = 0
+    decay_steps: int = 0
+    peak_value: float = 0.0
     init_value: float = 0.0
     end_value: float = 0.0
 
@@ -123,10 +124,10 @@ class OptimConfig(RegistrableConfig):
         return result
 
 
-@OptimConfig.register_subclass("adamw")
+@OptimConfig.register("adamw")
 @dataclass
 class AdamWConfig(OptimConfig):
-    lr: Schedule
+    lr: Schedule = dataclasses.field(default_factory=ConstantSchedule)
     b1: float = 0.9
     b2: float = 0.999
     eps: float = 1e-8

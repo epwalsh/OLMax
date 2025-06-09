@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from beaker import Beaker, BeakerGpuType
 from gantry.api import launch_experiment
 
-from ..config import EnvConfig
 from ..distributed import DistConfig
+from ..env import EnvConfig
 from ..types import *
 from ..utils import prepare_cli_environment
 

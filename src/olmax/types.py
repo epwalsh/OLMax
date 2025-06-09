@@ -2,7 +2,7 @@ import os
 from enum import StrEnum
 from typing import Any
 
-from jaxtyping import Array, ArrayLike, DTypeLike, PRNGKeyArray
+from jaxtyping import Array, ArrayLike, PRNGKeyArray
 
 __all__ = [
     "Array",
@@ -20,6 +20,7 @@ __all__ = [
 PyTree = Any
 Specs = Any
 Scalar = float | int | Array
+DTypeLike = Any
 PathOrStr = os.PathLike | str
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Generic, Type, TypeVar
@@ -143,8 +144,10 @@ B = TypeVar("B", bound=TransformerBlock)
 
 @dataclass
 class TransformerBlockConfig(RegistrableConfig, Generic[B]):
-    attention: MultiheadSelfAttentionConfig
-    norm: NormalizerConfig
+    attention: MultiheadSelfAttentionConfig = dataclasses.field(
+        default_factory=MultiheadSelfAttentionConfig
+    )
+    norm: NormalizerConfig = dataclasses.field(default_factory=NormalizerConfig)
     bias: bool = False
     dtype: DTypeLike = float
 
@@ -188,7 +191,7 @@ class TransformerBlockConfig(RegistrableConfig, Generic[B]):
         )
 
 
-@TransformerBlockConfig.register_subclass("default")
+@TransformerBlockConfig.register("default")
 @dataclass
 class DefaultTransformerBlockConfig(TransformerBlockConfig[TransformerBlock]):
     @classmethod
@@ -196,7 +199,7 @@ class DefaultTransformerBlockConfig(TransformerBlockConfig[TransformerBlock]):
         return TransformerBlock
 
 
-@TransformerBlockConfig.register_subclass("reordered_norm")
+@TransformerBlockConfig.register("reordered_norm")
 @dataclass
 class ReorderedNormTransformerBlockConfig(TransformerBlockConfig[ReorderedNormTransformerBlock]):
     @classmethod
@@ -204,7 +207,7 @@ class ReorderedNormTransformerBlockConfig(TransformerBlockConfig[ReorderedNormTr
         return ReorderedNormTransformerBlock
 
 
-@TransformerBlockConfig.register_subclass("gemma")
+@TransformerBlockConfig.register("gemma")
 @dataclass
 class GemmaTransformerBlockConfig(TransformerBlockConfig[GemmaTransformerBlock]):
     @classmethod

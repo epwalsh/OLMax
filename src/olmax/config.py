@@ -1,28 +1,141 @@
 from __future__ import annotations
 
 import dataclasses
-import json
-import os
 import sys
-import tempfile
-from abc import abstractmethod
+import types
+import typing
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Any, Generator, Sequence, Type, TypeVar
+from typing import Any, Callable, ClassVar, Generator, Sequence, Type, TypeVar
 
-import draccus
-import jax
+import yaml
 
 from .types import *
-from .utils import bytes_to_mib, mib_to_bytes, set_env_var
-
-draccus.encode.register(type(float), lambda x, _=None: x.__name__)
-draccus.decode.register(DTypeLike, lambda r, _: r)
-
-RegistrableConfig = draccus.ChoiceRegistry
-
 
 C = TypeVar("C")
+R = TypeVar("R", bound="RegistrableConfig")
+
+
+@dataclass
+class RegistrableConfig:
+    _registry: ClassVar[dict[str, Type[RegistrableConfig]]]
+
+    type: str | None = dataclasses.field(default=None, repr=False)
+
+    def __new__(cls, *args, type: str | None = None, **kwargs):
+        del args, kwargs
+        if type is not None and (
+            not hasattr(cls, "registered_name") or type != cls.registered_name  # type: ignore
+        ):
+            if type not in cls._registry:
+                raise KeyError(
+                    f"'{type}' is not registered name for {cls.__name__}. "
+                    f"Available choices are: {list(cls._registry.keys())}"
+                )
+            return super().__new__(cls._registry[type])
+        else:
+            return super().__new__(cls)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not hasattr(cls, "_choice_registry"):
+            cls._registry = {}
+
+    @classmethod
+    def register(cls, name: str) -> Callable[[Type[R]], Type[R]]:
+        def register_subclass(subclass: Type[R]) -> Type[R]:
+            fields = [
+                (f.name, f.type, f) for f in dataclasses.fields(subclass) if f.name != "type"  # type: ignore
+            ] + [
+                ("registered_name", ClassVar[str], name),  # type: ignore
+                ("registered_base", ClassVar[R], cls),  # type: ignore
+                ("type", str | None, dataclasses.field(default=name, repr=False)),  # type: ignore
+            ]
+            subclass = dataclasses.make_dataclass(
+                subclass.__name__,
+                fields,  # type: ignore
+                bases=(subclass,),
+            )
+            cls._registry[name] = subclass
+            return subclass
+
+        return register_subclass
+
+    @classmethod
+    def get_registered_name(cls: Type[R], subclass: Type[R] | None = None) -> str:
+        if subclass is None:
+            subclass = cls
+        for name, registered_subclass in cls._registry.items():
+            if registered_subclass == subclass:
+                return name
+        raise ValueError(
+            f"class {subclass.__name__} is not a registered subclass of {cls.__name__}"
+        )
+
+    @classmethod
+    def get_registered_class(cls: Type[R], type: str) -> Type[R]:
+        if type not in cls._registry:
+            raise KeyError(
+                f"'{type}' is not registered name for {cls.__name__}. "
+                f"Available choices are: {cls.get_registered_names()}"
+            )
+        return typing.cast(Type[R], cls._registry[type])
+
+    @classmethod
+    def get_registered_names(cls) -> list[str]:
+        return list(cls._registry.keys())
+
+
+def _set_nested(data: Any, key: str, value: Any):
+    if "." in key:
+        key, child_keys = key.split(".", 1)
+        if isinstance(data, dict):
+            _set_nested(data[key], child_keys, value)
+        elif isinstance(data, list):
+            _set_nested(data[int(key)], child_keys, value)
+        else:
+            raise ValueError(data)
+    else:
+        if isinstance(data, dict):
+            data[key] = value
+        elif isinstance(data, list):
+            data[int(key)] = value
+        else:
+            raise ValueError(data)
+
+
+def parse_config_from_args(
+    config_class: Type[C],
+    config: C | PathOrStr,
+    *,
+    args: Sequence[str] | None = None,
+) -> C:
+    """
+    Parse a config dataclass from command-line args.
+    """
+    if args is None and sys.argv:
+        args = sys.argv[1:]
+
+    config_dict: dict[str, Any] | None = None
+    if isinstance(config, config_class):
+        if not args:
+            return config
+        else:
+            config_dict = encode(config)
+    elif isinstance(config, (str, Path)):
+        with open(config) as f:
+            config_dict = yaml.safe_load(f)
+    else:
+        raise ValueError(config)
+
+    assert config_dict is not None
+    if args:
+        overrides = _clean_opts(args)
+        for key, value in overrides:
+            _set_nested(config_dict, key, value)
+
+    return decode(config_class, config_dict)
 
 
 def encode(
@@ -59,7 +172,11 @@ def encode(
             else:
                 out = {k: v for k, v in iter_fields(d)}
             if isinstance(d, RegistrableConfig):
-                out["type"] = d.get_choice_name(d.__class__)
+                try:
+                    registered_name = d.get_registered_name(d.__class__)
+                    out["type"] = registered_name
+                except ValueError:
+                    pass
             return out
         elif isinstance(d, dict):
             return {k: as_dict(v) for k, v in d.items()}
@@ -81,309 +198,72 @@ def encode(
     return as_dict(data, recurse=recurse)
 
 
-def _clean_opts(opts: Sequence[str]) -> list[str]:
+def decode(config_class: Type[C], data: dict[str, Any]) -> C:
+    type_hints = typing.get_type_hints(config_class)
+    kwargs = {k: _coerce(v, type_hints[k]) for k, v in data.items()}
+    return config_class(**kwargs)
+
+
+def _clean_opts(opts: Sequence[str]) -> list[tuple[str, Any]]:
     return [_clean_opt(s) for s in opts]
 
 
-def _clean_opt(arg: str) -> str:
-    if arg in {"-h", "--help"}:
-        return arg
+def _clean_opt(arg: str) -> tuple[str, Any]:
     if "=" not in arg:
-        arg = f"{arg}=True"
+        arg = f"{arg}=true"
     name, val = arg.split("=", 1)
     name = name.strip("-").replace("-", "_")
-    return f"--{name}={val}"
+    val = yaml.safe_load(val)
+    return (name, val)
 
 
-def parse_config_from_args(
-    config_class: Type[C],
-    default: C | PathOrStr,
-    *,
-    args: Sequence[str] | None = None,
-    prog: str | None = None,
-) -> C:
-    """
-    Parse a config dataclass from command-line args.
-    """
-
-    # NOTE: a default is required because otherwise draccus won't respect default factory functions
-    # when trying to override a single field.
-    defaults_path: PathOrStr
-    if isinstance(default, (str, Path)):
-        defaults_path = default
+def _get_types(type_hint: Any) -> tuple[Any, ...]:
+    if isinstance(type_hint, types.UnionType):
+        return type_hint.__args__
     else:
-        with tempfile.NamedTemporaryFile("w+t", delete=False) as tmp_file:
-            json_safe = encode(default, json_safe=True)
-            json.dump(json_safe, tmp_file)
-            defaults_path = tmp_file.name
-
-    if args is None and sys.argv:
-        args = sys.argv[1:]
-
-    if prog is None and sys.argv:
-        prog = sys.argv[0]
-
-    if args:
-        args = _clean_opts(args)
-
-    try:
-        return draccus.parse(
-            config_class=config_class, config_path=defaults_path, args=args, prog=prog
-        )
-    finally:
-        if defaults_path is not None:
-            os.remove(defaults_path)
+        return (type_hint,)
 
 
-@dataclass
-class _EnvBaseConfig:
-    @classmethod
-    @abstractmethod
-    def recommended(
-        cls: Type[C], gpu_architecture: GPUArchitecture | None = None, **overrides
-    ) -> C:
-        raise NotImplementedError
+def _coerce(value: Any, type_hint: Any) -> Any:
+    allowed_types = _get_types(type_hint)
+    for allowed_type in allowed_types:
+        try:
+            if isinstance(value, allowed_type):
+                return value
+            elif issubclass(allowed_type, Enum):
+                return allowed_type(value)
+        except TypeError:
+            pass
 
-    @abstractmethod
-    def apply(self):
-        """
-        Apply the settings.
-        """
-        raise NotImplementedError
+        origin = getattr(allowed_type, "__origin__", None)
+        args = getattr(allowed_type, "__args__", None)
+        if origin is list and isinstance(value, (list, tuple)):
+            if args:
+                return [_coerce(v, args[0]) for v in value]
+            else:
+                return list(value)
+        elif origin is set and isinstance(value, (list, tuple, set)):
+            if args:
+                return set(_coerce(v, args[0]) for v in value)
+            else:
+                return set(value)
+        elif origin is tuple and isinstance(value, (list, tuple)):
+            if args and ... in args:
+                return tuple([_coerce(v, args[0]) for v in value])
+            elif args:
+                return tuple([_coerce(v, arg) for v, arg in zip(value, args)])
+            else:
+                return tuple(value)
+        elif origin is dict and isinstance(value, dict):
+            if args:
+                return {_coerce(k, args[0]): _coerce(v, args[1]) for k, v in value.items()}
+            else:
+                return value
+        elif dataclasses.is_dataclass(allowed_type) and isinstance(value, dict):
+            type_hints = typing.get_type_hints(allowed_type)
+            return allowed_type(**{k: _coerce(v, type_hints[k]) for k, v in value.items()})
 
+    if Any in allowed_types:
+        return value
 
-@dataclass
-class XLAConfig(_EnvBaseConfig):
-    """
-    XLA environment configuration.
-
-    See here for good defaults:
-    - https://github.com/NVIDIA/JAX-Toolbox/blob/main/rosetta/docs/GPU_performance.md
-    - https://docs.jax.dev/en/latest/gpu_performance_tips.html
-    """
-
-    python_client_mem_fraction: float = 0.95
-
-    gpu_enable_latency_hiding_scheduler: bool = True
-
-    gpu_enable_pipelined_all_gather: bool = True
-    gpu_enable_pipelined_reduce_scatter: bool = True
-    gpu_enable_pipelined_all_reduce: bool = True
-
-    gpu_enable_all_gather_combine_by_dim: bool = False
-    gpu_enable_reduce_scatter_combine_by_dim: bool = False
-
-    gpu_all_gather_combine_threshold_bytes: int | None = None
-    gpu_reduce_scatter_combine_threshold_bytes: int | None = None
-    gpu_all_reduce_combine_threshold_bytes: int | None = None
-
-    gpu_enable_nccl_user_buffers: bool = False
-    gpu_enable_nccl_comm_splitting: bool = True
-    gpu_enable_nccl_per_stream_comms: bool | None = None
-
-    gpu_enable_while_loop_double_buffering: bool = True
-    gpu_enable_command_buffer: str | None = None
-
-    gpu_enable_triton_gemm: bool = False
-
-    @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None = None, **overrides) -> XLAConfig:
-        if gpu_architecture == GPUArchitecture.blackwell:
-            return cls(
-                #  gpu_enable_command_buffer="FUSION,CUSTOM_CALL",
-                **overrides
-            )
-        return cls(**overrides)
-
-    @property
-    def gpu_all_gather_combine_threshold_mib(self) -> float | None:
-        if self.gpu_all_gather_combine_threshold_bytes is None:
-            return None
-        else:
-            return bytes_to_mib(self.gpu_all_gather_combine_threshold_bytes)
-
-    @gpu_all_gather_combine_threshold_mib.setter
-    def gpu_all_gather_combine_threshold_mib(self, value: float | None):
-        if value is None:
-            self.gpu_all_gather_combine_threshold_bytes = None
-        else:
-            self.gpu_all_gather_combine_threshold_bytes = mib_to_bytes(value)
-
-    @property
-    def gpu_reduce_scatter_combine_threshold_mib(self) -> float | None:
-        if self.gpu_reduce_scatter_combine_threshold_bytes is None:
-            return None
-        else:
-            return bytes_to_mib(self.gpu_reduce_scatter_combine_threshold_bytes)
-
-    @gpu_reduce_scatter_combine_threshold_mib.setter
-    def gpu_reduce_scatter_combine_threshold_mib(self, value: float | None):
-        if value is None:
-            self.gpu_reduce_scatter_combine_threshold_bytes = None
-        else:
-            self.gpu_reduce_scatter_combine_threshold_bytes = mib_to_bytes(value)
-
-    @property
-    def gpu_all_reduce_combine_threshold_mib(self) -> float | None:
-        if self.gpu_all_reduce_combine_threshold_bytes is None:
-            return None
-        else:
-            return bytes_to_mib(self.gpu_all_reduce_combine_threshold_bytes)
-
-    @gpu_all_reduce_combine_threshold_mib.setter
-    def gpu_all_reduce_combine_threshold_mib(self, value: float | None):
-        if value is None:
-            self.gpu_all_reduce_combine_threshold_bytes = None
-        else:
-            self.gpu_all_reduce_combine_threshold_bytes = mib_to_bytes(value)
-
-    def _get_env_flags(self) -> list[str]:
-        flags = []
-        for name, value in self.__dict__.items():
-            if name == "python_client_mem_fraction":
-                continue
-
-            value_str: str | None = None
-            if isinstance(value, bool):
-                value_str = str(value).lower()
-            elif isinstance(value, str):
-                value_str = value
-            elif isinstance(value, int):
-                value_str = str(value)
-            elif value is not None:
-                raise ValueError(value)
-
-            if value_str is not None:
-                flags.append(f"--xla_{name}={value_str}")
-
-        return flags
-
-    def apply(self):
-        assert 0 <= self.python_client_mem_fraction <= 1.0
-        set_env_var(
-            "XLA_PYTHON_CLIENT_MEM_FRACTION",
-            f"{round(self.python_client_mem_fraction, 2):.2f}",
-            override=True,
-        )
-        set_env_var("XLA_FLAGS", " ".join(self._get_env_flags()), override=True)
-
-
-@dataclass
-class NCCLConfig(_EnvBaseConfig):
-    LL128_buffsize: int = -2
-    LL_buffsize: int = -2
-    proto: str = "Simple,LL,LL128"
-    debug: str = "WARN"
-    tuner_config_path: str | None = None
-    shimnet_guest_config_checker_config_file: str | None = None
-
-    @classmethod
-    def recommended(
-        cls, gpu_architecture: GPUArchitecture | None = None, **overrides
-    ) -> NCCLConfig:
-        del gpu_architecture
-        return cls(**overrides)
-
-    def _get_env_vars(self) -> list[tuple[str, str]]:
-        env_vars = []
-        for name, value in self.__dict__.items():
-            value_str: str | None = None
-            if isinstance(value, str):
-                value_str = value
-            elif isinstance(value, int):
-                value_str = str(value)
-            elif value is not None:
-                raise ValueError(value)
-
-            if value_str is not None:
-                env_vars.append((f"NCCL_{name.upper()}", value_str))
-
-        return env_vars
-
-    def apply(self):
-        for name, value in self._get_env_vars():
-            set_env_var(name, value, override=True)
-
-
-@dataclass
-class CUDAConfig(_EnvBaseConfig):
-    device_max_connections: int | None = None
-
-    @classmethod
-    def recommended(
-        cls, gpu_architecture: GPUArchitecture | None = None, **overrides
-    ) -> CUDAConfig:
-        if gpu_architecture != GPUArchitecture.blackwell:
-            return cls(device_max_connections=1, **overrides)
-        return cls(**overrides)
-
-    def _get_env_vars(self) -> list[tuple[str, str]]:
-        env_vars = []
-        for name, value in self.__dict__.items():
-            value_str: str | None = None
-            if isinstance(value, str):
-                value_str = value
-            elif isinstance(value, int):
-                value_str = str(value)
-            elif value is not None:
-                raise ValueError(value)
-
-            if value_str is not None:
-                env_vars.append((f"CUDA_{name.upper()}", value_str))
-
-        return env_vars
-
-    def apply(self):
-        for name, value in self._get_env_vars():
-            set_env_var(name, value, override=True)
-
-
-@dataclass
-class JAXConfig(_EnvBaseConfig):
-    disable_jit: bool | None = None
-    compiler_enable_remat_pass: bool | None = None
-
-    @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None = None, **overrides) -> JAXConfig:
-        del gpu_architecture
-        return cls(**overrides)
-
-    def apply(self):
-        for name, value in self.__dict__.items():
-            if value is None:
-                continue
-            jax.config.update(f"jax_{name}", value)
-
-
-@dataclass
-class EnvConfig(_EnvBaseConfig):
-    xla: XLAConfig = dataclasses.field(default_factory=XLAConfig)
-    jax: JAXConfig = dataclasses.field(default_factory=JAXConfig)
-    nccl: NCCLConfig = dataclasses.field(default_factory=NCCLConfig)
-    cuda: CUDAConfig = dataclasses.field(default_factory=CUDAConfig)
-
-    @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None = None) -> EnvConfig:  # type: ignore[override]
-        return cls(
-            xla=XLAConfig.recommended(gpu_architecture),
-            jax=JAXConfig.recommended(gpu_architecture),
-            nccl=NCCLConfig.recommended(gpu_architecture),
-            cuda=CUDAConfig.recommended(gpu_architecture),
-        )
-
-    def apply(self):
-        self.xla.apply()
-        self.jax.apply()
-        self.nccl.apply()
-        self.cuda.apply()
-
-
-def _main():
-    from rich import print
-
-    cfg = parse_config_from_args(EnvConfig, EnvConfig(cuda=CUDAConfig(device_max_connections=1)))
-    print(cfg)
-
-
-if __name__ == "__main__":
-    _main()
+    raise TypeError(f"Cannot coerce {value} to any of {allowed_types} from type hint '{type_hint}'")

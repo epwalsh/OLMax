@@ -23,7 +23,7 @@ dependencies = [
     "requests",
     "packaging",
     "rich",
-    "draccus",
+    "pyyaml",
 ]
 
 # [project.urls]

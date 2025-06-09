@@ -187,7 +187,7 @@ class MultiheadSelfAttention(Attention):
 
 @dataclass
 class MultiheadSelfAttentionConfig:
-    n_heads: int
+    n_heads: int = 8
     n_kv_heads: int | None = None
     head_dim: int | None = None
     rope: RotaryPositionalEmbeddingConfig | None = None
