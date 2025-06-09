@@ -23,6 +23,7 @@ from olmax.types import *
 
 log = logging.getLogger("main")
 beaker_runtime = BeakerRuntime.from_env()
+assert beaker_runtime is not None
 
 
 @dataclass
