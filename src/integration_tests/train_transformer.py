@@ -290,8 +290,8 @@ def main():
     recipe_names = recipes.TransformerRecipe.get_registered_names()
     if len(sys.argv) < 2 or (recipe_name := sys.argv[1]) not in recipe_names:
         print(
-            f"usage: {sys.argv[0]} RECIPE_NAME [OVERRIDES...]\n\n"
-            f"Where RECIPE_NAME should be one of {recipe_names}",
+            f"usage: {sys.argv[0]} RECIPE_NAME [OVERRIDES...]\n"
+            f"where RECIPE_NAME should be one of {recipe_names}",
             file=sys.stderr,
         )
         sys.exit(1)
