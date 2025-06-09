@@ -178,6 +178,7 @@ def train(
         return step_metrics, model, opt_state
 
     log.info("Starting training...")
+    gc.disable()
     gc.collect()
 
     # Bookkeeping variables.
@@ -280,6 +281,7 @@ def train(
             f"peak mem usage (MiB) = {peak_mib_in_use:,d}"
         )
 
+    gc.enable()
     return loss, int(running_avg_tps_best), peak_mib_in_use
 
 
