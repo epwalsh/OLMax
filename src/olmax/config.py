@@ -7,6 +7,7 @@ import sys
 import tempfile
 from abc import abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Generator, Sequence, Type, TypeVar
 
 import draccus
@@ -96,7 +97,7 @@ def _clean_opt(arg: str) -> str:
 
 def parse_config_from_args(
     config_class: Type[C],
-    default: C | None = None,
+    default: C | PathOrStr,
     *,
     args: Sequence[str] | None = None,
     prog: str | None = None,
@@ -105,8 +106,12 @@ def parse_config_from_args(
     Parse a config dataclass from command-line args.
     """
 
-    defaults_path: PathOrStr | None = None
-    if default is not None:
+    # NOTE: a default is required because otherwise draccus won't respect default factory functions
+    # when trying to override a single field.
+    defaults_path: PathOrStr
+    if isinstance(default, (str, Path)):
+        defaults_path = default
+    else:
         with tempfile.NamedTemporaryFile("w+t", delete=False) as tmp_file:
             json_safe = encode(default, json_safe=True)
             json.dump(json_safe, tmp_file)

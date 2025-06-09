@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import gc
 import logging
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -286,7 +287,18 @@ def train(
 
 
 def main():
-    config = parse_config_from_args(IntegrationTestConfig)
+    recipe_names = list(recipes.TransformerRecipe.get_known_choices().keys())
+    if len(sys.argv) < 2 or (recipe_name := sys.argv[1]) not in recipe_names:
+        print(
+            f"RECIPE_NAME is required, which should be one of {recipe_names}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    config = IntegrationTestConfig(recipe=recipes.TransformerRecipe.get_choice_class(recipe_name)())
+    config = parse_config_from_args(
+        IntegrationTestConfig, config, prog="train_transformer.py RECIPE_NAME", args=sys.argv[2:]
+    )
     config.recipe.set_env_defaults(config.env)
 
     if config.show_config or config.dry_run:
