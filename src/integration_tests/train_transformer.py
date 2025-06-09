@@ -22,7 +22,7 @@ from olmax.launch.beaker import BeakerRuntime
 from olmax.types import *
 
 log = logging.getLogger("main")
-beaker_runtime: BeakerRuntime | None = None
+beaker_runtime = BeakerRuntime.from_env()
 
 
 @dataclass
@@ -30,10 +30,9 @@ class IntegrationTestConfig:
     recipe: nn.transformer.recipes.TransformerRecipe
 
     env: olmax.EnvConfig = dataclasses.field(
-        default_factory=beaker_runtime.get_env_config
-        #  default_factory=lambda: olmax.EnvConfig.recommended()
-        #  if beaker_runtime is None
-        #  else beaker_runtime.get_env_config()
+        default_factory=lambda: olmax.EnvConfig.recommended()
+        if beaker_runtime is None
+        else beaker_runtime.get_env_config()
     )
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
@@ -319,5 +318,4 @@ def main():
 
 if __name__ == "__main__":
     olmax.prepare_cli_environment()
-    beaker_runtime = BeakerRuntime.from_env()
     main()
