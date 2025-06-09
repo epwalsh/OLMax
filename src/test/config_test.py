@@ -3,13 +3,13 @@ from __future__ import annotations
 import typing
 from dataclasses import dataclass
 
-from olmax.config import RegistrableConfig, decode, encode, parse_config_from_args
+from olmax.config import Registrable, decode, encode, parse_config_from_args
 from olmax.types import *
 
 
-def test_registrable_config():
+def test_registrable_class():
     @dataclass
-    class FooConfig(RegistrableConfig):
+    class FooConfig(Registrable):
         x: int = -1
         y: int = -1
         z: int = -1
@@ -25,6 +25,7 @@ def test_registrable_config():
 
     assert BarConfig.registered_base == FooConfig  # type: ignore
     assert BarConfig.registered_name == "bar"  # type: ignore
+    assert BarConfig.get_registered_name() == "bar"
 
     assert not isinstance(FooConfig(), BarConfig)
     assert isinstance(FooConfig(type="bar"), BarConfig)

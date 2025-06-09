@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import pathlib
 import sys
 import types
 import typing
@@ -9,18 +10,18 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Generator, Sequence, Type, TypeVar
 
+import numpy as np
 import yaml
 
 from .types import *
 
 C = TypeVar("C")
-R = TypeVar("R", bound="RegistrableConfig")
+R = TypeVar("R", bound="Registrable")
 
 
 @dataclass
-class RegistrableConfig:
-    _registry: ClassVar[dict[str, Type[RegistrableConfig]]]
-
+class Registrable:
+    _registry: ClassVar[dict[str, Type[Registrable]]]
     type: str | None = dataclasses.field(default=None, repr=False)
 
     def __new__(cls, *args, type: str | None = None, **kwargs):
@@ -45,6 +46,15 @@ class RegistrableConfig:
     @classmethod
     def register(cls, name: str) -> Callable[[Type[R]], Type[R]]:
         def register_subclass(subclass: Type[R]) -> Type[R]:
+            if not issubclass(subclass, cls):
+                raise TypeError(
+                    f"class {subclass.__name__} must be a subclass of {cls.__name__} in order to register it"
+                )
+            if not dataclasses.is_dataclass(subclass):
+                raise TypeError(
+                    f"class {subclass.__name__} must be a dataclass in order to register it"
+                )
+
             fields = [
                 (f.name, f.type, f) for f in dataclasses.fields(subclass) if f.name != "type"  # type: ignore
             ] + [
@@ -65,10 +75,17 @@ class RegistrableConfig:
     @classmethod
     def get_registered_name(cls: Type[R], subclass: Type[R] | None = None) -> str:
         if subclass is None:
-            subclass = cls
+            if hasattr(cls, "registered_name"):
+                return cls.registered_name  # type: ignore
+            else:
+                raise ValueError(
+                    f"class {cls.__name__} is not a registered subclass of any base registrable class"
+                )
+
         for name, registered_subclass in cls._registry.items():
             if registered_subclass == subclass:
                 return name
+
         raise ValueError(
             f"class {subclass.__name__} is not a registered subclass of {cls.__name__}"
         )
@@ -85,24 +102,6 @@ class RegistrableConfig:
     @classmethod
     def get_registered_names(cls) -> list[str]:
         return list(cls._registry.keys())
-
-
-def _set_nested(data: Any, key: str, value: Any):
-    if "." in key:
-        key, child_keys = key.split(".", 1)
-        if isinstance(data, dict):
-            _set_nested(data[key], child_keys, value)
-        elif isinstance(data, list):
-            _set_nested(data[int(key)], child_keys, value)
-        else:
-            raise ValueError(data)
-    else:
-        if isinstance(data, dict):
-            data[key] = value
-        elif isinstance(data, list):
-            data[int(key)] = value
-        else:
-            raise ValueError(data)
 
 
 def parse_config_from_args(
@@ -138,70 +137,118 @@ def parse_config_from_args(
     return decode(config_class, config_dict)
 
 
-def encode(
-    data: Any,
-    *,
-    exclude_none: bool = False,
-    exclude_private_fields: bool = False,
-    json_safe: bool = False,
-    recurse: bool = True,
-) -> dict[str, Any]:
-    """
-    Convert into a regular Python dictionary.
+class Encoder:
+    custom_handlers: ClassVar[dict[Type, Callable[[Any], Any]]] = {}
 
-    :param exclude_none: Don't include values that are ``None``.
-    :param exclude_private_fields: Don't include private fields.
-    :param json_safe: Output only JSON-safe types.
-    :param recurse: Recurse into fields that are also configs/dataclasses.
-    """
+    def register_encoder(self, encoder_fun: Callable[[Any], Any], *types: Type):
+        for type in types:
+            self.custom_handlers[type] = encoder_fun
 
-    def iter_fields(d) -> Generator[tuple[str, Any], None, None]:
-        for field in dataclasses.fields(d):
-            value = getattr(d, field.name)
-            if exclude_none and value is None:
-                continue
-            elif exclude_private_fields and field.name.startswith("_"):
-                continue
-            else:
-                yield (field.name, value)
+    def __call__(
+        self,
+        data: Any,
+        *,
+        exclude_none: bool = False,
+        exclude_private_fields: bool = False,
+        recurse: bool = True,
+        strict: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Encode a Python object into JSON-safe dictionary. The inverse of :func:`decode()`.
 
-    def as_dict(d: Any, recurse: bool = True) -> Any:
-        if dataclasses.is_dataclass(d):
-            if recurse:
-                out = {k: as_dict(v) for k, v in iter_fields(d)}
-            else:
-                out = {k: v for k, v in iter_fields(d)}
-            if isinstance(d, RegistrableConfig):
-                try:
-                    registered_name = d.get_registered_name(d.__class__)
-                    out["type"] = registered_name
-                except ValueError:
-                    pass
-            return out
-        elif isinstance(d, dict):
-            return {k: as_dict(v) for k, v in d.items()}
-        elif isinstance(d, (list, tuple, set)):
-            if json_safe:
+        :param exclude_none: Don't include values that are ``None``.
+        :param exclude_private_fields: Don't include private fields.
+        :param recurse: Recurse into fields that are also configs/dataclasses.
+        :param strict: If ``True`` a ``TypeError`` is raised when a type is encountered that doesn't
+            have a safe encoding method. Otherwise ``str(value)`` is used.
+        """
+
+        def iter_fields(d) -> Generator[tuple[str, Any], None, None]:
+            for field in dataclasses.fields(d):
+                value = getattr(d, field.name)
+                if exclude_none and value is None:
+                    continue
+                elif exclude_private_fields and field.name.startswith("_"):
+                    continue
+                else:
+                    yield (field.name, value)
+
+        def as_dict(d: Any, recurse: bool = True) -> Any:
+            if type(d) in self.custom_handlers:
+                return self.custom_handlers[type(d)](d)
+            elif dataclasses.is_dataclass(d):
+                if recurse:
+                    out = {k: as_dict(v) for k, v in iter_fields(d)}
+                else:
+                    out = {k: v for k, v in iter_fields(d)}
+                if isinstance(d, Registrable):
+                    try:
+                        registered_name = d.get_registered_name(d.__class__)
+                        out["type"] = registered_name
+                    except ValueError:
+                        pass
+                return out
+            elif isinstance(d, dict):
+                return {k: as_dict(v) for k, v in d.items()}
+            elif isinstance(d, (list, tuple, set)):
                 return [as_dict(x) for x in d]
-            else:
-                return d.__class__((as_dict(x) for x in d))
-        elif d is None or isinstance(d, (float, int, bool, str)):
-            return d
-        elif json_safe:
-            if hasattr(d, "__name__"):
-                return d.__name__
+            elif d is None or isinstance(d, (float, int, bool, str)):
+                return d
+
+            for t, h in self.custom_handlers.items():
+                try:
+                    if isinstance(d, t):
+                        return h(d)
+                except TypeError:
+                    continue
+
+            if strict:
+                raise TypeError(f"not sure how to encode '{d}' of type {type(d)}")
             else:
                 return str(d)
+
+        return as_dict(data, recurse=recurse)
+
+
+encode = Encoder()
+encode.register_encoder(str, pathlib.Path, np.dtype)
+
+
+class Decoder:
+    custom_handlers: ClassVar[dict[Any, Callable[[Any], Any]]] = {}
+
+    def register_decoder(self, encoder_fun: Callable[[Any], Any], *types: Any):
+        for type in types:
+            self.custom_handlers[type] = encoder_fun
+
+    def __call__(self, config_class: Type[C], data: dict[str, Any]) -> C:
+        """
+        Decode a dataset from a JSON-safe dictionary. The inverse of :func:`encode()`.
+        """
+        type_hints = typing.get_type_hints(config_class)
+        kwargs = {k: _coerce(v, type_hints[k], self.custom_handlers) for k, v in data.items()}
+        return config_class(**kwargs)
+
+
+decode = Decoder()
+
+
+def _set_nested(data: Any, key: str, value: Any):
+    if "." in key:
+        key, child_keys = key.split(".", 1)
+        if isinstance(data, dict):
+            _set_nested(data[key], child_keys, value)
+        elif isinstance(data, list):
+            _set_nested(data[int(key)], child_keys, value)
         else:
-            return d
-
-    return as_dict(data, recurse=recurse)
-
-
-def decode(config_class: Type[C], data: dict[str, Any]) -> C:
-    type_hints = typing.get_type_hints(config_class)
-    kwargs = {k: _coerce(v, type_hints[k]) for k, v in data.items()}
-    return config_class(**kwargs)
+            raise ValueError(data)
+    else:
+        if isinstance(data, dict):
+            data[key] = value
+        elif isinstance(data, list):
+            data[int(key)] = value
+        else:
+            raise ValueError(data)
 
 
 def _clean_opts(opts: Sequence[str]) -> list[tuple[str, Any]]:
@@ -224,9 +271,15 @@ def _get_types(type_hint: Any) -> tuple[Any, ...]:
         return (type_hint,)
 
 
-def _coerce(value: Any, type_hint: Any) -> Any:
+def _coerce(value: Any, type_hint: Any, custom_handlers: dict[Any, Callable[[Any], Any]]) -> Any:
+    if type_hint in custom_handlers:
+        return custom_handlers[type_hint](value)
+
     allowed_types = _get_types(type_hint)
     for allowed_type in allowed_types:
+        if allowed_type in custom_handlers:
+            return custom_handlers[allowed_type](value)
+
         try:
             if isinstance(value, allowed_type):
                 return value
@@ -239,29 +292,34 @@ def _coerce(value: Any, type_hint: Any) -> Any:
         args = getattr(allowed_type, "__args__", None)
         if origin is list and isinstance(value, (list, tuple)):
             if args:
-                return [_coerce(v, args[0]) for v in value]
+                return [_coerce(v, args[0], custom_handlers) for v in value]
             else:
                 return list(value)
         elif origin is set and isinstance(value, (list, tuple, set)):
             if args:
-                return set(_coerce(v, args[0]) for v in value)
+                return set(_coerce(v, args[0], custom_handlers) for v in value)
             else:
                 return set(value)
         elif origin is tuple and isinstance(value, (list, tuple)):
             if args and ... in args:
-                return tuple([_coerce(v, args[0]) for v in value])
+                return tuple([_coerce(v, args[0], custom_handlers) for v in value])
             elif args:
-                return tuple([_coerce(v, arg) for v, arg in zip(value, args)])
+                return tuple([_coerce(v, arg, custom_handlers) for v, arg in zip(value, args)])
             else:
                 return tuple(value)
         elif origin is dict and isinstance(value, dict):
             if args:
-                return {_coerce(k, args[0]): _coerce(v, args[1]) for k, v in value.items()}
+                return {
+                    _coerce(k, args[0], custom_handlers): _coerce(v, args[1], custom_handlers)
+                    for k, v in value.items()
+                }
             else:
                 return value
         elif dataclasses.is_dataclass(allowed_type) and isinstance(value, dict):
             type_hints = typing.get_type_hints(allowed_type)
-            return allowed_type(**{k: _coerce(v, type_hints[k]) for k, v in value.items()})
+            return allowed_type(
+                **{k: _coerce(v, type_hints[k], custom_handlers) for k, v in value.items()}
+            )
 
     if Any in allowed_types:
         return value

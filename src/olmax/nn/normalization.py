@@ -7,7 +7,7 @@ from typing import Generic, Sequence, Type, TypeVar
 import equinox as eqx
 import jax
 
-from ..config import RegistrableConfig
+from ..config import Registrable
 from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import layer_norm, rms_norm
@@ -88,7 +88,7 @@ N = TypeVar("N", bound=Normalizer)
 
 
 @dataclass
-class NormalizerConfig(RegistrableConfig, Generic[N]):
+class NormalizerConfig(Registrable, Generic[N]):
     eps: float = 1e-5
     dtype: DTypeLike = float
     elementwise_affine: bool = True

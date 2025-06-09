@@ -13,7 +13,7 @@ from . import (
     utils,
     version,
 )
-from .config import RegistrableConfig
+from .config import Registrable, decode, encode, parse_config_from_args
 from .env import CUDAConfig, EnvConfig, JAXConfig, NCCLConfig, XLAConfig
 from .train import prepare_training_environment
 from .utils import prepare_cli_environment
@@ -34,7 +34,7 @@ __all__ = [
     "utils",
     "version",
     # Classes.
-    "RegistrableConfig",
+    "Registrable",
     "EnvConfig",
     "XLAConfig",
     "NCCLConfig",
@@ -43,4 +43,7 @@ __all__ = [
     # Functions.
     "prepare_training_environment",
     "prepare_cli_environment",
+    "parse_config_from_args",
+    "encode",
+    "decode",
 ]

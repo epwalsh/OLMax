@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 
-from ...config import RegistrableConfig
+from ...config import Registrable
 from ...env import EnvConfig
 from ...types import *
 from ..attention import MultiheadSelfAttentionConfig
@@ -17,7 +17,7 @@ from .model import DefaultTransformerConfig, TransformerConfig
 
 
 @dataclass
-class TransformerRecipe(RegistrableConfig):
+class TransformerRecipe(Registrable):
     vocab_size: int = 0
     learning_rate: float = 0.0
     sequence_length: int = 0

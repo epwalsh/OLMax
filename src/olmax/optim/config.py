@@ -12,14 +12,14 @@ from typing import Any
 import jax
 import optax
 
-from ..config import RegistrableConfig
+from ..config import Registrable
 from ..types import PyTree
 
 log = logging.getLogger(__name__)
 
 
 @dataclass
-class Schedule(RegistrableConfig):
+class Schedule(Registrable):
     @abstractmethod
     def build(self) -> optax.ScalarOrSchedule:
         raise NotImplementedError
@@ -83,7 +83,7 @@ class WarmupStableDecaySchedule(Schedule):
 
 
 @dataclass
-class OptimConfig(RegistrableConfig):
+class OptimConfig(Registrable):
     @classmethod
     def AdamW(cls, *args, **kwargs) -> AdamWConfig:
         return AdamWConfig(*args, **kwargs)

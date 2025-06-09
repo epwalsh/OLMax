@@ -7,7 +7,7 @@ from typing import Generic, Type, TypeVar
 
 import jax
 
-from ...config import RegistrableConfig
+from ...config import Registrable
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
@@ -79,7 +79,7 @@ T = TypeVar("T", bound=Transformer)
 
 
 @dataclass
-class TransformerConfig(RegistrableConfig, Generic[T]):
+class TransformerConfig(Registrable, Generic[T]):
     d_model: int = 0
     hidden_size: int = 0
     vocab_size: int = 0
