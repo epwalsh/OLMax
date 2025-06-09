@@ -183,6 +183,7 @@ class BeakerRuntime:
 
     def get_env_config(self) -> EnvConfig:
         env = EnvConfig.recommended(self.node.gpu_architecture)
+        assert False, "oh no"
         if self.replica is not None and "augusta" in self.node.hostname:
             env.nccl.proto = "Simple,LL128"
             env.nccl.tuner_config_path = "/var/lib/tcpxo/lib64/a3plus_tuner_config_ll128.textproto"
