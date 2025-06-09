@@ -182,7 +182,14 @@ class BeakerRuntime:
             )
 
     def get_env_config(self) -> EnvConfig:
-        return EnvConfig.recommended(self.node.gpu_architecture)
+        env = EnvConfig.recommended(self.node.gpu_architecture)
+        if self.replica is not None and "augusta" in self.node.hostname:
+            env.nccl.proto = "Simple,LL128"
+            env.nccl.tuner_config_path = "/var/lib/tcpxo/lib64/a3plus_tuner_config_ll128.textproto"
+            env.nccl.shimnet_guest_config_checker_config_file = (
+                "/var/lib/tcpxo/lib64/a3plus_guest_config_ll128.textproto"
+            )
+        return env
 
 
 def _parse_args():

@@ -12,11 +12,27 @@
 **Results:**
 - [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
 - [10,924 TPS/GPU](https://beaker.org/ex/01JWYHDW51H9R9H1Z0X3AZZW9D) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
-- [12,157 TPS/GPU](https://beaker.org/ex/01JWY6Q9PRD5QZ8176K2FS8QP0) on 1 Augusta H100 node with full FSDP, micro-batch size of 2 instances/GPU
+- [12,173 TPS/GPU](https://beaker.org/ex/01JX98QTJRSNCCZ4CSYMJ7CXR6) on 1 Ceres H100 node with full FSDP, micro-batch size of 2 instances/GPU
 
 **Example launch command:**
 ```fish
 python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integration_tests/train_transformer.py --recipe.type=llama_like_7B
+```
+
+### OLMo2 7B
+
+**Common configuration:**
+- Sequence length: `4096`
+- Compute data type: `BF16`
+- Optimizer data type: `FP32`
+
+**Results:**
+- [11,122 TPS/GPU](https://beaker.org/ex/01JX98QAKVVMC8YJX3400T96TA) on 1 Jupiter H100 node with full FSDP, micro-batch size of 2 instances/GPU
+- [11,146 TPS/GPU](https://beaker.org/ex/01JX98C8XPW4BSVVG8XEE3MHN2) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+
+**Example launch command:**
+```fish
+python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integration_tests/train_transformer.py --recipe.type=olmo_7B
 ```
 
 ### Gemma2 27B

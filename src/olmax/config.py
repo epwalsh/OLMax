@@ -267,6 +267,8 @@ class NCCLConfig(_EnvBaseConfig):
     LL_buffsize: int = -2
     proto: str = "SIMPLE,LL,LL128"
     debug: str = "WARN"
+    tuner_config_path: str | None = None
+    shimnet_guest_config_checker_config_file: str | None = None
 
     @classmethod
     def recommended(
