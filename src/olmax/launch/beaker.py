@@ -221,7 +221,7 @@ def main():
         clusters=opts.cluster,
         hostnames=opts.hostname,
         beaker_image="petew/olmax",
-        env_vars=["PYTHONUNBUFFERED=1", "NCCL_DEBUG=warn", "FORCE_COLOR=1"],
+        env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"],
         env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
         install="pip install -e '.[all]'",

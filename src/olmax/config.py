@@ -266,6 +266,7 @@ class NCCLConfig(_EnvBaseConfig):
     LL128_buffsize: int = -2
     LL_buffsize: int = -2
     proto: str = "SIMPLE,LL,LL128"
+    debug: str = "WARN"
 
     @classmethod
     def recommended(
