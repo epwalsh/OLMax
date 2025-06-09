@@ -25,18 +25,15 @@ log = logging.getLogger("main")
 beaker_runtime: BeakerRuntime | None = None
 
 
-def get_default_env() -> olmax.EnvConfig:
-    global beaker_runtime
-    print("here!!!!")
-    assert beaker_runtime is not None
-    return beaker_runtime.get_env_config()
-
-
 @dataclass
 class IntegrationTestConfig:
     recipe: nn.transformer.recipes.TransformerRecipe
 
-    env: olmax.EnvConfig = dataclasses.field(default_factory=get_default_env)
+    env: olmax.EnvConfig = dataclasses.field(
+        default_factory=lambda: olmax.EnvConfig.recommended()
+        if beaker_runtime is None
+        else beaker_runtime.get_env_config()
+    )
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
         default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
