@@ -85,6 +85,8 @@ def _clean_opts(opts: Sequence[str]) -> list[str]:
 
 
 def _clean_opt(arg: str) -> str:
+    if arg in {"-h", "--help"}:
+        return arg
     if "=" not in arg:
         arg = f"{arg}=True"
     name, val = arg.split("=", 1)
