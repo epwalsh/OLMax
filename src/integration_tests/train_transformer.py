@@ -53,7 +53,7 @@ class IntegrationTestConfig:
         if beaker_runtime is None
         else beaker_runtime.workload.result_dataset_path
     )
-    show_config: bool = False
+    show_config: bool = True
     show_model: bool = False
     dry_run: bool = False
 
