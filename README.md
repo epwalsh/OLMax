@@ -11,7 +11,7 @@
 
 **Results:**
 - [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
-- [11,430 TPS/GPU](https://beaker.org/ex/01JX9C3XYSZZMJZEFPJWHSSEFX) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+- [11,507 TPS/GPU](https://beaker.org/ex/01JX9ECTWS7BV8D28JN4DZPJQB) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
 - [12,173 TPS/GPU](https://beaker.org/ex/01JX98QTJRSNCCZ4CSYMJ7CXR6) on 1 Ceres H100 node with full FSDP, micro-batch size of 2 instances/GPU
 
 **Example launch command:**

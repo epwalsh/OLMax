@@ -306,9 +306,8 @@ class CUDAConfig(_EnvBaseConfig):
     def recommended(
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
     ) -> CUDAConfig:
-        del gpu_architecture
-        #  if gpu_architecture != GPUArchitecture.blackwell:
-        #      return cls(device_max_connections=1, **overrides)
+        if gpu_architecture != GPUArchitecture.blackwell:
+            return cls(device_max_connections=1, **overrides)
         return cls(**overrides)
 
     def _get_env_vars(self) -> list[tuple[str, str]]:
