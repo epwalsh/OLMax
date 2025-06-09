@@ -30,9 +30,10 @@ class IntegrationTestConfig:
     recipe: nn.transformer.recipes.TransformerRecipe
 
     env: olmax.EnvConfig = dataclasses.field(
-        default_factory=lambda: olmax.EnvConfig.recommended()
-        if beaker_runtime is None
-        else beaker_runtime.get_env_config()
+        default_factory=beaker_runtime.get_env_config
+        #  default_factory=lambda: olmax.EnvConfig.recommended()
+        #  if beaker_runtime is None
+        #  else beaker_runtime.get_env_config()
     )
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
