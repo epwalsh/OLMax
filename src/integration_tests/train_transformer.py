@@ -22,8 +22,8 @@ from olmax.launch.beaker import BeakerRuntime
 from olmax.types import *
 
 log = logging.getLogger("main")
+olmax.prepare_cli_environment()
 beaker_runtime = BeakerRuntime.from_env()
-assert beaker_runtime is not None
 
 
 @dataclass
@@ -31,13 +31,13 @@ class IntegrationTestConfig:
     recipe: nn.transformer.recipes.TransformerRecipe
 
     env: olmax.EnvConfig = dataclasses.field(
-        default_factory=lambda: olmax.EnvConfig.recommended()
+        default=olmax.EnvConfig.recommended()
         if beaker_runtime is None
         else beaker_runtime.get_env_config()
     )
-    mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
+    mesh: dist.MeshResource = dataclasses.field(default=dist.MeshResource.FSDP())
     distributed: dist.DistConfig | None = dataclasses.field(
-        default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
+        default=None if beaker_runtime is None else beaker_runtime.get_dist_config()
     )
 
     steps: int = 100
@@ -47,9 +47,7 @@ class IntegrationTestConfig:
     compute_dtype: DTypeLike = "bfloat16"
 
     trace_dir: str | None = dataclasses.field(
-        default_factory=lambda: None
-        if beaker_runtime is None
-        else beaker_runtime.workload.result_dataset_path
+        default=None if beaker_runtime is None else beaker_runtime.workload.result_dataset_path
     )
     show_config: bool = False
     show_model: bool = False
@@ -318,5 +316,4 @@ def main():
 
 
 if __name__ == "__main__":
-    olmax.prepare_cli_environment()
     main()
