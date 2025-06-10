@@ -7,6 +7,7 @@ import sys
 import types
 import typing
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Generator, Sequence, Type, TypeVar
@@ -383,6 +384,12 @@ def _coerce(
         if _safe_issubclass(allowed_type, tuple) and _safe_isinstance(value, (list, tuple)):
             try:
                 return allowed_type(*value)
+            except TypeError:
+                pass
+
+        if _safe_issubclass(allowed_type, datetime) and _safe_isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(value)
             except TypeError:
                 pass
 

@@ -5,6 +5,7 @@ import dataclasses
 import sys
 import typing
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -36,6 +37,8 @@ if (sys.version_info.major, sys.version_info.minor) >= (3, 12):
     type Alias = int  # type: ignore
 else:
     Alias = int  # type: ignore
+
+dt_now = datetime.now()
 
 
 @pytest.mark.parametrize(
@@ -128,6 +131,13 @@ else:
             Alias,
             0,
             id="Alias",
+        ),
+        # Datetime.
+        pytest.param(
+            dt_now.timestamp(),
+            datetime,
+            dt_now,
+            id="datetime",
         ),
     ],
 )
