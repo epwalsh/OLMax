@@ -4,6 +4,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Generic, Type, TypeVar
 
+import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
 
@@ -20,11 +21,13 @@ class TransformerBlock(Module):
     mlp_norm: Normalizer
     attention: MultiheadSelfAttention
     attention_norm: Normalizer
+    block_idx: int = eqx.field(static=True)
 
     def __init__(
         self,
         d_model: int,
         hidden_size: int,
+        block_idx: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig,
         norm: NormalizerConfig,
@@ -35,6 +38,7 @@ class TransformerBlock(Module):
     ):
         super().__init__(mesh_resource)
         mlp_key, mlp_norm_key, attention_key, attention_norm_key = jax.random.split(key, 4)
+        self.block_idx = block_idx
         self.mlp = GatedMLP(
             d_model,
             hidden_size,
@@ -95,6 +99,7 @@ class GemmaTransformerBlock(TransformerBlock):
         self,
         d_model: int,
         hidden_size: int,
+        block_idx: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig,
         norm: NormalizerConfig,
@@ -107,6 +112,7 @@ class GemmaTransformerBlock(TransformerBlock):
         super().__init__(
             d_model=d_model,
             hidden_size=hidden_size,
+            block_idx=block_idx,
             key=key,
             attention=attention,
             norm=norm,
@@ -169,6 +175,7 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         self,
         d_model: int,
         hidden_size: int,
+        block_idx: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig | None = None,
         norm: LayerNormConfig | None = None,
@@ -177,9 +184,10 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         mesh_resource: MeshResource | None = None,
     ) -> B:
         return self.get_class()(
-            d_model,
-            hidden_size,
-            key,
+            d_model=d_model,
+            hidden_size=hidden_size,
+            block_idx=block_idx,
+            key=key,
             attention=attention if attention is not None else self.attention,
             norm=norm if norm is not None else self.norm,
             bias=bias if bias is not None else self.bias,

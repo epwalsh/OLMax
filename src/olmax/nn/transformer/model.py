@@ -43,7 +43,12 @@ class Transformer(Module):
             block_key = jax.random.fold_in(blocks_key, block_idx)
             self.blocks.append(
                 block.build(
-                    d_model, hidden_size, block_key, dtype=dtype, mesh_resource=mesh_resource
+                    d_model,
+                    hidden_size,
+                    block_idx,
+                    block_key,
+                    dtype=dtype,
+                    mesh_resource=mesh_resource,
                 )
             )
         self.lm_head = lm_head.build(
