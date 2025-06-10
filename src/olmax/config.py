@@ -321,21 +321,39 @@ def _clean_opts(opts: Sequence[str]) -> list[tuple[str, Any]]:
 
 def _clean_opt(arg: str) -> tuple[str, Any]:
     if "=" not in arg:
-        arg = f"{arg}=true"
-    name, val = arg.split("=", 1)
-    name = name.strip("-").replace("-", "_")
+        name, val = arg, "true"
+    else:
+        name, val = arg.split("=", 1)
+    name = name.strip(" -").replace("-", "_")
     val = yaml.safe_load(val)
     return (name, val)
 
 
 def _get_types(type_hint: Any) -> tuple[Any, ...]:
     # NOTE: 'types.UnionType' doesn't cover union types with 'typing.*' types.
-    if isinstance(type_hint, (types.UnionType, type(typing.List | None))):
+    if _safe_isinstance(type_hint, (types.UnionType, type(typing.List | None))):
         return type_hint.__args__
-    elif isinstance(type_hint, dataclasses.InitVar):
+    elif _safe_isinstance(type_hint, dataclasses.InitVar):
         return _get_types(type_hint.type)
+    # TypeAliasType added in 3.12
+    elif hasattr(typing, "TypeAliasType") and _safe_isinstance(type_hint, typing.TypeAliasType):  # type: ignore
+        return _get_types(type_hint.__value__)
     else:
         return (type_hint,)
+
+
+def _safe_isinstance(a, b) -> bool:
+    try:
+        return isinstance(a, b)
+    except TypeError:
+        return False
+
+
+def _safe_issubclass(a, b) -> bool:
+    try:
+        return issubclass(a, b)
+    except TypeError:
+        return False
 
 
 def _coerce(
@@ -352,20 +370,26 @@ def _coerce(
         if allowed_type in custom_handlers:
             return custom_handlers[allowed_type](value)
 
-        try:
-            if isinstance(value, allowed_type):
-                return value
-            elif issubclass(allowed_type, Enum):
+        if _safe_isinstance(value, allowed_type):
+            return value
+
+        if _safe_issubclass(allowed_type, Enum):
+            try:
                 return allowed_type(value)
-        except TypeError:
-            pass
+            except TypeError:
+                pass
+
+        # e.g. typing.NamedTuple
+        if _safe_issubclass(allowed_type, tuple) and _safe_isinstance(value, (list, tuple)):
+            try:
+                return allowed_type(*value)
+            except TypeError:
+                pass
 
         origin = getattr(allowed_type, "__origin__", None)
         args = getattr(allowed_type, "__args__", None)
-        if (
-            origin is list
-            or origin is collections.abc.Sequence
-            and isinstance(value, (list, tuple))
+        if (origin is list or origin is collections.abc.MutableSequence) and _safe_isinstance(
+            value, (list, tuple)
         ):
             if args:
                 return [
@@ -373,14 +397,26 @@ def _coerce(
                 ]
             else:
                 return list(value)
-        elif origin is set and isinstance(value, (list, tuple, set)):
+        elif (
+            origin is set or origin is collections.abc.Set or origin is collections.abc.MutableSet
+        ) and _safe_isinstance(value, (list, tuple, set)):
             if args:
                 return set(
                     _coerce(v, args[0], custom_handlers, f"{key}.{i}") for i, v in enumerate(value)
                 )
             else:
                 return set(value)
-        elif origin is tuple and isinstance(value, (list, tuple)):
+        elif origin is collections.abc.Sequence and _safe_isinstance(value, (list, tuple)):
+            if args:
+                return tuple(
+                    [
+                        _coerce(v, args[0], custom_handlers, f"{key}.{i}")
+                        for i, v in enumerate(value)
+                    ]
+                )
+            else:
+                return tuple(value)
+        elif origin is tuple and _safe_isinstance(value, (list, tuple)):
             if args and ... in args:
                 return tuple(
                     [
@@ -397,7 +433,11 @@ def _coerce(
                 )
             else:
                 return tuple(value)
-        elif origin is dict and isinstance(value, dict):
+        elif (
+            origin is dict
+            or origin is collections.abc.Mapping
+            or origin is collections.abc.MutableMapping
+        ) and _safe_isinstance(value, dict):
             if args:
                 return {
                     _coerce(k, args[0], custom_handlers, f"{key}.{k}"): _coerce(
@@ -407,7 +447,13 @@ def _coerce(
                 }
             else:
                 return value
-        elif dataclasses.is_dataclass(allowed_type) and isinstance(value, dict):
+        elif origin is typing.Literal and args and value in args:
+            return value
+        elif (
+            dataclasses.is_dataclass(allowed_type)
+            # e.g. TypedDict
+            or _safe_issubclass(allowed_type, dict)
+        ) and _safe_isinstance(value, dict):
             type_hints = typing.get_type_hints(allowed_type)
             kwargs = {}
             for k, v in value.items():
@@ -424,6 +470,6 @@ def _coerce(
         return value
 
     raise TypeError(
-        f"Cannot coerce value {value} at key '{key}' to any "
+        f"Not sure how to coerce value {value} at key '{key}' to any "
         f"of {allowed_types} from type hint '{type_hint}'"
     )

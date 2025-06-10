@@ -10,7 +10,7 @@
 - Optimizer data type: `FP32`
 
 **Results:**
-- [11,740 TPS/GPU](https://beaker.org/ex/01JWY01XXCSS291DW5KTG9GP76) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+- [12,035 TPS/GPU](https://beaker.org/ex/01JXDC25DM5GJRMWNDXSJ2QA7J) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
 - [11,525 TPS/GPU](https://beaker.org/ex/01JX9F1J0XM2P7B2HEA9BNZQ1H) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
 - [12,173 TPS/GPU](https://beaker.org/ex/01JX98QTJRSNCCZ4CSYMJ7CXR6) on 1 Ceres H100 node with full FSDP, micro-batch size of 2 instances/GPU
 

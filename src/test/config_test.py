@@ -1,19 +1,140 @@
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
+import sys
 import typing
 from dataclasses import dataclass
+from typing import Any
 
 import pytest
+import yaml
 
 from olmax.config import (
     Registrable,
+    _coerce,
     decode,
     encode,
     parse_config_from_args,
     required_field,
 )
 from olmax.types import *
+
+
+class Employee(typing.NamedTuple):
+    name: str
+    id: int
+
+
+class Point2D(typing.TypedDict):
+    x: int
+    y: int
+    label: str
+
+
+if (sys.version_info.major, sys.version_info.minor) >= (3, 12):
+    type Alias = int  # type: ignore
+else:
+    Alias = int  # type: ignore
+
+
+@pytest.mark.parametrize(
+    "value, type_hint, expected",
+    [
+        # Sequences.
+        pytest.param([0, 1], list[int], [0, 1], id="list[int]"),
+        pytest.param([0, 1], typing.List[int], [0, 1], id="typing.List[int]"),
+        pytest.param([0, 1], tuple[int, ...], (0, 1), id="tuple[int, ...]"),
+        pytest.param([0, 1], tuple[int, int], (0, 1), id="tuple[int, int]"),
+        pytest.param([0, "a"], tuple[int, str], (0, "a"), id="tuple[int, str]"),
+        pytest.param([0, 1], collections.abc.Sequence[int], (0, 1), id="abc.Sequence[int]"),
+        pytest.param(
+            [0, 1], collections.abc.Sequence[int] | None, (0, 1), id="abc.Sequence[int] | None"
+        ),
+        pytest.param([0, 1], typing.Sequence[int], (0, 1), id="typing.Sequence[int]"),
+        pytest.param([0, 1], typing.Sequence[int] | None, (0, 1), id="typing.Sequence[int] | None"),
+        pytest.param(
+            [0, 1],
+            collections.abc.MutableSequence[int] | None,
+            [0, 1],
+            id="abc.MutableSequence[int] | None",
+        ),
+        pytest.param(["Bob", 0], Employee, Employee("Bob", 0), id="typing.NamedTuple"),
+        # Sets.
+        pytest.param([0, 1], collections.abc.Set[int] | None, {0, 1}, id="abc.Set[int] | None"),
+        pytest.param([0, 1], typing.Set[int] | None, {0, 1}, id="typing.Set[int] | None"),
+        pytest.param(
+            [0, 1], collections.abc.MutableSet[int] | None, {0, 1}, id="abc.MutableSet[int] | None"
+        ),
+        # Mappings.
+        pytest.param(
+            {"a": 0},
+            dict[str, int] | None,
+            {"a": 0},
+            id="dict[str, int] | None",
+        ),
+        pytest.param(
+            {"a": 0},
+            typing.Dict[str, int] | None,
+            {"a": 0},
+            id="typing.Dict[str, int] | None",
+        ),
+        pytest.param(
+            {"a": 0},
+            typing.Mapping[str, int] | None,
+            {"a": 0},
+            id="typing.Mapping[str, int] | None",
+        ),
+        pytest.param(
+            {"a": 0},
+            collections.abc.Mapping[str, int] | None,
+            {"a": 0},
+            id="abc.Mapping[str, int] | None",
+        ),
+        pytest.param(
+            {"a": 0},
+            typing.Mapping[str, int] | None,
+            {"a": 0},
+            id="typing.Mapping[str, int] | None",
+        ),
+        pytest.param(
+            {"a": 0},
+            collections.abc.MutableMapping[str, int] | None,
+            {"a": 0},
+            id="abc.MutableMapping[str, int] | None",
+        ),
+        pytest.param(
+            {"a": 0},
+            typing.MutableMapping[str, int] | None,
+            {"a": 0},
+            id="typing.MutableMapping[str, int] | None",
+        ),
+        pytest.param(
+            {"x": 0, "y": 1, "label": "first"},
+            Point2D,
+            {"x": 0, "y": 1, "label": "first"},
+            id="typing.TypedDict",
+        ),
+        # Literal values.
+        pytest.param(
+            "foo",
+            typing.Literal["foo", "bar"],
+            "foo",
+            id="typing.Literal[foo, bar]",
+        ),
+        # Aliases.
+        pytest.param(
+            0,
+            Alias,
+            0,
+            id="Alias",
+        ),
+    ],
+)
+def test_coerce_from_type_hints(value: Any, type_hint: Any, expected: Any):
+    result = _coerce(value, type_hint, {}, "0")
+    assert type(result) is type(expected)
+    assert result == expected
 
 
 @dataclass
@@ -142,7 +263,7 @@ def test_parse_config_from_args_with_a_variety_of_complex_types():
     assert isinstance(config, Config)
     assert config.foo.x == 1
     assert config.list_data[0].x == 1
-    assert config.sequence_or_int == [0, 1]
+    assert config.sequence_or_int == (0, 1)
 
 
 @dataclass
@@ -173,13 +294,22 @@ class FruitBasket:
 
 def test_parse_config_from_args_with_registrable_overrides(tmp_path):
     basket1 = FruitBasket(fruit=Banana(), count=2)
+    config_path = tmp_path / "config.yaml"
+    with open(config_path, "w") as f:
+        yaml.safe_dump(encode(basket1), f)
 
     # When we only override the type name, the other fields will remain unchanged.
-    basket2 = parse_config_from_args(basket1, args=["--fruit.type=apple"])
-    assert isinstance(basket2.fruit, Apple)
-    assert basket2.fruit.price == basket1.fruit.price
+    for basket2 in (
+        parse_config_from_args(basket1, args=["--fruit.type=apple"]),
+        parse_config_from_args(config_path, FruitBasket, args=["--fruit.type=apple"]),
+    ):
+        assert isinstance(basket2.fruit, Apple)
+        assert basket2.fruit.price == basket1.fruit.price
 
     # But we override the whole type, the defaults will follow from the selected type.
-    basket2 = parse_config_from_args(basket1, args=["--fruit={type: apple}"])
-    assert isinstance(basket2.fruit, Apple)
-    assert basket2.fruit.price == Apple().price
+    for basket2 in (
+        parse_config_from_args(basket1, args=["--fruit={type: apple}"]),
+        parse_config_from_args(config_path, FruitBasket, args=["--fruit={type: apple}"]),
+    ):
+        assert isinstance(basket2.fruit, Apple)
+        assert basket2.fruit.price == Apple().price
