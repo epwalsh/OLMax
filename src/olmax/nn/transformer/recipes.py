@@ -173,6 +173,51 @@ class OLMo7BRecipe(TransformerRecipe):
             env.xla.gpu_all_reduce_combine_threshold_mib = 1024
 
 
+@TransformerRecipe.register("olmo_32B")
+@dataclass
+class OLMo32BRecipe(TransformerRecipe):
+    vocab_size: int = 100278
+    learning_rate: float = 1e-5
+    sequence_length: int = 4096
+
+    @classmethod
+    def get_mbz_per_device(cls, device_type: GPUType | None = None) -> int:
+        if device_type == GPUType.NVIDIA_H100:
+            return 1 * 4096
+        elif device_type == GPUType.NVIDIA_B200:
+            return 2 * 4096
+        else:
+            return 1 * 4096
+
+    def build_config(
+        self,
+        param_dtype: DTypeLike = float,
+    ) -> DefaultTransformerConfig:
+        norm = RMSNormConfig(bias=False)
+        return DefaultTransformerConfig(
+            vocab_size=self.vocab_size,
+            d_model=5120,
+            hidden_size=27648,
+            num_layers=64,
+            block=ReorderedNormTransformerBlockConfig(
+                attention=MultiheadSelfAttentionConfig(
+                    n_heads=40,
+                    n_kv_heads=8,
+                    rope=RotaryPositionalEmbeddingConfig(theta=10_000),
+                    qk_norm=norm,
+                    qk_norm_headwise=True,
+                    bias=False,
+                    dtype=param_dtype,
+                ),
+                norm=norm,
+                bias=False,
+                dtype=param_dtype,
+            ),
+            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            dtype=param_dtype,
+        )
+
+
 @TransformerRecipe.register("gemma2_like_27B")
 @dataclass
 class Gemma2Like27BRecipe(TransformerRecipe):
