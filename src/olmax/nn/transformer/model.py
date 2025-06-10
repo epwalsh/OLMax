@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
 
 import jax
+from dataclass_extensions import Registrable
 
-from ...config import Registrable
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding

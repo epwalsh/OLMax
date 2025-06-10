@@ -19,6 +19,7 @@ dependencies = [
     "optax",
     "orbax-checkpoint",
     "typing-extensions",
+    "dataclass-extensions",
     "cached-path>=1.7.2",
     "requests",
     "packaging",

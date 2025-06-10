@@ -1,7 +1,8 @@
 import os
 from enum import StrEnum
-from typing import Any, ClassVar, Protocol
+from typing import Any
 
+from dataclass_extensions import Dataclass
 from jaxtyping import Array, ArrayLike, DTypeLike, PRNGKeyArray
 
 __all__ = [
@@ -22,10 +23,6 @@ PyTree = Any
 Specs = Any
 Scalar = float | int | Array
 PathOrStr = os.PathLike | str
-
-
-class Dataclass(Protocol):
-    __dataclass_fields__: ClassVar[dict[str, Any]]
 
 
 class GPUArchitecture(StrEnum):

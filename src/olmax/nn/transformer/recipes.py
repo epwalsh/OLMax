@@ -1,7 +1,8 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 
-from ...config import Registrable, required_field
+from dataclass_extensions import Registrable, required_field
+
 from ...env import EnvConfig
 from ...types import *
 from ..attention import MultiheadSelfAttentionConfig

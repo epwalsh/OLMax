@@ -6,8 +6,8 @@ from typing import Generic, Sequence, Type, TypeVar
 
 import equinox as eqx
 import jax
+from dataclass_extensions import Registrable
 
-from ..config import Registrable
 from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import layer_norm, rms_norm

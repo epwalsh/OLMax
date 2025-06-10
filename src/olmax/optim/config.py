@@ -10,8 +10,8 @@ from typing import Any
 
 import jax
 import optax
+from dataclass_extensions import Registrable
 
-from ..config import Registrable
 from ..types import PyTree
 
 log = logging.getLogger(__name__)
