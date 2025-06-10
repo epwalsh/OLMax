@@ -4,8 +4,34 @@ import dataclasses
 import typing
 from dataclasses import dataclass
 
-from olmax.config import Registrable, decode, encode, parse_config_from_args
+import pytest
+
+from olmax.config import (
+    Registrable,
+    decode,
+    encode,
+    parse_config_from_args,
+    required_field,
+)
 from olmax.types import *
+
+
+@dataclass
+class Foo:
+    x: int
+
+
+def test_required_field():
+    @dataclass
+    class Config:
+        foo: Foo = required_field("foo", strict=True)
+
+    with pytest.raises(ValueError, match="missing required field 'foo'"):
+        Config()
+
+    config = Config(foo=Foo(x=1))
+    assert isinstance(config.foo, Foo)
+    assert config.foo.x == 1
 
 
 def test_registrable_class():
@@ -28,11 +54,6 @@ def test_registrable_class():
     assert not isinstance(BaseType(), SubType)
     assert isinstance(BaseType(type="bar"), SubType)
     assert encode(SubType()) == {"x": 0, "y": -1, "z": -1, "w": 2, "type": "bar"}
-
-
-@dataclass
-class Foo:
-    x: int
 
 
 def test_decode_with_a_variety_of_required_complex_types():

@@ -18,9 +18,9 @@ from .model import DefaultTransformerConfig, TransformerConfig
 
 @dataclass
 class TransformerRecipe(Registrable):
-    vocab_size: int = required_field()
-    learning_rate: float = required_field()
-    sequence_length: int = required_field()
+    vocab_size: int = required_field("vocab_size", strict=True)
+    learning_rate: float = required_field("learning_rate", strict=True)
+    sequence_length: int = required_field("sequence_length", strict=True)
 
     @classmethod
     @abstractmethod
