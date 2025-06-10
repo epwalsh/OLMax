@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import pathlib
 import sys
@@ -328,9 +329,10 @@ def _clean_opt(arg: str) -> tuple[str, Any]:
 
 
 def _get_types(type_hint: Any) -> tuple[Any, ...]:
-    if isinstance(type_hint, types.UnionType):
+    # NOTE: 'types.UnionType' doesn't cover union types with 'typing.*' types.
+    if isinstance(type_hint, (types.UnionType, type(typing.List | None))):
         return type_hint.__args__
-    if isinstance(type_hint, dataclasses.InitVar):
+    elif isinstance(type_hint, dataclasses.InitVar):
         return _get_types(type_hint.type)
     else:
         return (type_hint,)
@@ -360,7 +362,11 @@ def _coerce(
 
         origin = getattr(allowed_type, "__origin__", None)
         args = getattr(allowed_type, "__args__", None)
-        if origin is list and isinstance(value, (list, tuple)):
+        if (
+            origin is list
+            or origin is collections.abc.Sequence
+            and isinstance(value, (list, tuple))
+        ):
             if args:
                 return [
                     _coerce(v, args[0], custom_handlers, f"{key}.{i}") for i, v in enumerate(value)
