@@ -15,8 +15,39 @@ import yaml
 
 from .types import *
 
-C = TypeVar("C")
+C = TypeVar("C", bound=Dataclass)
 R = TypeVar("R", bound="Registrable")
+T = TypeVar("T")
+
+
+MISSING = object()
+
+
+@typing.overload
+def required_field(name: str, *, strict: bool = False) -> T:  # type: ignore[type-var]
+    ...
+
+
+@typing.overload
+def required_field() -> T:  # type: ignore[type-var]
+    ...
+
+
+def required_field(name: str | None = None, *, strict: bool = False, _: Type[T] | None = None) -> T:
+    """
+    Can be used in place of ``dataclasses.field()`` to mark a field required when non-default
+    fields are not allowed.
+    """
+    if strict:
+        if name is None:
+            raise ValueError("'name' is required for a required_field with 'strict=True'")
+
+        def err_out():
+            raise ValueError(f"missing required field '{name}'")
+
+        return typing.cast(T, dataclasses.field(default_factory=err_out))
+
+    return typing.cast(T, dataclasses.field(default=MISSING))
 
 
 @dataclass
@@ -104,9 +135,31 @@ class Registrable:
         return list(cls._registry.keys())
 
 
+@typing.overload
 def parse_config_from_args(
+    config: PathOrStr,
     config_class: Type[C],
+    /,
+    *,
+    args: Sequence[str] | None = None,
+) -> C:
+    ...
+
+
+@typing.overload
+def parse_config_from_args(
+    config: C,
+    /,
+    *,
+    args: Sequence[str] | None = None,
+) -> C:
+    ...
+
+
+def parse_config_from_args(
     config: C | PathOrStr,
+    config_class: Type[C] | None = None,
+    /,
     *,
     args: Sequence[str] | None = None,
 ) -> C:
@@ -117,18 +170,25 @@ def parse_config_from_args(
         args = sys.argv[1:]
 
     config_dict: dict[str, Any] | None = None
-    if isinstance(config, config_class):
-        if not args:
-            return config
+    if dataclasses.is_dataclass(config):
+        if config_class is None:
+            config_class = typing.cast(Type[C], config.__class__)
         else:
-            config_dict = encode(config)
+            if not isinstance(config, config_class):  # pyright: ignore
+                raise ValueError(
+                    f"Expected config to be a {config_class}, but got {type(config)} instead"
+                )
+        config_dict = encode(config)
     elif isinstance(config, (str, Path)):
+        if config_class is None:
+            raise ValueError(f"config_class is required to infer types for config at '{config}'")
         with open(config) as f:
             config_dict = yaml.safe_load(f)
     else:
         raise ValueError(config)
 
     assert config_dict is not None
+    assert config_class is not None
     if args:
         overrides = _clean_opts(args)
         for key, value in overrides:
@@ -152,7 +212,7 @@ class Encoder:
         exclude_private_fields: bool = False,
         recurse: bool = True,
         strict: bool = True,
-    ) -> dict[str, Any]:
+    ) -> Any:
         """
         Encode a Python object into JSON-safe dictionary. The inverse of :func:`decode()`.
 
@@ -226,7 +286,7 @@ class Decoder:
         Decode a dataset from a JSON-safe dictionary. The inverse of :func:`encode()`.
         """
         type_hints = typing.get_type_hints(config_class)
-        kwargs = {k: _coerce(v, type_hints[k], self.custom_handlers) for k, v in data.items()}
+        kwargs = {k: _coerce(v, type_hints[k], self.custom_handlers, k) for k, v in data.items()}
         return config_class(**kwargs)
 
 
@@ -271,7 +331,12 @@ def _get_types(type_hint: Any) -> tuple[Any, ...]:
         return (type_hint,)
 
 
-def _coerce(value: Any, type_hint: Any, custom_handlers: dict[Any, Callable[[Any], Any]]) -> Any:
+def _coerce(
+    value: Any, type_hint: Any, custom_handlers: dict[Any, Callable[[Any], Any]], key: str
+) -> Any:
+    if value is MISSING:
+        raise ValueError(f"Missing required field at '{key}'")
+
     if type_hint in custom_handlers:
         return custom_handlers[type_hint](value)
 
@@ -292,36 +357,62 @@ def _coerce(value: Any, type_hint: Any, custom_handlers: dict[Any, Callable[[Any
         args = getattr(allowed_type, "__args__", None)
         if origin is list and isinstance(value, (list, tuple)):
             if args:
-                return [_coerce(v, args[0], custom_handlers) for v in value]
+                return [
+                    _coerce(v, args[0], custom_handlers, f"{key}.{i}") for i, v in enumerate(value)
+                ]
             else:
                 return list(value)
         elif origin is set and isinstance(value, (list, tuple, set)):
             if args:
-                return set(_coerce(v, args[0], custom_handlers) for v in value)
+                return set(
+                    _coerce(v, args[0], custom_handlers, f"{key}.{i}") for i, v in enumerate(value)
+                )
             else:
                 return set(value)
         elif origin is tuple and isinstance(value, (list, tuple)):
             if args and ... in args:
-                return tuple([_coerce(v, args[0], custom_handlers) for v in value])
+                return tuple(
+                    [
+                        _coerce(v, args[0], custom_handlers, f"{key}.{i}")
+                        for i, v in enumerate(value)
+                    ]
+                )
             elif args:
-                return tuple([_coerce(v, arg, custom_handlers) for v, arg in zip(value, args)])
+                return tuple(
+                    [
+                        _coerce(v, arg, custom_handlers, f"{key}.{i}")
+                        for i, (v, arg) in enumerate(zip(value, args))
+                    ]
+                )
             else:
                 return tuple(value)
         elif origin is dict and isinstance(value, dict):
             if args:
                 return {
-                    _coerce(k, args[0], custom_handlers): _coerce(v, args[1], custom_handlers)
+                    _coerce(k, args[0], custom_handlers, f"{key}.{k}"): _coerce(
+                        v, args[1], custom_handlers, f"{key}.{k}"
+                    )
                     for k, v in value.items()
                 }
             else:
                 return value
         elif dataclasses.is_dataclass(allowed_type) and isinstance(value, dict):
             type_hints = typing.get_type_hints(allowed_type)
-            return allowed_type(
-                **{k: _coerce(v, type_hints[k], custom_handlers) for k, v in value.items()}
-            )
+            kwargs = {}
+            for k, v in value.items():
+                try:
+                    type_hint = type_hints[k]
+                except KeyError as e:
+                    raise KeyError(
+                        f"type {allowed_type} has no field '{k}' (full key '{key}.{k}')"
+                    ) from e
+                kwargs[k] = _coerce(v, type_hint, custom_handlers, f"{key}.{k}")
+            return allowed_type(**kwargs)
 
     if Any in allowed_types:
         return value
 
-    raise TypeError(f"Cannot coerce {value} to any of {allowed_types} from type hint '{type_hint}'")
+    raise TypeError(
+        f"Cannot coerce value {value} at key '{key}' to any "
+        f"of {allowed_types} from type hint '{type_hint}'"
+    )

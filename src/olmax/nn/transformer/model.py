@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import dataclasses
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
 
 import jax
 
-from ...config import Registrable
+from ...config import Registrable, required_field
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
@@ -80,12 +79,12 @@ T = TypeVar("T", bound=Transformer)
 
 @dataclass
 class TransformerConfig(Registrable, Generic[T]):
-    d_model: int = 0
-    hidden_size: int = 0
-    vocab_size: int = 0
-    num_layers: int = 0
-    block: TransformerBlockConfig = dataclasses.field(default_factory=TransformerBlockConfig)
-    lm_head: LMHeadConfig = dataclasses.field(default_factory=LMHeadConfig)
+    d_model: int = required_field("d_model", strict=True)
+    hidden_size: int = required_field("hidden_size", strict=True)
+    vocab_size: int = required_field("vocab_size", strict=True)
+    num_layers: int = required_field("num_layers", strict=True)
+    block: TransformerBlockConfig = required_field("block", strict=True)
+    lm_head: LMHeadConfig = required_field("lm_head", strict=True)
     dtype: DTypeLike = float
 
     @classmethod

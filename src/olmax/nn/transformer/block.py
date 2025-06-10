@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import dataclasses
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Generic, Type, TypeVar
 
 import jax
 
-from ...config import Registrable
+from ...config import Registrable, required_field
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
@@ -144,10 +143,8 @@ B = TypeVar("B", bound=TransformerBlock)
 
 @dataclass
 class TransformerBlockConfig(Registrable, Generic[B]):
-    attention: MultiheadSelfAttentionConfig = dataclasses.field(
-        default_factory=MultiheadSelfAttentionConfig
-    )
-    norm: NormalizerConfig = dataclasses.field(default_factory=NormalizerConfig)
+    attention: MultiheadSelfAttentionConfig = required_field("attention", strict=True)
+    norm: NormalizerConfig = required_field("norm", strict=True)
     bias: bool = False
     dtype: DTypeLike = float
 

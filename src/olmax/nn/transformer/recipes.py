@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from dataclasses import dataclass
 
-from ...config import Registrable
+from ...config import Registrable, required_field
 from ...env import EnvConfig
 from ...types import *
 from ..attention import MultiheadSelfAttentionConfig
@@ -18,9 +18,9 @@ from .model import DefaultTransformerConfig, TransformerConfig
 
 @dataclass
 class TransformerRecipe(Registrable):
-    vocab_size: int = 0
-    learning_rate: float = 0.0
-    sequence_length: int = 0
+    vocab_size: int = required_field()
+    learning_rate: float = required_field()
+    sequence_length: int = required_field()
 
     @classmethod
     @abstractmethod

@@ -300,7 +300,7 @@ def main():
         recipe=recipes.TransformerRecipe.get_registered_class(recipe_name)()
     )
     config.recipe.set_env_defaults(config.env)
-    config = parse_config_from_args(IntegrationTestConfig, config, args=sys.argv[2:])
+    config = parse_config_from_args(config, args=sys.argv[2:])
 
     if config.show_config or config.dry_run:
         log.info(config)
