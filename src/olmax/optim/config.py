@@ -11,7 +11,7 @@ from typing import Any
 import jax
 import optax
 
-from ..config import Registrable, required_field
+from ..config import Registrable
 from ..types import PyTree
 
 log = logging.getLogger(__name__)
@@ -36,9 +36,9 @@ class ConstantSchedule(Schedule):
 @Schedule.register("warmup_cosine_decay")
 @dataclass
 class WarmupCosineDecaySchedule(Schedule):
-    warmup_steps: int = required_field()
-    decay_steps: int = required_field()
-    peak_value: float = required_field()
+    warmup_steps: int
+    decay_steps: int
+    peak_value: float
     init_value: float = 0.0
     end_value: float = 0.0
 
@@ -56,10 +56,10 @@ class WarmupCosineDecaySchedule(Schedule):
 @Schedule.register("warmup_stable_decay")
 @dataclass
 class WarmupStableDecaySchedule(Schedule):
-    warmup_steps: int = required_field()
-    stable_steps: int = required_field()
-    decay_steps: int = required_field()
-    peak_value: float = required_field()
+    warmup_steps: int
+    stable_steps: int
+    decay_steps: int
+    peak_value: float
     init_value: float = 0.0
     end_value: float = 0.0
 
@@ -126,7 +126,7 @@ class OptimConfig(Registrable):
 @OptimConfig.register("adamw")
 @dataclass
 class AdamWConfig(OptimConfig):
-    lr: Schedule = required_field()
+    lr: Schedule
     b1: float = 0.9
     b2: float = 0.999
     eps: float = 1e-8

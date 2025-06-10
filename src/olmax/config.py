@@ -53,7 +53,10 @@ def required_field(name: str | None = None, *, strict: bool = False, _: Type[T] 
 @dataclass
 class Registrable:
     _registry: ClassVar[dict[str, Type[Registrable]]]
-    type: str | None = dataclasses.field(default=None, repr=False)
+
+    type: dataclasses.InitVar[str | None] = dataclasses.field(
+        default=None, kw_only=True, repr=False
+    )
 
     def __new__(cls, *args, type: str | None = None, **kwargs):
         del args, kwargs
@@ -91,7 +94,7 @@ class Registrable:
             ] + [
                 ("registered_name", ClassVar[str], name),  # type: ignore
                 ("registered_base", ClassVar[R], cls),  # type: ignore
-                ("type", str | None, dataclasses.field(default=name, repr=False)),  # type: ignore
+                ("type", dataclasses.InitVar[str | None], dataclasses.field(default=name, kw_only=True, repr=False)),  # type: ignore
             ]
             subclass = dataclasses.make_dataclass(
                 subclass.__name__,
@@ -243,7 +246,7 @@ class Encoder:
                     out = {k: v for k, v in iter_fields(d)}
                 if isinstance(d, Registrable):
                     try:
-                        registered_name = d.get_registered_name(d.__class__)
+                        registered_name = d.get_registered_name()
                         out["type"] = registered_name
                     except ValueError:
                         pass
@@ -327,6 +330,8 @@ def _clean_opt(arg: str) -> tuple[str, Any]:
 def _get_types(type_hint: Any) -> tuple[Any, ...]:
     if isinstance(type_hint, types.UnionType):
         return type_hint.__args__
+    if isinstance(type_hint, dataclasses.InitVar):
+        return _get_types(type_hint.type)
     else:
         return (type_hint,)
 

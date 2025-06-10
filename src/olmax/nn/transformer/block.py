@@ -6,7 +6,7 @@ from typing import Callable, Generic, Type, TypeVar
 
 import jax
 
-from ...config import Registrable, required_field
+from ...config import Registrable
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
@@ -143,8 +143,8 @@ B = TypeVar("B", bound=TransformerBlock)
 
 @dataclass
 class TransformerBlockConfig(Registrable, Generic[B]):
-    attention: MultiheadSelfAttentionConfig = required_field("attention", strict=True)
-    norm: NormalizerConfig = required_field("norm", strict=True)
+    attention: MultiheadSelfAttentionConfig
+    norm: NormalizerConfig
     bias: bool = False
     dtype: DTypeLike = float
 

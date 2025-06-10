@@ -37,23 +37,22 @@ def test_required_field():
 def test_registrable_class():
     @dataclass
     class BaseType(Registrable):
-        x: int = -1
+        x: int
         y: int = -1
         z: int = -1
 
     @BaseType.register("bar")
     @dataclass
     class SubType(BaseType):
-        x: int = 0
         w: int = 2
 
     assert SubType.registered_base == BaseType  # type: ignore
     assert SubType.registered_name == "bar"  # type: ignore
     assert SubType.get_registered_name() == "bar"
 
-    assert not isinstance(BaseType(), SubType)
-    assert isinstance(BaseType(type="bar"), SubType)
-    assert encode(SubType()) == {"x": 0, "y": -1, "z": -1, "w": 2, "type": "bar"}
+    assert not isinstance(BaseType(x=0), SubType)
+    assert isinstance(BaseType(x=0, type="bar"), SubType)
+    assert encode(SubType(x=0)) == {"x": 0, "y": -1, "z": -1, "w": 2, "type": "bar"}
 
 
 def test_decode_with_a_variety_of_required_complex_types():
