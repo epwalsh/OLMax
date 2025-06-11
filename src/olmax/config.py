@@ -94,7 +94,7 @@ def _set_nested(data: Any, key: str, value: Any):
         elif isinstance(data, list):
             data[int(key)] = value
         else:
-            raise ValueError(data)
+            raise ValueError(f"Can't set value '{value}' at key '{key}' for object {data}")
 
 
 def _clean_opts(opts: Sequence[str]) -> list[tuple[str, Any]]:
