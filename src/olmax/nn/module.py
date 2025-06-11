@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from abc import abstractmethod
+from typing import Iterable
 
 import equinox as eqx
 import jax
@@ -61,8 +64,26 @@ class Module(eqx.Module):
         """
         return eqx.nn.inference_mode(self, value=False)
 
+    def get_checkpoint_names(self) -> Iterable[str]:
+        if self.checkpoint_name is not None:
+            yield self.checkpoint_name
+        for child in self.children(recurse=True):
+            if child.checkpoint_name is not None:
+                yield child.checkpoint_name
+
     def parameters(self) -> list[Array]:
         return jax.tree.flatten(self)[0]
+
+    def children(self, recurse: bool = False) -> Iterable[Module]:
+        """
+        Returns an iterator of children modules.
+        """
+        for child in eqx.tree_flatten_one_level(self)[0]:
+            if not isinstance(child, Module):
+                continue
+            yield child
+            if recurse:
+                yield from child.children(recurse=True)
 
     def get_param_partitions(self) -> PyTree:
         if self.mesh_resource is None:

@@ -14,7 +14,10 @@ from . import (
     utils,
     version,
 )
-from .activation_checkpointing import ActivationCheckpointingPolicy
+from .activation_checkpointing import (
+    ActivationCheckpointingPolicy,
+    NamedCheckpointPolicy,
+)
 from .config import parse_config_from_args
 from .env import CUDAConfig, EnvConfig, JAXConfig, NCCLConfig, XLAConfig
 from .train import prepare_training_environment
@@ -43,6 +46,7 @@ __all__ = [
     "CUDAConfig",
     "JAXConfig",
     "ActivationCheckpointingPolicy",
+    "NamedCheckpointPolicy",
     # Functions.
     "prepare_training_environment",
     "prepare_cli_environment",

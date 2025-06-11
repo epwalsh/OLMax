@@ -102,6 +102,9 @@ def train(
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
+    if isinstance(ac_policy, olmax.NamedCheckpointPolicy):
+        ac_policy.resolve_names(model.get_checkpoint_names())
+
     log.info("Initializing optimizer...")
     optim, opt_state = olmax.optim.AdamWConfig(
         lr=olmax.optim.WarmupCosineDecaySchedule(

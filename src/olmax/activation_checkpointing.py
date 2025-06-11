@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import dataclasses
+import fnmatch
 import typing
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import Callable, Iterable, TypeVar
 
 import jax
 from dataclass_extensions import Registrable
@@ -95,40 +97,60 @@ class DotsWithNoBatchDimsSaveable(ActivationCheckpointingPolicy):
         return jax.checkpoint_policies.dots_with_no_batch_dims_saveable
 
 
+@dataclass
+class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
+    names: list[str]
+    _resolved_names: list[str] | None = dataclasses.field(default=None, repr=False)
+
+    def resolve_names(self, actual_names: Iterable[str]):
+        self._resolved_names = []
+        actual_names_set = set(actual_names)
+        for name in self.names:
+            has_match = False
+            if name in actual_names_set:
+                self._resolved_names.append(name)
+            elif "*" in name:
+                for actual_name in actual_names_set:
+                    if fnmatch.fnmatch(actual_name, name):
+                        has_match = True
+                        self._resolved_names.append(actual_name)
+            if not has_match:
+                raise ValueError(
+                    f"checkpoint name pattern '{name}' does not match any named activations: {actual_names_set}"
+                )
+
+
 @ActivationCheckpointingPolicy.register("save_anything_except_these_names")
 @dataclass
-class SaveAnythingExceptTheseNames(ActivationCheckpointingPolicy):
+class SaveAnythingExceptTheseNames(NamedCheckpointPolicy):
     """
     Save any values (not just named ones) excluding the names given.
     """
 
-    names: list[str]
-
     def get_policy(self) -> Callable[..., bool]:
-        return jax.checkpoint_policies.save_anything_except_these_names(*self.names)
+        names = self._resolved_names or self.names
+        return jax.checkpoint_policies.save_anything_except_these_names(*names)
 
 
 @ActivationCheckpointingPolicy.register("save_any_names_but_these")
 @dataclass
-class SaveAnyNamesButThese(ActivationCheckpointingPolicy):
+class SaveAnyNamesButThese(NamedCheckpointPolicy):
     """
     Save only named values, excluding the names given.
     """
 
-    names: list[str]
-
     def get_policy(self) -> Callable[..., bool]:
-        return jax.checkpoint_policies.save_any_names_but_these(*self.names)
+        names = self._resolved_names or self.names
+        return jax.checkpoint_policies.save_any_names_but_these(*names)
 
 
 @ActivationCheckpointingPolicy.register("save_only_these_names")
 @dataclass
-class SaveOnlyTheseNames(ActivationCheckpointingPolicy):
+class SaveOnlyTheseNames(NamedCheckpointPolicy):
     """
     Save only named values, and only among the names given.
     """
 
-    names: list[str]
-
     def get_policy(self) -> Callable[..., bool]:
-        return jax.checkpoint_policies.save_only_these_names(*self.names)
+        names = self._resolved_names or self.names
+        return jax.checkpoint_policies.save_only_these_names(*names)
