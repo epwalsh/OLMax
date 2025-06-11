@@ -106,6 +106,7 @@ class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
 
     def resolve_names(self, actual_names: Iterable[str]):
         self._resolved_names = []
+        actual_names = list(actual_names)
         actual_names_set = set(actual_names)
         for name in self.names:
             has_match = False
