@@ -31,6 +31,7 @@ def linear(
 
 
 @jax.jit
+@jax.checkpoint
 def layer_norm(
     x: Array, weight: Array | None = None, bias: Array | None = None, eps: float = 1e-5
 ) -> Array:

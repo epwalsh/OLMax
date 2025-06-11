@@ -31,7 +31,6 @@ class Module(eqx.Module):
         out = self.forward(*args, **kwargs)
         if self.checkpoint_name is not None:
             if eqx.is_array(out):
-                print(f"assigning name '{self.checkpoint_name}' to activations")
                 out = ckpt_name(out, self.checkpoint_name)
             else:
                 raise ValueError(
