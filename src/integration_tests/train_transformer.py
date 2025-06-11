@@ -91,7 +91,7 @@ def train(
 
     log.info("Initializing model...")
     model_config = config.recipe.build_config(param_dtype=config.param_dtype)
-    model = model_config.build(model_key, mesh_resource=config.mesh)
+    model = model_config.build(model_key, mesh_resource=config.mesh, ac_policy=ac_policy)
     if config.show_model:
         log.info(model)
 
@@ -101,9 +101,6 @@ def train(
         f"Built model with {num_params:,d} total parameters, "
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
-
-    if isinstance(ac_policy, olmax.NamedCheckpointPolicy):
-        ac_policy.resolve_names(model.get_checkpoint_names())
 
     log.info("Initializing optimizer...")
     optim, opt_state = olmax.optim.AdamWConfig(
@@ -122,7 +119,6 @@ def train(
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
-    @ac_policy.wrap
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)

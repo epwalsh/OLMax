@@ -79,7 +79,6 @@ class TransformerBlock(Module):
         return DefaultTransformerBlockConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.TransformerBlock")
-    @jax.checkpoint
     def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention(self.attention_norm(x))

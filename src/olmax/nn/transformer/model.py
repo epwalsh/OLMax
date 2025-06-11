@@ -4,9 +4,14 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
 
+import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
 
+from ...activation_checkpointing import (
+    ActivationCheckpointingPolicy,
+    NamedCheckpointPolicy,
+)
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
@@ -19,6 +24,7 @@ class Transformer(Module):
     embedding: Embedding
     blocks: list[TransformerBlock]
     lm_head: LMHead
+    ac_policy: ActivationCheckpointingPolicy = eqx.field(static=True)
 
     def __init__(
         self,
@@ -33,6 +39,7 @@ class Transformer(Module):
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
+        ac_policy: ActivationCheckpointingPolicy | None = None,
     ):
         super().__init__(mesh_resource, checkpoint_name)
         emb_key, blocks_key, lm_head_key = jax.random.split(key, 3)
@@ -70,6 +77,9 @@ class Transformer(Module):
             mesh_resource=mesh_resource,
             checkpoint_name="lm_head" if checkpoint_name is None else f"{checkpoint_name}.lm_head",
         )
+        self.ac_policy = ac_policy or ActivationCheckpointingPolicy.no_policy()
+        if isinstance(self.ac_policy, NamedCheckpointPolicy):
+            self.ac_policy.resolve_names(self.get_checkpoint_names())
 
     @classmethod
     def Config(cls, **kwargs) -> TransformerConfig:
@@ -84,7 +94,7 @@ class Transformer(Module):
 
         for block in self.blocks:
             # shape: (seq_len, d_model)
-            h = block(h)
+            h = self.ac_policy.wrap(block)(h)
 
         # shape: (seq_len, vocab_size)
         out = self.lm_head(h)
@@ -103,6 +113,7 @@ class TransformerConfig(Registrable, Generic[T]):
     block: TransformerBlockConfig
     lm_head: LMHeadConfig
     dtype: DTypeLike = float
+    ac_policy: ActivationCheckpointingPolicy | None = None
 
     @classmethod
     @abstractmethod
@@ -126,6 +137,7 @@ class TransformerConfig(Registrable, Generic[T]):
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
+        ac_policy: ActivationCheckpointingPolicy | None = None,
     ) -> T:
         return self.get_class()(
             key=key,
@@ -138,6 +150,7 @@ class TransformerConfig(Registrable, Generic[T]):
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
             checkpoint_name=checkpoint_name,
+            ac_policy=ac_policy if ac_policy is not None else self.ac_policy,
         )
 
 
