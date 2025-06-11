@@ -112,7 +112,7 @@ class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
             if name in actual_names_set:
                 self._resolved_names.append(name)
             elif "*" in name:
-                for actual_name in actual_names_set:
+                for actual_name in actual_names:
                     if fnmatch.fnmatch(actual_name, name):
                         has_match = True
                         self._resolved_names.append(actual_name)
@@ -146,6 +146,9 @@ class SaveAnyNamesButThese(NamedCheckpointPolicy):
 
     def get_policy(self) -> Callable[..., bool]:
         names = self._resolved_names or self.names
+        if names:
+            names_str = "\n❯ ".join(names)
+            log.info(f"Will save all named activations except for:\n❯ {names_str}")
         return jax.checkpoint_policies.save_any_names_but_these(*names)
 
 
@@ -158,4 +161,7 @@ class SaveOnlyTheseNames(NamedCheckpointPolicy):
 
     def get_policy(self) -> Callable[..., bool]:
         names = self._resolved_names or self.names
+        if names:
+            names_str = "\n❯ ".join(names)
+            log.info(f"Will save these named activations:\n❯ {names_str}")
         return jax.checkpoint_policies.save_only_these_names(*names)
