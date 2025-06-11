@@ -25,8 +25,9 @@ class GatedMLP(Module):
         bias: bool = True,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
         tp_enabled = mesh_resource is not None and mesh_resource.tp is not None
         if tp_enabled and bias:
             raise ValueError(
@@ -40,6 +41,7 @@ class GatedMLP(Module):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w1",
             tp_style=TPStyle.colwise if tp_enabled else None,
         )
         self.w2 = Linear(
@@ -49,6 +51,7 @@ class GatedMLP(Module):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w2",
             tp_style=TPStyle.rowwise if tp_enabled else None,
         )
         self.w3 = Linear(
@@ -58,12 +61,13 @@ class GatedMLP(Module):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w3",
             tp_style=TPStyle.colwise if tp_enabled else None,
         )
         self.activation = activation
 
     @jax.named_scope("olmax.nn.GatedMLP")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         return self.w2(
             vmap_multiple(self.activation, x.ndim - 1)(self.w1(x)) * self.w3(x),
         )

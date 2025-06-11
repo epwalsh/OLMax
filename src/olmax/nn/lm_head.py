@@ -26,6 +26,7 @@ class LMHeadConfig:
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> LMHead:
         return LMHead(
             d_model,
@@ -35,6 +36,7 @@ class LMHeadConfig:
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
 
 
@@ -51,14 +53,22 @@ class LMHead(Module):
         bias: bool = False,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
         w_out_key, norm_key = jax.random.split(key)
         self.w_out = Linear(
             d_model, vocab_size, w_out_key, bias=bias, dtype=dtype, mesh_resource=mesh_resource
         )
         self.norm = (
-            None if norm is None else norm.build(d_model, norm_key, mesh_resource=mesh_resource)
+            None
+            if norm is None
+            else norm.build(
+                d_model,
+                norm_key,
+                mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.norm",
+            )
         )
 
     @classmethod
@@ -66,7 +76,7 @@ class LMHead(Module):
         return LMHeadConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.LMHead")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         if self.norm is not None:
             x = self.norm(x)
         return self.w_out(x).astype(float)

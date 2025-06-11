@@ -7,7 +7,6 @@ from typing import Callable, Generic, Type, TypeVar
 import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
-from jax.ad_checkpoint import checkpoint_name as ckpt_name
 
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
@@ -35,9 +34,13 @@ class TransformerBlock(Module):
         bias: bool = False,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
         activation: Callable[[Array], Array] = jax.nn.silu,
     ):
-        super().__init__(mesh_resource)
+        if checkpoint_name is None:
+            checkpoint_name = f"block{block_idx}"
+
+        super().__init__(mesh_resource, checkpoint_name)
         mlp_key, mlp_norm_key, attention_key, attention_norm_key = jax.random.split(key, 4)
         self.block_idx = block_idx
         self.mlp = GatedMLP(
@@ -48,11 +51,13 @@ class TransformerBlock(Module):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=f"{checkpoint_name}.mlp",
         )
         self.mlp_norm = norm.build(
             d_model,
             mlp_norm_key,
             mesh_resource=mesh_resource,
+            checkpoint_name=f"{checkpoint_name}.mlp_norm",
         )
         self.attention = attention.build(
             d_model,
@@ -60,11 +65,13 @@ class TransformerBlock(Module):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=f"{checkpoint_name}.attention",
         )
         self.attention_norm = norm.build(
             d_model,
             attention_norm_key,
             mesh_resource=mesh_resource,
+            checkpoint_name=f"{checkpoint_name}.attention_norm",
         )
 
     @classmethod
@@ -72,10 +79,10 @@ class TransformerBlock(Module):
         return DefaultTransformerBlockConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.TransformerBlock")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention(self.attention_norm(x))
-        h = h + ckpt_name(self.mlp(self.mlp_norm(h)), f"block{self.block_idx}_mlp")
+        h = h + self.mlp(self.mlp_norm(h))
         return h
 
 
@@ -85,10 +92,10 @@ class ReorderedNormTransformerBlock(TransformerBlock):
         return ReorderedNormTransformerBlockConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.ReorderedTransformerBlock")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(x))
-        h = h + self.mlp_norm(ckpt_name(self.mlp(h), f"block{self.block_idx}_mlp"))
+        h = h + self.mlp_norm(self.mlp(h))
         return h
 
 
@@ -108,6 +115,7 @@ class GemmaTransformerBlock(TransformerBlock):
         dtype: DTypeLike = float,
         activation: Callable[[Array], Array] = jax.nn.gelu,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
         key, attn_input_norm_key, mlp_input_norm_key = jax.random.split(key, 3)
         super().__init__(
@@ -121,16 +129,20 @@ class GemmaTransformerBlock(TransformerBlock):
             dtype=dtype,
             activation=activation,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
+        assert self.checkpoint_name is not None
         self.attention_input_norm = norm.build(
             d_model,
             attn_input_norm_key,
             mesh_resource=mesh_resource,
+            checkpoint_name=f"{self.checkpoint_name}.attention_input_norm",
         )
         self.mlp_input_norm = norm.build(
             d_model,
             mlp_input_norm_key,
             mesh_resource=mesh_resource,
+            checkpoint_name=f"{self.checkpoint_name}.mlp_input_norm",
         )
 
     @classmethod
@@ -138,12 +150,10 @@ class GemmaTransformerBlock(TransformerBlock):
         return GemmaTransformerBlockConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.Gemma2TransformerBlock")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(self.attention_input_norm(x)))
-        h = h + self.mlp_norm(
-            ckpt_name(self.mlp(self.mlp_input_norm(h)), f"block{self.block_idx}_mlp")
-        )
+        h = h + self.mlp_norm(self.mlp(self.mlp_input_norm(h)))
         return h
 
 
@@ -185,6 +195,7 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> B:
         return self.get_class()(
             d_model=d_model,
@@ -196,6 +207,7 @@ class TransformerBlockConfig(Registrable, Generic[B]):
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
 
 

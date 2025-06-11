@@ -21,9 +21,10 @@ class Linear(Module):
         bias: bool = True,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
         tp_style: TPStyle | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
 
         # Notes on tensor parallelism.
         # ============================
@@ -68,7 +69,7 @@ class Linear(Module):
         )
 
     @jax.named_scope("olmax.nn.Linear")
-    def __call__(self, x):
+    def forward(self, x):
         if (pc := self.mesh_resource) is None or self.tp_style is None:
             out = linear(x, self.weight, self.bias)
             return out

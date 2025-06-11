@@ -2,6 +2,7 @@ from abc import abstractmethod
 
 import equinox as eqx
 import jax
+from jax.ad_checkpoint import checkpoint_name as ckpt_name
 from typing_extensions import Self
 
 from ..distributed.parallel import MeshResource
@@ -14,12 +15,32 @@ class Module(eqx.Module):
     """
 
     mesh_resource: MeshResource | None = eqx.field(static=True, repr=False)
+    checkpoint_name: str | None = eqx.field(static=True)
+    """A name to assign to the output the module for activation checkpointing."""
 
-    def __init__(self, mesh_resource: MeshResource | None = None):
+    def __init__(
+        self, mesh_resource: MeshResource | None = None, checkpoint_name: str | None = None
+    ):
         self.mesh_resource = mesh_resource
+        self.checkpoint_name = checkpoint_name
+
+    def __call__(self, *args, **kwargs):
+        out = self.forward(*args, **kwargs)
+        if self.checkpoint_name is not None:
+            if eqx.is_array(out):
+                out = ckpt_name(out, self.checkpoint_name)
+            else:
+                raise ValueError(
+                    f"Expected an array for the output of module '{self.__class__.__name__}' "
+                    f"with assigned checkpoint name '{self.checkpoint_name}', but got a {type(out)}. "
+                    f"You'll have to override the '__call__()' method to handle assigning a checkpoint "
+                    f"to this type of output."
+                )
+
+        return out
 
     @abstractmethod
-    def __call__(self, *args, **kwargs):
+    def forward(self, *args, **kwargs):
         raise NotImplementedError
 
     def eval(self) -> Self:

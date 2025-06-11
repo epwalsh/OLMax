@@ -29,6 +29,7 @@ class RotaryPositionalEmbeddingConfig:
         theta: float | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> RotaryPositionalEmbedding:
         return RotaryPositionalEmbedding(
             head_dim=head_dim,
@@ -36,6 +37,7 @@ class RotaryPositionalEmbeddingConfig:
             theta=theta if theta is not None else self.theta,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
 
 
@@ -54,9 +56,10 @@ class RotaryPositionalEmbedding(Module):
         theta: float = 10_000.0,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
         del key  # unused
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
         self.head_dim = head_dim
         self.theta = theta
         self.dtype = dtype
@@ -79,7 +82,7 @@ class RotaryPositionalEmbedding(Module):
         return jnp.cos(freqs_outer).astype(dtype), jnp.sin(freqs_outer).astype(dtype)
 
     @jax.named_scope("olmax.nn.RotaryPositionalEmbedding")
-    def __call__(self, x: Array, head_first: bool = False) -> Array:
+    def forward(self, x: Array, head_first: bool = False) -> Array:
         assert x.ndim == 4
         head_dim = 3 if head_first else 2
         x = jax.vmap(self._apply_rope, head_dim, head_dim)(x)

@@ -32,11 +32,19 @@ class Transformer(Module):
         key: PRNGKeyArray,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
         emb_key, blocks_key, lm_head_key = jax.random.split(key, 3)
         self.embedding = Embedding(
-            d_model, vocab_size, emb_key, dtype=dtype, mesh_resource=mesh_resource
+            d_model,
+            vocab_size,
+            emb_key,
+            dtype=dtype,
+            mesh_resource=mesh_resource,
+            checkpoint_name="embedding"
+            if checkpoint_name is None
+            else f"{checkpoint_name}.embedding",
         )
         self.blocks = []
         for block_idx in range(num_layers):
@@ -49,6 +57,9 @@ class Transformer(Module):
                     block_key,
                     dtype=dtype,
                     mesh_resource=mesh_resource,
+                    checkpoint_name=f"block{block_idx}"
+                    if checkpoint_name is None
+                    else f"{checkpoint_name}.block{block_idx}",
                 )
             )
         self.lm_head = lm_head.build(
@@ -57,6 +68,7 @@ class Transformer(Module):
             lm_head_key,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name="lm_head" if checkpoint_name is None else f"{checkpoint_name}.lm_head",
         )
 
     @classmethod
@@ -64,7 +76,7 @@ class Transformer(Module):
         return DefaultTransformerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.Transformer")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         assert x.ndim == 2  # shape: (batch_size, seq_len)
 
         # shape: (seq_len, d_model)
@@ -113,6 +125,7 @@ class TransformerConfig(Registrable, Generic[T]):
         lm_head: LMHeadConfig | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> T:
         return self.get_class()(
             key=key,
@@ -124,6 +137,7 @@ class TransformerConfig(Registrable, Generic[T]):
             lm_head=lm_head if lm_head is not None else self.lm_head,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
 
 

@@ -52,8 +52,9 @@ class MultiheadSelfAttention(Attention):
         dtype: DTypeLike = float,
         implementation: Literal["xla", "cudnn"] | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
 
         if implementation is None and jax.default_backend() == "gpu":
             if get_cudnn_version() is not None:
@@ -79,6 +80,7 @@ class MultiheadSelfAttention(Attention):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w_q",
         )
         self.w_k = Linear(
             d_model,
@@ -87,6 +89,7 @@ class MultiheadSelfAttention(Attention):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w_k",
         )
         self.w_v = Linear(
             d_model,
@@ -95,6 +98,7 @@ class MultiheadSelfAttention(Attention):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w_v",
         )
         self.w_out = Linear(
             self.n_heads * self.head_dim,
@@ -103,11 +107,17 @@ class MultiheadSelfAttention(Attention):
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.w_out",
         )
         self.rope = (
             None
             if rope is None
-            else rope.build(head_dim=self.head_dim, key=rope_key, mesh_resource=mesh_resource)
+            else rope.build(
+                head_dim=self.head_dim,
+                key=rope_key,
+                mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.rope",
+            )
         )
         self.q_norm = (
             None
@@ -116,6 +126,7 @@ class MultiheadSelfAttention(Attention):
                 self.head_dim if qk_norm_headwise else self.n_heads * self.head_dim,
                 q_norm_key,
                 mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.q_norm",
             )
         )
         self.k_norm = (
@@ -125,6 +136,7 @@ class MultiheadSelfAttention(Attention):
                 self.head_dim if qk_norm_headwise else self.n_heads * self.head_dim,
                 k_norm_key,
                 mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.k_norm",
             )
         )
         self.qk_norm_headwise = qk_norm_headwise
@@ -134,7 +146,7 @@ class MultiheadSelfAttention(Attention):
         return MultiheadSelfAttentionConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         assert x.ndim == 3  # (batch_size, seq_len, d_model)
         B, S, _ = x.shape
 
@@ -214,6 +226,7 @@ class MultiheadSelfAttentionConfig:
         dtype: DTypeLike | None = None,
         implementation: Literal["xla", "cudnn"] | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> MultiheadSelfAttention:
         return MultiheadSelfAttention(
             d_model=d_model,
@@ -231,4 +244,5 @@ class MultiheadSelfAttentionConfig:
             dtype=dtype if dtype is not None else self.dtype,
             implementation=implementation if implementation is not None else self.implementation,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
