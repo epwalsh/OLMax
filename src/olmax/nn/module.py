@@ -65,6 +65,9 @@ class Module(eqx.Module):
         return eqx.nn.inference_mode(self, value=False)
 
     def get_checkpoint_names(self) -> Iterable[str]:
+        """
+        Get all registered activation checkpointing names, recursively.
+        """
         if self.checkpoint_name is not None:
             yield self.checkpoint_name
         for child in self.children(recurse=True):
@@ -72,6 +75,9 @@ class Module(eqx.Module):
                 yield child.checkpoint_name
 
     def parameters(self) -> list[Array]:
+        """
+        Get all parameters, recursively.
+        """
         return jax.tree.flatten(self)[0]
 
     def children(self, recurse: bool = False) -> Iterable[Module]:

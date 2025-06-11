@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import fnmatch
+import logging
 import typing
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from typing import Callable, Iterable, TypeVar
 import jax
 from dataclass_extensions import Registrable
 
+log = logging.getLogger(__name__)
 F = TypeVar("F", bound=Callable)
 
 
@@ -129,6 +131,9 @@ class SaveAnythingExceptTheseNames(NamedCheckpointPolicy):
 
     def get_policy(self) -> Callable[..., bool]:
         names = self._resolved_names or self.names
+        if names:
+            names_str = "\n❯ ".join(names)
+            log.info(f"Will save all activations except for:\n❯ {names_str}")
         return jax.checkpoint_policies.save_anything_except_these_names(*names)
 
 
