@@ -94,7 +94,7 @@ class Transformer(Module):
 
         for block in self.blocks:
             # shape: (seq_len, d_model)
-            h = self.ac_policy.wrap(block)(h)
+            h = self.ac_policy.wrap(block.__call__)(h)
 
         # shape: (seq_len, vocab_size)
         out = self.lm_head(h)
