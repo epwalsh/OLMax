@@ -45,6 +45,7 @@ class IntegrationTestConfig:
     max_grad_norm: float | None = None
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
+    ac_policy: olmax.ActivationCheckpointingPolicy | None = None
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -67,6 +68,7 @@ def train(
     instances_per_device = batch_size_per_device // config.recipe.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
+    ac_policy = config.ac_policy or olmax.ActivationCheckpointingPolicy.everything_saveable()
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
@@ -117,6 +119,7 @@ def train(
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
+    @ac_policy.wrap
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
