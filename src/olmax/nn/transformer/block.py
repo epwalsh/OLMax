@@ -7,6 +7,7 @@ from typing import Callable, Generic, Type, TypeVar
 import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
+from jax.ad_checkpoint import checkpoint_name as ckpt_name
 
 from ...distributed.parallel import MeshResource
 from ...types import Array, DTypeLike, PRNGKeyArray
@@ -74,7 +75,7 @@ class TransformerBlock(Module):
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention(self.attention_norm(x))
-        h = h + self.mlp(self.mlp_norm(h))
+        h = h + ckpt_name(self.mlp(self.mlp_norm(h)), f"block{self.block_idx}_mlp")
         return h
 
 
@@ -87,7 +88,7 @@ class ReorderedNormTransformerBlock(TransformerBlock):
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(x))
-        h = h + self.mlp_norm(self.mlp(h))
+        h = h + self.mlp_norm(ckpt_name(self.mlp(h), f"block{self.block_idx}_mlp"))
         return h
 
 
@@ -140,7 +141,9 @@ class GemmaTransformerBlock(TransformerBlock):
     def __call__(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(self.attention_input_norm(x)))
-        h = h + self.mlp_norm(self.mlp(self.mlp_input_norm(h)))
+        h = h + self.mlp_norm(
+            ckpt_name(self.mlp(self.mlp_input_norm(h)), f"block{self.block_idx}_mlp")
+        )
         return h
 
 
