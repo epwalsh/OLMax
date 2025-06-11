@@ -57,9 +57,9 @@ class Transformer(Module):
                     block_key,
                     dtype=dtype,
                     mesh_resource=mesh_resource,
-                    checkpoint_name=f"block{block_idx}"
+                    checkpoint_name=f"blocks.{block_idx}"
                     if checkpoint_name is None
-                    else f"{checkpoint_name}.block{block_idx}",
+                    else f"{checkpoint_name}.blocks.{block_idx}",
                 )
             )
         self.lm_head = lm_head.build(
