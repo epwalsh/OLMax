@@ -18,8 +18,8 @@ class ActivationCheckpointingPolicy(Registrable):
     """
 
     @classmethod
-    def everything_saveable(cls) -> EverythingSaveable:
-        return EverythingSaveable()
+    def no_policy(cls) -> NoPolicy:
+        return NoPolicy()
 
     @abstractmethod
     def get_policy(self) -> Callable[..., bool]:
@@ -34,11 +34,27 @@ class ActivationCheckpointingPolicy(Registrable):
         )
 
 
-@ActivationCheckpointingPolicy.register("everything_saveable", default=True)
+@ActivationCheckpointingPolicy.register("default", default=True)
+@dataclass
+class NoPolicy(ActivationCheckpointingPolicy):
+    """
+    A no-op. No policy is applied.
+    """
+
+    def get_policy(self) -> Callable[..., bool]:
+        # Could return anything from here because we don't actually use this.
+        return jax.checkpoint_policies.everything_saveable
+
+    def wrap(self, fun: F, static_argnums: int | tuple[int, ...] = ()) -> F:
+        del static_argnums
+        return fun
+
+
+@ActivationCheckpointingPolicy.register("everything_saveable")
 @dataclass
 class EverythingSaveable(ActivationCheckpointingPolicy):
     """
-    Everything is saved, so this is essentially a no-op.
+    Everything is saved.
     """
 
     def get_policy(self) -> Callable[..., bool]:

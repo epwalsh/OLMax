@@ -68,7 +68,7 @@ def train(
     instances_per_device = batch_size_per_device // config.recipe.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
-    ac_policy = config.ac_policy or olmax.ActivationCheckpointingPolicy.everything_saveable()
+    ac_policy = config.ac_policy or olmax.ActivationCheckpointingPolicy.no_policy()
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
