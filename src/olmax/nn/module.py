@@ -78,12 +78,15 @@ class Module(eqx.Module):
         """
         Returns an iterator of children modules.
         """
-        for child in eqx.tree_flatten_one_level(self)[0]:
-            if not isinstance(child, Module):
-                continue
-            yield child
-            if recurse:
-                yield from child.children(recurse=True)
+
+        def flatten_children(root) -> Iterable[Module]:
+            for v in eqx.tree_flatten_one_level(root)[0]:
+                if isinstance(v, Module):
+                    yield v
+                if recurse and not eqx.is_array_like(v):
+                    yield from flatten_children(v)
+
+        yield from flatten_children(self)
 
     def get_param_partitions(self) -> PyTree:
         if self.mesh_resource is None:
