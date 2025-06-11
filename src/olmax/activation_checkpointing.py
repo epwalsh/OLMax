@@ -111,8 +111,9 @@ class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
         for name in self.names:
             has_match = False
             if name in actual_names_set:
+                has_match = False
                 self._resolved_names.append(name)
-            elif "*" in name:
+            else:
                 for actual_name in actual_names:
                     if fnmatch.fnmatch(actual_name, name):
                         has_match = True
