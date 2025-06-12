@@ -155,8 +155,8 @@ def scan_module(
     x: Array,
     input_sharding: NamedSharding | None = None,
     output_sharding: NamedSharding | None = None,
+    param_sharding: Specs | None = None,
 ) -> Array:
-    param_sharding = m.get_param_shardings()
     params, static = eqx.partition(m, eqx.is_array)
     carry = (static, x)
     carry, _ = jax.lax.scan(
