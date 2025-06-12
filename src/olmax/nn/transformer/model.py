@@ -22,7 +22,7 @@ from ..functional import scan_module
 from ..lm_head import LMHead, LMHeadConfig
 from ..module import Module
 from ..normalization import Normalizer, NormalizerConfig
-from .block import TransformerLayer, TransformerLayerConfig
+from .layer import TransformerLayer, TransformerLayerConfig
 
 
 class Transformer(Module):
@@ -40,7 +40,7 @@ class Transformer(Module):
         vocab_size: int,
         hidden_size: int,
         num_layers: int,
-        block: TransformerLayerConfig,
+        layer: TransformerLayerConfig,
         norm: NormalizerConfig,
         lm_head: LMHeadConfig,
         key: PRNGKeyArray,
@@ -51,7 +51,7 @@ class Transformer(Module):
         ac_policy: ActivationCheckpointingPolicy | None = None,
     ):
         super().__init__(mesh_resource, checkpoint_name)
-        emb_key, blocks_key, norm_key, lm_head_key = jax.random.split(key, 4)
+        emb_key, layers_key, norm_key, lm_head_key = jax.random.split(key, 4)
         self.embedding = Embedding(
             d_model,
             vocab_size,
@@ -64,31 +64,31 @@ class Transformer(Module):
         )
         self.layers = []
         if scan_layers:
-            block = jax.vmap(
+            layer = jax.vmap(
                 ft.partial(
-                    block.build,
+                    layer.build,
                     d_model=d_model,
                     hidden_size=hidden_size,
                     dtype=dtype,
                     mesh_resource=mesh_resource,
-                    checkpoint_name="block",
+                    checkpoint_name="layer",
                 )
             )(key=shaped_rng_split(key, num_layers))
-            self.layers.append(typing.cast(TransformerLayer, block))
+            self.layers.append(typing.cast(TransformerLayer, layer))
         else:
-            for block_idx in range(num_layers):
-                block_key = jax.random.fold_in(blocks_key, block_idx)
+            for layer_idx in range(num_layers):
+                layer_key = jax.random.fold_in(layers_key, layer_idx)
                 self.layers.append(
-                    block.build(
+                    layer.build(
                         d_model,
                         hidden_size,
-                        block_key,
+                        layer_key,
                         dtype=dtype,
-                        block_idx=block_idx,
+                        layer_idx=layer_idx,
                         mesh_resource=mesh_resource,
-                        checkpoint_name=f"layers.{block_idx}"
+                        checkpoint_name=f"layers.{layer_idx}"
                         if checkpoint_name is None
-                        else f"{checkpoint_name}.layers.{block_idx}",
+                        else f"{checkpoint_name}.layers.{layer_idx}",
                     )
                 )
         self.norm = norm.build(
@@ -123,9 +123,9 @@ class Transformer(Module):
 
         if self.scan_layers:
             # TODO: handle ac_policy with 'prevent_cse=False'
-            block = self.layers[0]
+            layer = self.layers[0]
             h = scan_module(
-                block,
+                layer,
                 h,
                 input_sharding=None
                 if self.mesh_resource is None
@@ -138,9 +138,9 @@ class Transformer(Module):
                 #  else self.mesh_resource.get_data_sharding(),  # TODO: fix this
             )
         else:
-            for block in self.layers:
+            for layer in self.layers:
                 # shape: (batch_size, seq_len, d_model)
-                h = self.ac_policy.wrap(block.__call__)(h)
+                h = self.ac_policy.wrap(layer.__call__)(h)
 
         # shape: (batch_size, seq_len, d_model)
         h = self.norm(h)
@@ -159,7 +159,7 @@ class TransformerConfig(Registrable, Generic[T]):
     hidden_size: int
     vocab_size: int
     num_layers: int
-    block: TransformerLayerConfig
+    layer: TransformerLayerConfig
     norm: NormalizerConfig
     lm_head: LMHeadConfig
     dtype: DTypeLike = float
@@ -183,7 +183,7 @@ class TransformerConfig(Registrable, Generic[T]):
         vocab_size: int | None = None,
         hidden_size: int | None = None,
         num_layers: int | None = None,
-        block: TransformerLayerConfig | None = None,
+        layer: TransformerLayerConfig | None = None,
         norm: NormalizerConfig | None = None,
         lm_head: LMHeadConfig | None = None,
         dtype: DTypeLike | None = None,
@@ -198,7 +198,7 @@ class TransformerConfig(Registrable, Generic[T]):
             vocab_size=vocab_size if vocab_size is not None else self.vocab_size,
             hidden_size=hidden_size if hidden_size is not None else self.hidden_size,
             num_layers=num_layers if num_layers is not None else self.num_layers,
-            block=block if block is not None else self.block,
+            layer=layer if layer is not None else self.layer,
             norm=norm if norm is not None else self.norm,
             lm_head=lm_head if lm_head is not None else self.lm_head,
             dtype=dtype if dtype is not None else self.dtype,

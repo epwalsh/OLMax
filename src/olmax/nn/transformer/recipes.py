@@ -9,7 +9,7 @@ from ..attention import MultiheadSelfAttentionConfig
 from ..lm_head import LMHeadConfig
 from ..normalization import RMSNormConfig
 from ..rope import RotaryPositionalEmbeddingConfig
-from .block import (
+from .layer import (
     DefaultTransformerLayerConfig,
     GemmaTransformerLayerConfig,
     ReorderedNormTransformerLayerConfig,
@@ -59,7 +59,7 @@ class LlamaLike271MRecipe(TransformerRecipe):
             d_model=1024,
             hidden_size=2816,
             num_layers=16,
-            block=DefaultTransformerLayerConfig(
+            layer=DefaultTransformerLayerConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=8,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -102,7 +102,7 @@ class LlamaLike7BRecipe(TransformerRecipe):
             d_model=4096,
             hidden_size=11008,
             num_layers=32,
-            block=DefaultTransformerLayerConfig(
+            layer=DefaultTransformerLayerConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -151,7 +151,7 @@ class OLMo7BRecipe(TransformerRecipe):
             d_model=4096,
             hidden_size=11008,
             num_layers=32,
-            block=ReorderedNormTransformerLayerConfig(
+            layer=ReorderedNormTransformerLayerConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     rope=RotaryPositionalEmbeddingConfig(theta=10_000),
@@ -202,7 +202,7 @@ class OLMo32BRecipe(TransformerRecipe):
             d_model=5120,
             hidden_size=27648,
             num_layers=64,
-            block=ReorderedNormTransformerLayerConfig(
+            layer=ReorderedNormTransformerLayerConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=40,
                     n_kv_heads=8,
@@ -243,7 +243,7 @@ class Gemma2Like27BRecipe(TransformerRecipe):
             d_model=4608,
             hidden_size=36864,
             num_layers=46,
-            block=GemmaTransformerLayerConfig(
+            layer=GemmaTransformerLayerConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     n_kv_heads=16,
@@ -283,7 +283,7 @@ class Gemma3Like27BRecipe(TransformerRecipe):
             d_model=5376,
             hidden_size=21504,
             num_layers=62,
-            block=GemmaTransformerLayerConfig(
+            layer=GemmaTransformerLayerConfig(
                 attention=MultiheadSelfAttentionConfig(
                     n_heads=32,
                     n_kv_heads=16,

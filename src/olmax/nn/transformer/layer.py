@@ -30,13 +30,13 @@ class TransformerLayer(Module):
         norm: NormalizerConfig,
         bias: bool = False,
         dtype: DTypeLike = float,
-        block_idx: int | None = None,
+        layer_idx: int | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         activation: Callable[[Array], Array] = jax.nn.silu,
     ):
         if checkpoint_name is None:
-            checkpoint_name = "block" if block_idx is None else f"block{block_idx}"
+            checkpoint_name = "layer" if layer_idx is None else f"layer{layer_idx}"
 
         super().__init__(mesh_resource, checkpoint_name)
         mlp_key, mlp_norm_key, attention_key, attention_norm_key = jax.random.split(key, 4)
@@ -108,7 +108,7 @@ class GemmaTransformerLayer(TransformerLayer):
         attention: MultiheadSelfAttentionConfig,
         norm: NormalizerConfig,
         bias: bool = False,
-        block_idx: int | None = None,
+        layer_idx: int | None = None,
         dtype: DTypeLike = float,
         activation: Callable[[Array], Array] = jax.nn.gelu,
         mesh_resource: MeshResource | None = None,
@@ -122,7 +122,7 @@ class GemmaTransformerLayer(TransformerLayer):
             attention=attention,
             norm=norm,
             bias=bias,
-            block_idx=block_idx,
+            layer_idx=layer_idx,
             dtype=dtype,
             activation=activation,
             mesh_resource=mesh_resource,
@@ -188,7 +188,7 @@ class TransformerLayerConfig(Registrable, Generic[B]):
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig | None = None,
         norm: LayerNormConfig | None = None,
-        block_idx: int | None = None,
+        layer_idx: int | None = None,
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
@@ -200,7 +200,7 @@ class TransformerLayerConfig(Registrable, Generic[B]):
             key=key,
             attention=attention if attention is not None else self.attention,
             norm=norm if norm is not None else self.norm,
-            block_idx=block_idx,
+            layer_idx=layer_idx,
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,

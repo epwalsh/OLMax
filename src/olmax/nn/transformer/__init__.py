@@ -1,5 +1,5 @@
 from . import recipes
-from .block import (
+from .layer import (
     DefaultTransformerLayerConfig,
     ReorderedNormTransformerLayer,
     ReorderedNormTransformerLayerConfig,
