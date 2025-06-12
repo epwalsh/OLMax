@@ -45,6 +45,7 @@ class IntegrationTestConfig:
     max_grad_norm: float | None = None
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
+    scan_blocks: bool = False
     ac_policy: olmax.ActivationCheckpointingPolicy | None = None
 
     trace_dir: str | None = dataclasses.field(
@@ -91,7 +92,9 @@ def train(
 
     log.info("Initializing model...")
     model_config = config.recipe.build_config(param_dtype=config.param_dtype)
-    model = model_config.build(model_key, mesh_resource=config.mesh, ac_policy=ac_policy)
+    model = model_config.build(
+        model_key, mesh_resource=config.mesh, scan_blocks=config.scan_blocks, ac_policy=ac_policy
+    )
     if config.show_model:
         log.info(model)
 
