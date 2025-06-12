@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jax.sharding import NamedSharding
 
 from ..jax_utils import vmap_multiple
-from ..types import Array
+from ..types import Array, Specs
 from .module import Module
 
 
@@ -136,8 +136,11 @@ def _apply_module(
     params: Module,
     input_sharding: NamedSharding | None = None,
     output_sharding: NamedSharding | None = None,
+    param_sharding: Specs | None = None,
 ) -> tuple[tuple[Module, Array], None]:
     static, x = carry
+    if param_sharding is not None:
+        params = jax.lax.with_sharding_constraint(params, param_sharding)
     if input_sharding is not None:
         x = jax.lax.with_sharding_constraint(x, input_sharding)
     m = eqx.combine(params, static, is_leaf=eqx.is_array)
@@ -153,10 +156,16 @@ def scan_module(
     input_sharding: NamedSharding | None = None,
     output_sharding: NamedSharding | None = None,
 ) -> Array:
+    param_sharding = m.get_param_shardings()
     params, static = eqx.partition(m, eqx.is_array)
     carry = (static, x)
     carry, _ = jax.lax.scan(
-        ft.partial(_apply_module, input_sharding=input_sharding, output_sharding=output_sharding),
+        ft.partial(
+            _apply_module,
+            input_sharding=input_sharding,
+            output_sharding=output_sharding,
+            param_sharding=param_sharding,
+        ),
         carry,
         params,
     )
