@@ -124,9 +124,9 @@ class Transformer(Module):
                 output_sharding=None
                 if self.mesh_resource is None
                 else self.mesh_resource.get_data_sharding(),
-                param_sharding=None
-                if self.mesh_resource is None
-                else self.mesh_resource.get_data_sharding(),  # TODO: fix this
+                #  param_sharding=None
+                #  if self.mesh_resource is None
+                #  else self.mesh_resource.get_data_sharding(),  # TODO: fix this
             )
         else:
             for block in self.blocks:
