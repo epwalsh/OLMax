@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools as ft
 from abc import abstractmethod
 from typing import Iterable
 
@@ -30,16 +31,9 @@ class Module(eqx.Module):
     def __call__(self, *args, **kwargs):
         out = self.forward(*args, **kwargs)
         if self.checkpoint_name is not None:
-            if eqx.is_array(out):
-                out = ckpt_name(out, self.checkpoint_name)
-            else:
-                raise ValueError(
-                    f"Expected an array for the output of module '{self.__class__.__name__}' "
-                    f"with assigned checkpoint name '{self.checkpoint_name}', but got a {type(out)}. "
-                    f"You'll have to override the '__call__()' method to handle assigning a checkpoint "
-                    f"to this type of output."
-                )
-
+            out = jax.tree.map(
+                ft.partial(ckpt_name, name=self.checkpoint_name), out, is_leaf=eqx.is_array
+            )
         return out
 
     @abstractmethod
