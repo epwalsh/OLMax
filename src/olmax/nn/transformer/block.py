@@ -92,7 +92,6 @@ class ReorderedNormTransformerBlock(TransformerBlock):
         return ReorderedNormTransformerBlockConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.ReorderedTransformerBlock")
-    @jax.checkpoint
     def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(x))

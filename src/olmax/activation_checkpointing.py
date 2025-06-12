@@ -8,6 +8,7 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Iterable, TypeVar
 
+import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
 
@@ -29,13 +30,11 @@ class ActivationCheckpointingPolicy(Registrable):
     def get_policy(self) -> Callable[..., bool]:
         raise NotImplementedError
 
-    def wrap(self, fun: F, static_argnums: int | tuple[int, ...] = ()) -> F:
+    def wrap(self, fun: F) -> F:
         """
         Wrap a function for activation checkpointing with the given policy.
         """
-        return typing.cast(
-            F, jax.checkpoint(fun, static_argnums=static_argnums, policy=self.get_policy())
-        )
+        return typing.cast(F, eqx.filter_checkpoint(fun, policy=self.get_policy()))
 
 
 @ActivationCheckpointingPolicy.register("default", default=True)
@@ -50,8 +49,7 @@ class NoPolicy(ActivationCheckpointingPolicy):
         # Could return anything from here because we don't actually use this.
         return jax.checkpoint_policies.everything_saveable
 
-    def wrap(self, fun: F, static_argnums: int | tuple[int, ...] = ()) -> F:
-        del static_argnums
+    def wrap(self, fun: F) -> F:
         return fun
 
 
