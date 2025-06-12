@@ -158,11 +158,11 @@ def main(
         num_layers=num_layers,
         mesh_resource=mesh_resource,
     )
-    jax.debug.visualize_array_sharding(dist_model.layers[0].mlp.w1.weight)
+    jax.debug.visualize_array_sharding(dist_model.layers[0].mlp.gate_proj.weight)
 
     dist_loss, dist_grad = _get_loss_and_grads(dist_model, dist_batch)
     print(dist_loss)
-    jax.debug.visualize_array_sharding(dist_grad.layers[0].mlp.w1.weight)
+    jax.debug.visualize_array_sharding(dist_grad.layers[0].mlp.gate_proj.weight)
 
 
 if __name__ == "__main__":

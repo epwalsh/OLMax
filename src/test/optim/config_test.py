@@ -29,14 +29,14 @@ def test_build_weight_decay_mask():
     key = jax.random.PRNGKey(0)
     model = nn.GatedMLP(4, 8, key)
     weight_decay_mask = OptimConfig.build_weight_decay_mask(
-        model, ["w1.bias", "w2.bias", "w3.bias"]
+        model, ["gate_proj.bias", "down_proj.bias", "up_proj.bias"]
     )
-    assert weight_decay_mask.w1.weight is True
-    assert weight_decay_mask.w1.bias is False
-    assert weight_decay_mask.w2.weight is True
-    assert weight_decay_mask.w2.bias is False
-    assert weight_decay_mask.w3.weight is True
-    assert weight_decay_mask.w3.bias is False
+    assert weight_decay_mask.gate_proj.weight is True
+    assert weight_decay_mask.gate_proj.bias is False
+    assert weight_decay_mask.down_proj.weight is True
+    assert weight_decay_mask.down_proj.bias is False
+    assert weight_decay_mask.up_proj.weight is True
+    assert weight_decay_mask.up_proj.bias is False
 
 
 def main():

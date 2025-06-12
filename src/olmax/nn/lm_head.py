@@ -37,7 +37,7 @@ class LMHeadConfig:
 
 
 class LMHead(Module):
-    w_out: Linear
+    proj: Linear
 
     def __init__(
         self,
@@ -50,7 +50,7 @@ class LMHead(Module):
         checkpoint_name: str | None = None,
     ):
         super().__init__(mesh_resource, checkpoint_name)
-        self.w_out = Linear(
+        self.proj = Linear(
             d_model, vocab_size, key, bias=bias, dtype=dtype, mesh_resource=mesh_resource
         )
 
@@ -60,4 +60,4 @@ class LMHead(Module):
 
     @jax.named_scope("olmax.nn.LMHead")
     def forward(self, x: Array) -> Array:
-        return self.w_out(x).astype(float)
+        return self.proj(x).astype(float)
