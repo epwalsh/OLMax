@@ -32,7 +32,7 @@ def _get_model(
         hidden_size=hidden_size,
         vocab_size=vocab_size,
         num_layers=num_layers,
-        block=nn.TransformerBlock.Config(
+        block=nn.TransformerLayer.Config(
             attention=nn.MultiheadSelfAttention.Config(n_heads=4),
             norm=nn.LayerNorm.Config(),
         ),

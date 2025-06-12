@@ -15,7 +15,7 @@ from ..module import Module
 from ..normalization import LayerNormConfig, Normalizer, NormalizerConfig
 
 
-class TransformerBlock(Module):
+class TransformerLayer(Module):
     mlp: GatedMLP
     mlp_norm: Normalizer
     attention: MultiheadSelfAttention
@@ -72,10 +72,10 @@ class TransformerBlock(Module):
         )
 
     @classmethod
-    def Config(cls, **kwargs) -> TransformerBlockConfig:
-        return DefaultTransformerBlockConfig(**kwargs)
+    def Config(cls, **kwargs) -> TransformerLayerConfig:
+        return DefaultTransformerLayerConfig(**kwargs)
 
-    @jax.named_scope("olmax.nn.TransformerBlock")
+    @jax.named_scope("olmax.nn.TransformerLayer")
     def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention(self.attention_norm(x))
@@ -83,12 +83,12 @@ class TransformerBlock(Module):
         return h
 
 
-class ReorderedNormTransformerBlock(TransformerBlock):
+class ReorderedNormTransformerLayer(TransformerLayer):
     @classmethod
-    def Config(cls, **kwargs) -> ReorderedNormTransformerBlockConfig:
-        return ReorderedNormTransformerBlockConfig(**kwargs)
+    def Config(cls, **kwargs) -> ReorderedNormTransformerLayerConfig:
+        return ReorderedNormTransformerLayerConfig(**kwargs)
 
-    @jax.named_scope("olmax.nn.ReorderedTransformerBlock")
+    @jax.named_scope("olmax.nn.ReorderedTransformerLayer")
     def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(x))
@@ -96,7 +96,7 @@ class ReorderedNormTransformerBlock(TransformerBlock):
         return h
 
 
-class GemmaTransformerBlock(TransformerBlock):
+class GemmaTransformerLayer(TransformerLayer):
     attention_input_norm: Normalizer
     mlp_input_norm: Normalizer
 
@@ -143,10 +143,10 @@ class GemmaTransformerBlock(TransformerBlock):
         )
 
     @classmethod
-    def Config(cls, **kwargs) -> GemmaTransformerBlockConfig:
-        return GemmaTransformerBlockConfig(**kwargs)
+    def Config(cls, **kwargs) -> GemmaTransformerLayerConfig:
+        return GemmaTransformerLayerConfig(**kwargs)
 
-    @jax.named_scope("olmax.nn.Gemma2TransformerBlock")
+    @jax.named_scope("olmax.nn.Gemma2TransformerLayer")
     def forward(self, x: Array) -> Array:
         assert x.ndim == 3
         h = x + self.attention_norm(self.attention(self.attention_input_norm(x)))
@@ -154,11 +154,11 @@ class GemmaTransformerBlock(TransformerBlock):
         return h
 
 
-B = TypeVar("B", bound=TransformerBlock)
+B = TypeVar("B", bound=TransformerLayer)
 
 
 @dataclass
-class TransformerBlockConfig(Registrable, Generic[B]):
+class TransformerLayerConfig(Registrable, Generic[B]):
     attention: MultiheadSelfAttentionConfig
     norm: NormalizerConfig
     bias: bool = False
@@ -170,16 +170,16 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         raise NotImplementedError
 
     @classmethod
-    def Default(cls, **kwargs) -> DefaultTransformerBlockConfig:
-        return DefaultTransformerBlockConfig(**kwargs)
+    def Default(cls, **kwargs) -> DefaultTransformerLayerConfig:
+        return DefaultTransformerLayerConfig(**kwargs)
 
     @classmethod
-    def ReorderedNorm(cls, **kwargs) -> ReorderedNormTransformerBlockConfig:
-        return ReorderedNormTransformerBlockConfig(**kwargs)
+    def ReorderedNorm(cls, **kwargs) -> ReorderedNormTransformerLayerConfig:
+        return ReorderedNormTransformerLayerConfig(**kwargs)
 
     @classmethod
-    def Gemma(cls, **kwargs) -> GemmaTransformerBlockConfig:
-        return GemmaTransformerBlockConfig(**kwargs)
+    def Gemma(cls, **kwargs) -> GemmaTransformerLayerConfig:
+        return GemmaTransformerLayerConfig(**kwargs)
 
     def build(
         self,
@@ -208,25 +208,25 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         )
 
 
-@TransformerBlockConfig.register("default")
+@TransformerLayerConfig.register("default")
 @dataclass
-class DefaultTransformerBlockConfig(TransformerBlockConfig[TransformerBlock]):
+class DefaultTransformerLayerConfig(TransformerLayerConfig[TransformerLayer]):
     @classmethod
-    def get_class(cls) -> Type[TransformerBlock]:
-        return TransformerBlock
+    def get_class(cls) -> Type[TransformerLayer]:
+        return TransformerLayer
 
 
-@TransformerBlockConfig.register("reordered_norm")
+@TransformerLayerConfig.register("reordered_norm")
 @dataclass
-class ReorderedNormTransformerBlockConfig(TransformerBlockConfig[ReorderedNormTransformerBlock]):
+class ReorderedNormTransformerLayerConfig(TransformerLayerConfig[ReorderedNormTransformerLayer]):
     @classmethod
-    def get_class(cls) -> Type[ReorderedNormTransformerBlock]:
-        return ReorderedNormTransformerBlock
+    def get_class(cls) -> Type[ReorderedNormTransformerLayer]:
+        return ReorderedNormTransformerLayer
 
 
-@TransformerBlockConfig.register("gemma")
+@TransformerLayerConfig.register("gemma")
 @dataclass
-class GemmaTransformerBlockConfig(TransformerBlockConfig[GemmaTransformerBlock]):
+class GemmaTransformerLayerConfig(TransformerLayerConfig[GemmaTransformerLayer]):
     @classmethod
-    def get_class(cls) -> Type[GemmaTransformerBlock]:
-        return GemmaTransformerBlock
+    def get_class(cls) -> Type[GemmaTransformerLayer]:
+        return GemmaTransformerLayer

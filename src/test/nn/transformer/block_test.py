@@ -8,7 +8,7 @@ def test_transformer_block(
 ):
     key = jax.random.PRNGKey(0)
     key, data_key = jax.random.split(key, 2)
-    block = nn.TransformerBlock(
+    block = nn.TransformerLayer(
         d_model=d_model,
         hidden_size=hidden_size,
         key=key,
@@ -25,7 +25,7 @@ def test_reordered_norm_transformer_block(
 ):
     key = jax.random.PRNGKey(0)
     key, data_key = jax.random.split(key, 2)
-    block = nn.ReorderedNormTransformerBlock(  # pyright: ignore
+    block = nn.ReorderedNormTransformerLayer(  # pyright: ignore
         d_model=d_model,  # pyright: ignore
         hidden_size=hidden_size,  # pyright: ignore
         key=key,  # pyright: ignore

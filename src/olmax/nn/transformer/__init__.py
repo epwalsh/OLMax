@@ -1,20 +1,20 @@
 from . import recipes
 from .block import (
-    DefaultTransformerBlockConfig,
-    ReorderedNormTransformerBlock,
-    ReorderedNormTransformerBlockConfig,
-    TransformerBlock,
-    TransformerBlockConfig,
+    DefaultTransformerLayerConfig,
+    ReorderedNormTransformerLayer,
+    ReorderedNormTransformerLayerConfig,
+    TransformerLayer,
+    TransformerLayerConfig,
 )
 from .model import Transformer, TransformerConfig
 
 __all__ = [
     "recipes",
     "Transformer",
-    "TransformerBlock",
-    "ReorderedNormTransformerBlock",
+    "TransformerLayer",
+    "ReorderedNormTransformerLayer",
     "TransformerConfig",
-    "TransformerBlockConfig",
-    "DefaultTransformerBlockConfig",
-    "ReorderedNormTransformerBlockConfig",
+    "TransformerLayerConfig",
+    "DefaultTransformerLayerConfig",
+    "ReorderedNormTransformerLayerConfig",
 ]

@@ -22,12 +22,12 @@ from ..functional import scan_module
 from ..lm_head import LMHead, LMHeadConfig
 from ..module import Module
 from ..normalization import Normalizer, NormalizerConfig
-from .block import TransformerBlock, TransformerBlockConfig
+from .block import TransformerLayer, TransformerLayerConfig
 
 
 class Transformer(Module):
     embedding: Embedding
-    layers: list[TransformerBlock]
+    layers: list[TransformerLayer]
     norm: Normalizer
     lm_head: LMHead
     ac_policy: ActivationCheckpointingPolicy = eqx.field(static=True)
@@ -40,7 +40,7 @@ class Transformer(Module):
         vocab_size: int,
         hidden_size: int,
         num_layers: int,
-        block: TransformerBlockConfig,
+        block: TransformerLayerConfig,
         norm: NormalizerConfig,
         lm_head: LMHeadConfig,
         key: PRNGKeyArray,
@@ -74,7 +74,7 @@ class Transformer(Module):
                     checkpoint_name="block",
                 )
             )(key=shaped_rng_split(key, num_layers))
-            self.layers.append(typing.cast(TransformerBlock, block))
+            self.layers.append(typing.cast(TransformerLayer, block))
         else:
             for block_idx in range(num_layers):
                 block_key = jax.random.fold_in(blocks_key, block_idx)
@@ -159,7 +159,7 @@ class TransformerConfig(Registrable, Generic[T]):
     hidden_size: int
     vocab_size: int
     num_layers: int
-    block: TransformerBlockConfig
+    block: TransformerLayerConfig
     norm: NormalizerConfig
     lm_head: LMHeadConfig
     dtype: DTypeLike = float
@@ -183,7 +183,7 @@ class TransformerConfig(Registrable, Generic[T]):
         vocab_size: int | None = None,
         hidden_size: int | None = None,
         num_layers: int | None = None,
-        block: TransformerBlockConfig | None = None,
+        block: TransformerLayerConfig | None = None,
         norm: NormalizerConfig | None = None,
         lm_head: LMHeadConfig | None = None,
         dtype: DTypeLike | None = None,
