@@ -61,9 +61,16 @@ class Transformer(Module):
         )
         self.blocks = []
         if scan_blocks:
-            block = jax.vmap(ft.partial(block.build, d_model=d_model, hidden_size=hidden_size))(
-                key=shaped_rng_split(key, num_layers)
-            )
+            block = jax.vmap(
+                ft.partial(
+                    block.build,
+                    d_model=d_model,
+                    hidden_size=hidden_size,
+                    dtype=dtype,
+                    mesh_resource=mesh_resource,
+                    checkpoint_name="block",
+                )
+            )(key=shaped_rng_split(key, num_layers))
             self.blocks.append(typing.cast(TransformerBlock, block))
         else:
             for block_idx in range(num_layers):
