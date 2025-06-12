@@ -70,7 +70,8 @@ class LlamaLike271MRecipe(TransformerRecipe):
                 bias=False,
                 dtype=param_dtype,
             ),
-            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            norm=norm,
+            lm_head=LMHeadConfig(bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )
 
@@ -112,7 +113,8 @@ class LlamaLike7BRecipe(TransformerRecipe):
                 bias=False,
                 dtype=param_dtype,
             ),
-            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            norm=norm,
+            lm_head=LMHeadConfig(bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )
 
@@ -162,7 +164,8 @@ class OLMo7BRecipe(TransformerRecipe):
                 bias=False,
                 dtype=param_dtype,
             ),
-            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            norm=norm,
+            lm_head=LMHeadConfig(bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )
 
@@ -213,7 +216,8 @@ class OLMo32BRecipe(TransformerRecipe):
                 bias=False,
                 dtype=param_dtype,
             ),
-            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            norm=norm,
+            lm_head=LMHeadConfig(bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )
 
@@ -252,7 +256,8 @@ class Gemma2Like27BRecipe(TransformerRecipe):
                 bias=False,
                 dtype=param_dtype,
             ),
-            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            norm=norm,
+            lm_head=LMHeadConfig(bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )
 
@@ -293,6 +298,7 @@ class Gemma3Like27BRecipe(TransformerRecipe):
                 bias=False,
                 dtype=param_dtype,
             ),
-            lm_head=LMHeadConfig(norm=norm, bias=False, dtype=param_dtype),
+            norm=norm,
+            lm_head=LMHeadConfig(bias=False, dtype=param_dtype),
             dtype=param_dtype,
         )

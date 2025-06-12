@@ -21,12 +21,14 @@ from ..embedding import Embedding
 from ..functional import scan_module
 from ..lm_head import LMHead, LMHeadConfig
 from ..module import Module
+from ..normalization import Normalizer, NormalizerConfig
 from .block import TransformerBlock, TransformerBlockConfig
 
 
 class Transformer(Module):
     embedding: Embedding
     blocks: list[TransformerBlock]
+    norm: Normalizer
     lm_head: LMHead
     ac_policy: ActivationCheckpointingPolicy = eqx.field(static=True)
     scan_blocks: bool = eqx.field(static=True)
@@ -39,6 +41,7 @@ class Transformer(Module):
         hidden_size: int,
         num_layers: int,
         block: TransformerBlockConfig,
+        norm: NormalizerConfig,
         lm_head: LMHeadConfig,
         key: PRNGKeyArray,
         dtype: DTypeLike = float,
@@ -48,7 +51,7 @@ class Transformer(Module):
         ac_policy: ActivationCheckpointingPolicy | None = None,
     ):
         super().__init__(mesh_resource, checkpoint_name)
-        emb_key, blocks_key, lm_head_key = jax.random.split(key, 3)
+        emb_key, blocks_key, norm_key, lm_head_key = jax.random.split(key, 4)
         self.embedding = Embedding(
             d_model,
             vocab_size,
@@ -88,6 +91,12 @@ class Transformer(Module):
                         else f"{checkpoint_name}.blocks.{block_idx}",
                     )
                 )
+        self.norm = norm.build(
+            d_model,
+            norm_key,
+            mesh_resource=mesh_resource,
+            checkpoint_name="norm" if checkpoint_name is None else f"{checkpoint_name}.norm",
+        )
         self.lm_head = lm_head.build(
             d_model,
             vocab_size,
@@ -130,10 +139,13 @@ class Transformer(Module):
             )
         else:
             for block in self.blocks:
-                # shape: (seq_len, d_model)
+                # shape: (batch_size, seq_len, d_model)
                 h = self.ac_policy.wrap(block.__call__)(h)
 
-        # shape: (seq_len, vocab_size)
+        # shape: (batch_size, seq_len, d_model)
+        h = self.norm(h)
+
+        # shape: (batch_size, seq_len, vocab_size)
         out = self.lm_head(h)
         return out
 
@@ -148,6 +160,7 @@ class TransformerConfig(Registrable, Generic[T]):
     vocab_size: int
     num_layers: int
     block: TransformerBlockConfig
+    norm: NormalizerConfig
     lm_head: LMHeadConfig
     dtype: DTypeLike = float
     scan_blocks: bool = False
@@ -171,6 +184,7 @@ class TransformerConfig(Registrable, Generic[T]):
         hidden_size: int | None = None,
         num_layers: int | None = None,
         block: TransformerBlockConfig | None = None,
+        norm: NormalizerConfig | None = None,
         lm_head: LMHeadConfig | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
@@ -185,6 +199,7 @@ class TransformerConfig(Registrable, Generic[T]):
             hidden_size=hidden_size if hidden_size is not None else self.hidden_size,
             num_layers=num_layers if num_layers is not None else self.num_layers,
             block=block if block is not None else self.block,
+            norm=norm if norm is not None else self.norm,
             lm_head=lm_head if lm_head is not None else self.lm_head,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,

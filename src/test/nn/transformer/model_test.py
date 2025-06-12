@@ -36,7 +36,8 @@ def _get_model(
             attention=nn.MultiheadSelfAttention.Config(n_heads=4),
             norm=nn.LayerNorm.Config(),
         ),
-        lm_head=nn.LMHead.Config(norm=nn.LayerNorm.Config()),
+        norm=nn.LayerNorm.Config(),
+        lm_head=nn.LMHead.Config(),
         mesh_resource=mesh_resource,
     )
 

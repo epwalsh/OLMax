@@ -4,7 +4,6 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Generic, Type, TypeVar
 
-import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
 
