@@ -139,14 +139,22 @@ def _apply_module(
     param_sharding: Specs | None = None,
 ) -> tuple[tuple[Module, Array], None]:
     static, x = carry
+
     if param_sharding is not None:
         params = jax.lax.with_sharding_constraint(params, param_sharding)
     if input_sharding is not None:
         x = jax.lax.with_sharding_constraint(x, input_sharding)
+
     m = eqx.combine(params, static, is_leaf=eqx.is_array)
+
+    if param_sharding is not None:
+        m = jax.lax.with_sharding_constraint(m, param_sharding)
+
     y = m(x)
+
     if output_sharding is not None:
         y = jax.lax.with_sharding_constraint(y, output_sharding)
+
     return (static, y), None
 
 
