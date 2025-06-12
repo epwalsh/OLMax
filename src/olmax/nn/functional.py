@@ -4,6 +4,7 @@ from typing import Literal
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.sharding import NamedSharding
 
 from ..jax_utils import vmap_multiple
 from ..types import Array
@@ -130,15 +131,34 @@ def fused_cross_entropy_loss(
     return loss, log_normalizer * where
 
 
-def _apply_module(carry: tuple[Module, Array], params: Module) -> tuple[tuple[Module, Array], None]:
+def _apply_module(
+    carry: tuple[Module, Array],
+    params: Module,
+    input_sharding: NamedSharding | None = None,
+    output_sharding: NamedSharding | None = None,
+) -> tuple[tuple[Module, Array], None]:
     static, x = carry
+    if input_sharding is not None:
+        x = jax.lax.with_sharding_constraint(x, input_sharding)
     m = eqx.combine(params, static, is_leaf=eqx.is_array)
-    return (static, m(x)), None
+    y = m(x)
+    if output_sharding is not None:
+        y = jax.lax.with_sharding_constraint(y, output_sharding)
+    return (static, y), None
 
 
-def scan_module(m: Module, x: Array) -> Array:
+def scan_module(
+    m: Module,
+    x: Array,
+    input_sharding: NamedSharding | None = None,
+    output_sharding: NamedSharding | None = None,
+) -> Array:
     params, static = eqx.partition(m, eqx.is_array)
     carry = (static, x)
-    carry, _ = jax.lax.scan(_apply_module, carry, params)
+    carry, _ = jax.lax.scan(
+        ft.partial(_apply_module, input_sharding=input_sharding, output_sharding=output_sharding),
+        carry,
+        params,
+    )
     _, y = carry
     return y

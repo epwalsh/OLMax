@@ -115,7 +115,16 @@ class Transformer(Module):
         if self.scan_blocks:
             # TODO: handle ac_policy with 'prevent_cse=False'
             block = self.blocks[0]
-            h = scan_module(block, h)
+            h = scan_module(
+                block,
+                h,
+                input_sharding=None
+                if self.mesh_resource is None
+                else self.mesh_resource.get_data_sharding(),
+                output_sharding=None
+                if self.mesh_resource is None
+                else self.mesh_resource.get_data_sharding(),
+            )
         else:
             for block in self.blocks:
                 # shape: (seq_len, d_model)
