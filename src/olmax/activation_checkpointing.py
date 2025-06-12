@@ -42,7 +42,8 @@ class ActivationCheckpointingPolicy(Registrable):
 @dataclass
 class NoPolicy(ActivationCheckpointingPolicy):
     """
-    A no-op. No policy is applied.
+    A no-op. No checkpointing is applied. In theory this is equivalent to :class:`EverythingSaveable`,
+    except this doesn't apply ``jax.checkpoint()`` at all, so it can be useful for debugging.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -58,7 +59,7 @@ class NoPolicy(ActivationCheckpointingPolicy):
 @dataclass
 class EverythingSaveable(ActivationCheckpointingPolicy):
     """
-    Everything is saved.
+    Everything is saved. This is essentially the same as :class:`NoPolicy`.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -69,7 +70,8 @@ class EverythingSaveable(ActivationCheckpointingPolicy):
 @dataclass
 class NothingSaveable(ActivationCheckpointingPolicy):
     """
-    Nothing is saved, everything is recomputed.
+    Nothing is saved, everything is recomputed. This is equivalent to calling ``jax.checkpoint()``
+    without an explicit policy.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -80,7 +82,7 @@ class NothingSaveable(ActivationCheckpointingPolicy):
 @dataclass
 class DotsSaveable(ActivationCheckpointingPolicy):
     """
-    Only dot operations are saved.
+    Only dot operations are saved, everything else is recomputed.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -92,7 +94,7 @@ class DotsSaveable(ActivationCheckpointingPolicy):
 class DotsWithNoBatchDimsSaveable(ActivationCheckpointingPolicy):
     """
     Only certain dot operations are saved according to a heuristic which is generally useful
-    for transformers.
+    for transformers. Everything else is recomputed.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -128,7 +130,7 @@ class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
 @dataclass
 class SaveAnythingExceptTheseNames(NamedCheckpointPolicy):
     """
-    Save any values (not just named ones) excluding the names given.
+    Save any values (not just named ones) excluding the names given. Everything else is recomputed.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -143,7 +145,7 @@ class SaveAnythingExceptTheseNames(NamedCheckpointPolicy):
 @dataclass
 class SaveAnyNamesButThese(NamedCheckpointPolicy):
     """
-    Save only named values, excluding the names given.
+    Save only named values, excluding the names given. Everything else is recomputed.
     """
 
     def get_policy(self) -> Callable[..., bool]:
@@ -158,7 +160,7 @@ class SaveAnyNamesButThese(NamedCheckpointPolicy):
 @dataclass
 class SaveOnlyTheseNames(NamedCheckpointPolicy):
     """
-    Save only named values, and only among the names given.
+    Save only named values, and only among the names given. Everything else is recomputed.
     """
 
     def get_policy(self) -> Callable[..., bool]:
