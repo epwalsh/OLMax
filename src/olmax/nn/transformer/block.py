@@ -21,28 +21,26 @@ class TransformerBlock(Module):
     mlp_norm: Normalizer
     attention: MultiheadSelfAttention
     attention_norm: Normalizer
-    block_idx: int = eqx.field(static=True)
 
     def __init__(
         self,
         d_model: int,
         hidden_size: int,
-        block_idx: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig,
         norm: NormalizerConfig,
         bias: bool = False,
         dtype: DTypeLike = float,
+        block_idx: int | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         activation: Callable[[Array], Array] = jax.nn.silu,
     ):
         if checkpoint_name is None:
-            checkpoint_name = f"block{block_idx}"
+            checkpoint_name = "block" if block_idx is None else f"block{block_idx}"
 
         super().__init__(mesh_resource, checkpoint_name)
         mlp_key, mlp_norm_key, attention_key, attention_norm_key = jax.random.split(key, 4)
-        self.block_idx = block_idx
         self.mlp = GatedMLP(
             d_model,
             hidden_size,
@@ -107,11 +105,11 @@ class GemmaTransformerBlock(TransformerBlock):
         self,
         d_model: int,
         hidden_size: int,
-        block_idx: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig,
         norm: NormalizerConfig,
         bias: bool = False,
+        block_idx: int | None = None,
         dtype: DTypeLike = float,
         activation: Callable[[Array], Array] = jax.nn.gelu,
         mesh_resource: MeshResource | None = None,
@@ -121,11 +119,11 @@ class GemmaTransformerBlock(TransformerBlock):
         super().__init__(
             d_model=d_model,
             hidden_size=hidden_size,
-            block_idx=block_idx,
             key=key,
             attention=attention,
             norm=norm,
             bias=bias,
+            block_idx=block_idx,
             dtype=dtype,
             activation=activation,
             mesh_resource=mesh_resource,
@@ -188,10 +186,10 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         self,
         d_model: int,
         hidden_size: int,
-        block_idx: int,
         key: PRNGKeyArray,
         attention: MultiheadSelfAttentionConfig | None = None,
         norm: LayerNormConfig | None = None,
+        block_idx: int | None = None,
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
@@ -200,10 +198,10 @@ class TransformerBlockConfig(Registrable, Generic[B]):
         return self.get_class()(
             d_model=d_model,
             hidden_size=hidden_size,
-            block_idx=block_idx,
             key=key,
             attention=attention if attention is not None else self.attention,
             norm=norm if norm is not None else self.norm,
+            block_idx=block_idx,
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools as ft
+import typing
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
@@ -13,8 +15,10 @@ from ...activation_checkpointing import (
     NamedCheckpointPolicy,
 )
 from ...distributed.parallel import MeshResource
+from ...jax_utils import shaped_rng_split
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
+from ..functional import scan_module
 from ..lm_head import LMHead, LMHeadConfig
 from ..module import Module
 from .block import TransformerBlock, TransformerBlockConfig
@@ -25,6 +29,7 @@ class Transformer(Module):
     blocks: list[TransformerBlock]
     lm_head: LMHead
     ac_policy: ActivationCheckpointingPolicy = eqx.field(static=True)
+    scan_blocks: bool = eqx.field(static=True)
 
     def __init__(
         self,
@@ -37,6 +42,7 @@ class Transformer(Module):
         lm_head: LMHeadConfig,
         key: PRNGKeyArray,
         dtype: DTypeLike = float,
+        scan_blocks: bool = False,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         ac_policy: ActivationCheckpointingPolicy | None = None,
@@ -54,21 +60,27 @@ class Transformer(Module):
             else f"{checkpoint_name}.embedding",
         )
         self.blocks = []
-        for block_idx in range(num_layers):
-            block_key = jax.random.fold_in(blocks_key, block_idx)
-            self.blocks.append(
-                block.build(
-                    d_model,
-                    hidden_size,
-                    block_idx,
-                    block_key,
-                    dtype=dtype,
-                    mesh_resource=mesh_resource,
-                    checkpoint_name=f"blocks.{block_idx}"
-                    if checkpoint_name is None
-                    else f"{checkpoint_name}.blocks.{block_idx}",
-                )
+        if scan_blocks:
+            block = jax.vmap(ft.partial(block.build, d_model=d_model, hidden_size=hidden_size))(
+                key=shaped_rng_split(key, num_layers)
             )
+            self.blocks.append(typing.cast(TransformerBlock, block))
+        else:
+            for block_idx in range(num_layers):
+                block_key = jax.random.fold_in(blocks_key, block_idx)
+                self.blocks.append(
+                    block.build(
+                        d_model,
+                        hidden_size,
+                        block_key,
+                        dtype=dtype,
+                        block_idx=block_idx,
+                        mesh_resource=mesh_resource,
+                        checkpoint_name=f"blocks.{block_idx}"
+                        if checkpoint_name is None
+                        else f"{checkpoint_name}.blocks.{block_idx}",
+                    )
+                )
         self.lm_head = lm_head.build(
             d_model,
             vocab_size,
@@ -77,6 +89,7 @@ class Transformer(Module):
             mesh_resource=mesh_resource,
             checkpoint_name="lm_head" if checkpoint_name is None else f"{checkpoint_name}.lm_head",
         )
+        self.scan_blocks = scan_blocks
         self.ac_policy = ac_policy or ActivationCheckpointingPolicy.no_policy()
         if isinstance(self.ac_policy, NamedCheckpointPolicy):
             self.ac_policy.resolve_names(self.get_checkpoint_names())
@@ -89,12 +102,17 @@ class Transformer(Module):
     def forward(self, x: Array) -> Array:
         assert x.ndim == 2  # shape: (batch_size, seq_len)
 
-        # shape: (seq_len, d_model)
+        # shape: (batch, seq_len, d_model)
         h = self.embedding(x)
 
-        for block in self.blocks:
-            # shape: (seq_len, d_model)
-            h = self.ac_policy.wrap(block.__call__)(h)
+        if self.scan_blocks:
+            # TODO: handle ac_policy with 'prevent_cse=False'
+            block = self.blocks[0]
+            h = scan_module(block, h)
+        else:
+            for block in self.blocks:
+                # shape: (seq_len, d_model)
+                h = self.ac_policy.wrap(block.__call__)(h)
 
         # shape: (seq_len, vocab_size)
         out = self.lm_head(h)
@@ -113,6 +131,7 @@ class TransformerConfig(Registrable, Generic[T]):
     block: TransformerBlockConfig
     lm_head: LMHeadConfig
     dtype: DTypeLike = float
+    scan_blocks: bool = False
     ac_policy: ActivationCheckpointingPolicy | None = None
 
     @classmethod
@@ -137,6 +156,7 @@ class TransformerConfig(Registrable, Generic[T]):
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
+        scan_blocks: bool | None = None,
         ac_policy: ActivationCheckpointingPolicy | None = None,
     ) -> T:
         return self.get_class()(
@@ -150,6 +170,7 @@ class TransformerConfig(Registrable, Generic[T]):
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
             checkpoint_name=checkpoint_name,
+            scan_blocks=scan_blocks if scan_blocks is not None else self.scan_blocks,
             ac_policy=ac_policy if ac_policy is not None else self.ac_policy,
         )
 

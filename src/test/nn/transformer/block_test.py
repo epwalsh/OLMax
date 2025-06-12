@@ -11,7 +11,6 @@ def test_transformer_block(
     block = nn.TransformerBlock(
         d_model=d_model,
         hidden_size=hidden_size,
-        block_idx=0,
         key=key,
         attention=nn.MultiheadSelfAttention.Config(n_heads=4),
         norm=nn.LayerNorm.Config(),
@@ -29,7 +28,6 @@ def test_reordered_norm_transformer_block(
     block = nn.ReorderedNormTransformerBlock(  # pyright: ignore
         d_model=d_model,  # pyright: ignore
         hidden_size=hidden_size,  # pyright: ignore
-        block_idx=0,
         key=key,  # pyright: ignore
         attention=nn.MultiheadSelfAttention.Config(n_heads=4),
         norm=nn.LayerNorm.Config(),  # pyright: ignore

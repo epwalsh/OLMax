@@ -30,11 +30,13 @@ class ActivationCheckpointingPolicy(Registrable):
     def get_policy(self) -> Callable[..., bool]:
         raise NotImplementedError
 
-    def wrap(self, fun: F) -> F:
+    def wrap(self, fun: F, prevent_cse: bool = True) -> F:
         """
         Wrap a function for activation checkpointing with the given policy.
         """
-        return typing.cast(F, eqx.filter_checkpoint(fun, policy=self.get_policy()))
+        return typing.cast(
+            F, eqx.filter_checkpoint(fun, prevent_cse=prevent_cse, policy=self.get_policy())
+        )
 
 
 @ActivationCheckpointingPolicy.register("default", default=True)
@@ -49,7 +51,8 @@ class NoPolicy(ActivationCheckpointingPolicy):
         # Could return anything from here because we don't actually use this.
         return jax.checkpoint_policies.everything_saveable
 
-    def wrap(self, fun: F) -> F:
+    def wrap(self, fun: F, prevent_cse: bool = True) -> F:
+        del prevent_cse
         return fun
 
 

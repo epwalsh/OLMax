@@ -1,11 +1,13 @@
 import functools as ft
 from typing import Literal
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 
 from ..jax_utils import vmap_multiple
 from ..types import Array
+from .module import Module
 
 
 @jax.jit
@@ -126,3 +128,17 @@ def fused_cross_entropy_loss(
         raise ValueError(reduction)
 
     return loss, log_normalizer * where
+
+
+def _apply_module(carry: tuple[Module, Array], params: Module) -> tuple[tuple[Module, Array], None]:
+    static, x = carry
+    m = eqx.combine(params, static, is_leaf=eqx.is_array)
+    return (static, m(x)), None
+
+
+def scan_module(m: Module, x: Array) -> Array:
+    params, static = eqx.partition(m, eqx.is_array)
+    carry = (static, x)
+    carry, _ = jax.lax.scan(_apply_module, carry, params)
+    _, y = carry
+    return y

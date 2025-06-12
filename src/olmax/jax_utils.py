@@ -1,5 +1,5 @@
 import functools as ft
-from typing import Callable, TypeVar
+from typing import Callable, Sequence, TypeVar
 
 import equinox as eqx
 import jax
@@ -7,7 +7,7 @@ import jax.core
 import jax.numpy as jnp
 import numpy as np
 
-from .types import Array, DTypeLike, PyTree, Specs
+from .types import Array, ArrayLike, DTypeLike, PRNGKeyArray, PyTree, Specs
 
 F = TypeVar("F", bound=Callable)
 
@@ -79,3 +79,29 @@ def get_cudnn_version() -> int | None:
     if cuda_versions is None:
         return None
     return cuda_versions.cudnn_get_version()
+
+
+def shaped_rng_split(key, split_shape: int | Sequence[int] = 2) -> PRNGKeyArray:
+    if isinstance(split_shape, int):
+        num_splits = split_shape
+        split_shape = (num_splits,) + key.shape
+    else:
+        num_splits = int(np.prod(split_shape))
+        split_shape = tuple(split_shape) + key.shape
+
+    if num_splits == 1:
+        return jnp.reshape(key, split_shape)
+
+    unshaped = maybe_rng_split(key, num_splits)
+    return jnp.reshape(unshaped, split_shape)
+
+
+def maybe_rng_split(key: PRNGKeyArray | None, num: int = 2) -> ArrayLike:
+    """Splits a random key into multiple random keys. If the key is None, then it replicates the None. Also handles
+    num == 1 case"""
+    if key is None:
+        return [None] * num  # type: ignore
+    elif num == 1:
+        return jnp.reshape(key, (1,) + key.shape)
+    else:
+        return jax.random.split(key, num)
