@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import functools as ft
-import typing
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Type, TypeVar
@@ -15,7 +13,6 @@ from ...activation_checkpointing import (
     NamedCheckpointPolicy,
 )
 from ...distributed.parallel import MeshResource
-from ...jax_utils import shaped_rng_split
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..embedding import Embedding
 from ..functional import scan_module
@@ -62,35 +59,17 @@ class Transformer(Module):
             if checkpoint_name is None
             else f"{checkpoint_name}.embedding",
         )
-        self.layers = []
-        if scan_layers:
-            layer = jax.vmap(
-                ft.partial(
-                    layer.build,
-                    d_model=d_model,
-                    hidden_size=hidden_size,
-                    dtype=dtype,
-                    mesh_resource=mesh_resource,
-                    checkpoint_name="layer",
-                )
-            )(key=shaped_rng_split(key, num_layers))
-            self.layers.append(typing.cast(TransformerLayer, layer))
-        else:
-            for layer_idx in range(num_layers):
-                layer_key = jax.random.fold_in(layers_key, layer_idx)
-                self.layers.append(
-                    layer.build(
-                        d_model,
-                        hidden_size,
-                        layer_key,
-                        dtype=dtype,
-                        layer_idx=layer_idx,
-                        mesh_resource=mesh_resource,
-                        checkpoint_name=f"layers.{layer_idx}"
-                        if checkpoint_name is None
-                        else f"{checkpoint_name}.layers.{layer_idx}",
-                    )
-                )
+        self.layers = layer.build_all(
+            d_model,
+            hidden_size,
+            num_layers,
+            layers_key,
+            dtype=dtype,
+            mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
+            scan_layers=scan_layers,
+            ac_policy=ac_policy,
+        )
         self.norm = norm.build(
             d_model,
             norm_key,
@@ -106,9 +85,8 @@ class Transformer(Module):
             checkpoint_name="lm_head" if checkpoint_name is None else f"{checkpoint_name}.lm_head",
         )
         self.scan_layers = scan_layers
-        self.ac_policy = ac_policy or ActivationCheckpointingPolicy.no_policy()
-        if isinstance(self.ac_policy, NamedCheckpointPolicy):
-            self.ac_policy.resolve_names(self.get_checkpoint_names())
+        if isinstance(ac_policy, NamedCheckpointPolicy):
+            ac_policy.resolve_names(self.get_checkpoint_names())
 
     @classmethod
     def Config(cls, **kwargs) -> TransformerConfig:
@@ -122,7 +100,6 @@ class Transformer(Module):
         h = self.embedding(x)
 
         if self.scan_layers:
-            # TODO: handle ac_policy with 'prevent_cse=False'
             layer = self.layers[0]
             h = scan_module(
                 layer,
@@ -140,7 +117,7 @@ class Transformer(Module):
         else:
             for layer in self.layers:
                 # shape: (batch_size, seq_len, d_model)
-                h = self.ac_policy.wrap(layer.__call__)(h)
+                h = layer(h)
 
         # shape: (batch_size, seq_len, d_model)
         h = self.norm(h)

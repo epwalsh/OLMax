@@ -112,18 +112,10 @@ def set_env_var(name: str, value: str, override: bool = False, secret: bool = Fa
     if name in os.environ:
         if override and (old_value := os.environ[name]) != value:
             old_value_str = "****" if secret else old_value
-            msg = f"Overriding env var '{name}' from '{old_value_str}' to '{value_str}'"
-            if logging_configured():
-                log.warning(msg)
-            else:
-                print(msg)
+            log.warning(f"Overriding env var '{name}' from '{old_value_str}' to '{value_str}'")
             os.environ[name] = value
     else:
-        msg = f"Setting env var '{name}' to '{value_str}'"
-        if logging_configured():
-            log.info(msg)
-        else:
-            print(msg)
+        log.info(f"Setting env var '{name}' to '{value_str}'")
         os.environ[name] = value
 
 

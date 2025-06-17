@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import functools as ft
+import typing
 from abc import abstractmethod
-from typing import Iterable
+from typing import Iterable, Type, TypeVar
 
 import equinox as eqx
 import jax
 from jax.ad_checkpoint import checkpoint_name as ckpt_name
 from typing_extensions import Self
 
+from ..activation_checkpointing import ActivationCheckpointingPolicy
 from ..distributed.parallel import MeshResource
 from ..types import Array, PyTree
+
+M = TypeVar("M", bound="Module")
 
 
 class Module(eqx.Module):
@@ -35,6 +39,18 @@ class Module(eqx.Module):
                 ft.partial(ckpt_name, name=self.checkpoint_name), out, is_leaf=eqx.is_array
             )
         return out
+
+    @classmethod
+    def inject_ac_policy(cls: Type[M], policy: ActivationCheckpointingPolicy) -> Type[M]:
+        """
+        Create a new subclass with the given activation checkpointing policy applied.
+        """
+
+        @policy.wrap
+        def remat_call(self_, *args, **kwargs):
+            return super(self_).__call__(*args, **kwargs)
+
+        return typing.cast(Type[M], type(f"Remat{cls.__name__}", (cls,), {"__call__": remat_call}))
 
     @abstractmethod
     def forward(self, *args, **kwargs):

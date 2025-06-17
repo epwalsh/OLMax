@@ -16,11 +16,13 @@ log = logging.getLogger(__name__)
 F = TypeVar("F", bound=Callable)
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class ActivationCheckpointingPolicy(Registrable):
     """
     Defines an activation checkpointing (rematerialization) policy.
     """
+
+    prevent_cse: bool = True
 
     @classmethod
     def no_policy(cls) -> NoPolicy:
@@ -30,12 +32,12 @@ class ActivationCheckpointingPolicy(Registrable):
     def get_policy(self) -> Callable[..., bool]:
         raise NotImplementedError
 
-    def wrap(self, fun: F, prevent_cse: bool = True) -> F:
+    def wrap(self, fun: F) -> F:
         """
         Wrap a function for activation checkpointing with the given policy.
         """
         return typing.cast(
-            F, eqx.filter_checkpoint(fun, prevent_cse=prevent_cse, policy=self.get_policy())
+            F, eqx.filter_checkpoint(fun, prevent_cse=self.prevent_cse, policy=self.get_policy())
         )
 
 
@@ -51,8 +53,7 @@ class NoPolicy(ActivationCheckpointingPolicy):
         # Could return anything from here because we don't actually use this.
         return jax.checkpoint_policies.everything_saveable
 
-    def wrap(self, fun: F, prevent_cse: bool = True) -> F:
-        del prevent_cse
+    def wrap(self, fun: F) -> F:
         return fun
 
 
@@ -104,7 +105,7 @@ class DotsWithNoBatchDimsSaveable(ActivationCheckpointingPolicy):
 
 @dataclass
 class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
-    names: list[str]
+    names: list[str] = dataclasses.field(default_factory=list)
     _resolved_names: list[str] | None = dataclasses.field(default=None, repr=False)
 
     def resolve_names(self, actual_names: Iterable[str]):

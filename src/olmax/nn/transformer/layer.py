@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import functools as ft
+import typing
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Callable, Generic, Type, TypeVar
@@ -7,7 +9,9 @@ from typing import Callable, Generic, Type, TypeVar
 import jax
 from dataclass_extensions import Registrable
 
+from ...activation_checkpointing import ActivationCheckpointingPolicy
 from ...distributed.parallel import MeshResource
+from ...jax_utils import shaped_rng_split
 from ...types import Array, DTypeLike, PRNGKeyArray
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
 from ..mlp import GatedMLP
@@ -194,7 +198,35 @@ class TransformerLayerConfig(Registrable, Generic[B]):
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
     ) -> B:
-        return self.get_class()(
+        return self._build(
+            self.get_class(),
+            d_model,
+            hidden_size,
+            key,
+            attention=attention,
+            norm=norm,
+            layer_idx=layer_idx,
+            bias=bias,
+            dtype=dtype,
+            mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
+        )
+
+    def _build(
+        self,
+        layer_cls: Type[B],
+        d_model: int,
+        hidden_size: int,
+        key: PRNGKeyArray,
+        attention: MultiheadSelfAttentionConfig | None = None,
+        norm: LayerNormConfig | None = None,
+        layer_idx: int | None = None,
+        bias: bool | None = None,
+        dtype: DTypeLike | None = None,
+        mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
+    ) -> B:
+        return layer_cls(
             d_model=d_model,
             hidden_size=hidden_size,
             key=key,
@@ -206,6 +238,65 @@ class TransformerLayerConfig(Registrable, Generic[B]):
             mesh_resource=mesh_resource,
             checkpoint_name=checkpoint_name,
         )
+
+    def build_all(
+        self,
+        d_model: int,
+        hidden_size: int,
+        num_layers: int,
+        key: PRNGKeyArray,
+        attention: MultiheadSelfAttentionConfig | None = None,
+        norm: LayerNormConfig | None = None,
+        layer_idx: int | None = None,
+        bias: bool | None = None,
+        dtype: DTypeLike | None = None,
+        mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
+        scan_layers: bool = False,
+        ac_policy: ActivationCheckpointingPolicy | None = None,
+    ) -> list[B]:
+        layer_cls = self.get_class()
+        if ac_policy is not None:
+            layer_cls = layer_cls.inject_ac_policy(ac_policy)
+
+        layers = []
+        if scan_layers:
+            layer = jax.vmap(
+                ft.partial(
+                    self._build,
+                    layer_cls=layer_cls,
+                    d_model=d_model,
+                    hidden_size=hidden_size,
+                    attention=attention,
+                    norm=norm,
+                    bias=bias,
+                    dtype=dtype,
+                    mesh_resource=mesh_resource,
+                    checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.layer",
+                )
+            )(key=shaped_rng_split(key, num_layers))
+            layers.append(typing.cast(TransformerLayer, layer))
+        else:
+            for layer_idx in range(num_layers):
+                layer_key = jax.random.fold_in(key, layer_idx)
+                layers.append(
+                    self._build(
+                        layer_cls,
+                        d_model,
+                        hidden_size,
+                        layer_key,
+                        attention=attention,
+                        norm=norm,
+                        layer_idx=layer_idx,
+                        bias=bias,
+                        dtype=dtype,
+                        mesh_resource=mesh_resource,
+                        checkpoint_name=f"layers.{layer_idx}"
+                        if checkpoint_name is None
+                        else f"{checkpoint_name}.layers.{layer_idx}",
+                    )
+                )
+        return layers
 
 
 @TransformerLayerConfig.register("default")
