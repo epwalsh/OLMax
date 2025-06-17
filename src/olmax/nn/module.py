@@ -48,7 +48,7 @@ class Module(eqx.Module):
 
         @policy.wrap
         def remat_call(self_, *args, **kwargs):
-            return super(self_).__call__(*args, **kwargs)
+            return cls.__call__(self_, *args, **kwargs)
 
         return typing.cast(Type[M], type(f"Remat{cls.__name__}", (cls,), {"__call__": remat_call}))
 
