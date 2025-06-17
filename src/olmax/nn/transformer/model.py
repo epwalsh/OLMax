@@ -27,7 +27,6 @@ class Transformer(Module):
     layers: list[TransformerLayer]
     norm: Normalizer
     lm_head: LMHead
-    ac_policy: ActivationCheckpointingPolicy = eqx.field(static=True)
     scan_layers: bool = eqx.field(static=True)
 
     def __init__(
