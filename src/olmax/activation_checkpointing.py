@@ -12,6 +12,8 @@ import equinox as eqx
 import jax
 from dataclass_extensions import Registrable
 
+from .utils import log_once
+
 log = logging.getLogger(__name__)
 F = TypeVar("F", bound=Callable)
 
@@ -127,6 +129,15 @@ class NamedCheckpointPolicy(ActivationCheckpointingPolicy):
                     f"checkpoint name pattern '{name}' does not match any named activations: {actual_names_set}"
                 )
 
+    def _get_names(self) -> list[str]:
+        if self._resolved_names is not None:
+            return self._resolved_names
+        elif not any(["*" in name for name in self.names]):
+            self._resolved_names = self.names
+            return self.names
+        else:
+            raise RuntimeError("You must call `.resolve_names()` before applying the policy")
+
 
 @ActivationCheckpointingPolicy.register("save_anything_except_these_names")
 @dataclass
@@ -136,10 +147,10 @@ class SaveAnythingExceptTheseNames(NamedCheckpointPolicy):
     """
 
     def get_policy(self) -> Callable[..., bool]:
-        names = self._resolved_names or self.names
+        names = self._get_names()
         if names:
             names_str = "\n❯ ".join(names)
-            log.info(f"Will save all activations except for:\n❯ {names_str}")
+            log_once(log, f"Will save all activations except for:\n❯ {names_str}")
         return jax.checkpoint_policies.save_anything_except_these_names(*names)
 
 
@@ -151,10 +162,10 @@ class SaveAnyNamesButThese(NamedCheckpointPolicy):
     """
 
     def get_policy(self) -> Callable[..., bool]:
-        names = self._resolved_names or self.names
+        names = self._get_names()
         if names:
             names_str = "\n❯ ".join(names)
-            log.info(f"Will save all named activations except for:\n❯ {names_str}")
+            log_once(log, f"Will save all named activations except for:\n❯ {names_str}")
         return jax.checkpoint_policies.save_any_names_but_these(*names)
 
 
@@ -166,8 +177,8 @@ class SaveOnlyTheseNames(NamedCheckpointPolicy):
     """
 
     def get_policy(self) -> Callable[..., bool]:
-        names = self._resolved_names or self.names
+        names = self._get_names()
         if names:
             names_str = "\n❯ ".join(names)
-            log.info(f"Will save these named activations:\n❯ {names_str}")
+            log_once(log, f"Will save these named activations:\n❯ {names_str}")
         return jax.checkpoint_policies.save_only_these_names(*names)

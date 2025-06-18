@@ -1,3 +1,4 @@
+import functools as ft
 import logging
 import os
 import sys
@@ -117,6 +118,11 @@ def set_env_var(name: str, value: str, override: bool = False, secret: bool = Fa
     else:
         log.info(f"Setting env var '{name}' to '{value_str}'")
         os.environ[name] = value
+
+
+@ft.lru_cache(maxsize=1024)
+def log_once(logger: logging.Logger, msg: str, *args, level: int = logging.INFO, **kwargs):
+    logger.log(level, msg, *args, **kwargs)
 
 
 def mib_to_bytes(mb: float) -> int:
