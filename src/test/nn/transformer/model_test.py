@@ -32,11 +32,12 @@ def _get_model(
         hidden_size=hidden_size,
         vocab_size=vocab_size,
         num_layers=num_layers,
-        block=nn.TransformerBlock.Config(
+        layer=nn.TransformerLayer.Config(
             attention=nn.MultiheadSelfAttention.Config(n_heads=4),
             norm=nn.LayerNorm.Config(),
         ),
-        lm_head=nn.LMHead.Config(norm=nn.LayerNorm.Config()),
+        norm=nn.LayerNorm.Config(),
+        lm_head=nn.LMHead.Config(),
         mesh_resource=mesh_resource,
     )
 
@@ -157,11 +158,11 @@ def main(
         num_layers=num_layers,
         mesh_resource=mesh_resource,
     )
-    jax.debug.visualize_array_sharding(dist_model.blocks[0].mlp.w1.weight)
+    jax.debug.visualize_array_sharding(dist_model.layers[0].mlp.gate_proj.weight)
 
     dist_loss, dist_grad = _get_loss_and_grads(dist_model, dist_batch)
     print(dist_loss)
-    jax.debug.visualize_array_sharding(dist_grad.blocks[0].mlp.w1.weight)
+    jax.debug.visualize_array_sharding(dist_grad.layers[0].mlp.gate_proj.weight)
 
 
 if __name__ == "__main__":

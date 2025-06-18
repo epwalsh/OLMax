@@ -1,14 +1,16 @@
 import functools as ft
 from typing import Literal
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jax.sharding import NamedSharding
 
 from ..jax_utils import vmap_multiple
 from ..types import Array
+from .module import Module
 
 
-@jax.jit
 def _linear_single(x: Array, weight: Array, bias: Array | None = None) -> Array:
     x = weight @ x
     if bias is not None:
@@ -16,21 +18,15 @@ def _linear_single(x: Array, weight: Array, bias: Array | None = None) -> Array:
     return x
 
 
-@ft.partial(jax.jit, static_argnums=(3,), static_argnames=("psum_axis",))
 def linear(
     x: Array, weight: Array, bias: Array | None = None, psum_axis: str | None = None
 ) -> Array:
-    #  print(weight.shape)
-    #  jax.debug.inspect_array_sharding(x, callback=lambda s: print("x:", s))
-    #  jax.debug.inspect_array_sharding(weight, callback=lambda s: print("weight:", s))
-    #  jax.debug.visualize_array_sharding(weight)
     out = vmap_multiple(lambda xi: _linear_single(xi, weight, bias), x.ndim - 1)(x)
     if psum_axis is not None:
         out = jax.lax.psum(out, psum_axis)
     return out
 
 
-@jax.jit
 def layer_norm(
     x: Array, weight: Array | None = None, bias: Array | None = None, eps: float = 1e-5
 ) -> Array:
@@ -52,7 +48,6 @@ def layer_norm(
     return out.astype(orig_dtype)
 
 
-@jax.jit
 def rms_norm(
     x: Array, weight: Array | None = None, bias: Array | None = None, eps: float = 1e-5
 ) -> Array:
@@ -72,7 +67,6 @@ def rms_norm(
     return out.astype(orig_dtype)
 
 
-@ft.partial(jax.jit, static_argnames=("reduction",))
 def cross_entropy_loss(
     logits: Array,
     labels: Array,
@@ -97,7 +91,6 @@ def cross_entropy_loss(
         raise ValueError(reduction)
 
 
-@ft.partial(jax.jit, static_argnames=("reduction",))
 def fused_cross_entropy_loss(
     logits: Array,
     labels: Array,
@@ -126,3 +119,40 @@ def fused_cross_entropy_loss(
         raise ValueError(reduction)
 
     return loss, log_normalizer * where
+
+
+def _apply_module(
+    carry: tuple[Module, Array],
+    params: Module,
+    input_sharding: NamedSharding | None = None,
+    output_sharding: NamedSharding | None = None,
+) -> tuple[tuple[Module, Array], None]:
+    static, x = carry
+    if input_sharding is not None:
+        x = jax.lax.with_sharding_constraint(x, input_sharding)
+    m = eqx.combine(params, static, is_leaf=eqx.is_array)
+    y = m(x)
+    if output_sharding is not None:
+        y = jax.lax.with_sharding_constraint(y, output_sharding)
+    return (static, y), None
+
+
+def scan_module(
+    m: Module,
+    x: Array,
+    input_sharding: NamedSharding | None = None,
+    output_sharding: NamedSharding | None = None,
+) -> Array:
+    params, static = eqx.partition(m, eqx.is_array)
+    carry = (static, x)
+    carry, _ = jax.lax.scan(
+        ft.partial(
+            _apply_module,
+            input_sharding=input_sharding,
+            output_sharding=output_sharding,
+        ),
+        carry,
+        params,
+    )
+    _, y = carry
+    return y

@@ -17,8 +17,9 @@ class Embedding(Module):
         *,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
         self.weight = truncated_normal(
             key,
             (num_embeddings, d_model),
@@ -27,5 +28,5 @@ class Embedding(Module):
         )
 
     @jax.named_scope("olmax.nn.Embedding")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         return jax.vmap(lambda idx: self.weight[idx])(x)

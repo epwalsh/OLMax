@@ -7,7 +7,7 @@ from .mlp import GatedMLP
 from .module import Module
 from .normalization import LayerNorm, RMSNorm
 from .rope import RotaryPositionalEmbedding
-from .transformer.block import ReorderedNormTransformerBlock, TransformerBlock
+from .transformer.layer import ReorderedNormTransformerLayer, TransformerLayer
 from .transformer.model import Transformer
 
 __all__ = [
@@ -30,8 +30,8 @@ __all__ = [
     "LMHead",
     # Transformer layers.
     "Transformer",
-    "TransformerBlock",
-    "ReorderedNormTransformerBlock",
+    "TransformerLayer",
+    "ReorderedNormTransformerLayer",
     # Functional module.
     "functional",
     # Initialization module.

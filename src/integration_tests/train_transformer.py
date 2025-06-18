@@ -45,6 +45,8 @@ class IntegrationTestConfig:
     max_grad_norm: float | None = None
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
+    scan_layers: bool = False
+    layer_ac_policy: olmax.ActivationCheckpointingPolicy | None = None
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -87,9 +89,16 @@ def train(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}..."
         )
 
+    dist.barrier("pre-init-model")
     log.info("Initializing model...")
     model_config = config.recipe.build_config(param_dtype=config.param_dtype)
-    model = model_config.build(model_key, mesh_resource=config.mesh)
+    model = model_config.build(
+        model_key,
+        mesh_resource=config.mesh,
+        scan_layers=config.scan_layers,
+        layer_ac_policy=config.layer_ac_policy,
+    )
+    dist.barrier("post-init-model")
     if config.show_model:
         log.info(model)
 
@@ -178,6 +187,7 @@ def train(
 
         return step_metrics, model, opt_state
 
+    dist.barrier("pre-train-loop")
     log.info("Starting training...")
     gc.disable()
     gc.collect()

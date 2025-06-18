@@ -1,7 +1,10 @@
+import jax
 import jax.numpy as jnp
 
+import olmax.nn as nn
 import olmax.nn.functional as F
 from olmax.testing.utils import allclose
+from olmax.types import *
 
 
 def test_cross_entropy_loss():
@@ -24,3 +27,21 @@ def test_fused_cross_entropy_loss():
 
     assert allclose(expected_loss, loss)
     assert (z_loss >= 0).all().item()
+
+
+def test_scan_module():
+    def build_linear(key: PRNGKeyArray) -> nn.Linear:
+        return nn.Linear(4, 4, key)
+
+    key1, key2, data_key = jax.random.split(jax.random.key(0), 3)
+    combined_key = jnp.stack([key1, key2])
+
+    linear1 = build_linear(key1)
+    linear2 = build_linear(key2)
+    stacked_linear = jax.vmap(build_linear)(key=combined_key)
+
+    x = jax.random.normal(data_key, (2, 4))
+
+    out = linear2(linear1(x))
+    scanned_out = F.scan_module(stacked_linear, x)
+    assert allclose(out, scanned_out)

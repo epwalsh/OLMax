@@ -21,10 +21,10 @@ class Attention(Module):
 
 
 class MultiheadSelfAttention(Attention):
-    w_q: Linear
-    w_k: Linear
-    w_v: Linear
-    w_out: Linear
+    q_proj: Linear
+    k_proj: Linear
+    v_proj: Linear
+    o_proj: Linear
     rope: RotaryPositionalEmbedding | None
     q_norm: Normalizer | None
     k_norm: Normalizer | None
@@ -52,8 +52,9 @@ class MultiheadSelfAttention(Attention):
         dtype: DTypeLike = float,
         implementation: Literal["xla", "cudnn"] | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
 
         if implementation is None and jax.default_backend() == "gpu":
             if get_cudnn_version() is not None:
@@ -69,45 +70,60 @@ class MultiheadSelfAttention(Attention):
         self.window_size = window_size
         self.implementation = implementation
 
-        w_q_key, w_k_key, w_v_key, w_out_key, rope_key, q_norm_key, k_norm_key = jax.random.split(
-            key, 7
-        )
-        self.w_q = Linear(
+        (
+            q_proj_key,
+            k_proj_key,
+            v_proj_key,
+            o_proj_key,
+            rope_key,
+            q_norm_key,
+            k_norm_key,
+        ) = jax.random.split(key, 7)
+        self.q_proj = Linear(
             d_model,
             self.n_heads * self.head_dim,
-            w_q_key,
+            q_proj_key,
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.q_proj",
         )
-        self.w_k = Linear(
+        self.k_proj = Linear(
             d_model,
             self.n_kv_heads * self.head_dim,
-            w_k_key,
+            k_proj_key,
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.k_proj",
         )
-        self.w_v = Linear(
+        self.v_proj = Linear(
             d_model,
             self.n_kv_heads * self.head_dim,
-            w_v_key,
+            v_proj_key,
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.v_proj",
         )
-        self.w_out = Linear(
+        self.o_proj = Linear(
             self.n_heads * self.head_dim,
             d_model,
-            w_out_key,
+            o_proj_key,
             bias=bias,
             dtype=dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.o_proj",
         )
         self.rope = (
             None
             if rope is None
-            else rope.build(head_dim=self.head_dim, key=rope_key, mesh_resource=mesh_resource)
+            else rope.build(
+                head_dim=self.head_dim,
+                key=rope_key,
+                mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.rope",
+            )
         )
         self.q_norm = (
             None
@@ -116,6 +132,7 @@ class MultiheadSelfAttention(Attention):
                 self.head_dim if qk_norm_headwise else self.n_heads * self.head_dim,
                 q_norm_key,
                 mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.q_norm",
             )
         )
         self.k_norm = (
@@ -125,6 +142,7 @@ class MultiheadSelfAttention(Attention):
                 self.head_dim if qk_norm_headwise else self.n_heads * self.head_dim,
                 k_norm_key,
                 mesh_resource=mesh_resource,
+                checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.k_norm",
             )
         )
         self.qk_norm_headwise = qk_norm_headwise
@@ -134,16 +152,16 @@ class MultiheadSelfAttention(Attention):
         return MultiheadSelfAttentionConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         assert x.ndim == 3  # (batch_size, seq_len, d_model)
         B, S, _ = x.shape
 
         # shape: (batch_size, seq_len, n_heads * head_dim)
-        q = self.w_q(x)
+        q = self.q_proj(x)
         # shape: (batch_size, seq_len, n_kv_heads * head_dim)
-        k = self.w_k(x)
+        k = self.k_proj(x)
         # shape: (batch_size, seq_len, n_kv_heads * head_dim)
-        v = self.w_v(x)
+        v = self.v_proj(x)
 
         if self.q_norm is not None and not self.qk_norm_headwise:
             q = self.q_norm(q)
@@ -180,7 +198,7 @@ class MultiheadSelfAttention(Attention):
         att = att.reshape(B, S, self.n_heads * self.head_dim)
 
         # shape: (batch_size, seq_len, d_model)
-        out = self.w_out(att)
+        out = self.o_proj(att)
 
         return out
 
@@ -214,6 +232,7 @@ class MultiheadSelfAttentionConfig:
         dtype: DTypeLike | None = None,
         implementation: Literal["xla", "cudnn"] | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> MultiheadSelfAttention:
         return MultiheadSelfAttention(
             d_model=d_model,
@@ -231,4 +250,5 @@ class MultiheadSelfAttentionConfig:
             dtype=dtype if dtype is not None else self.dtype,
             implementation=implementation if implementation is not None else self.implementation,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )

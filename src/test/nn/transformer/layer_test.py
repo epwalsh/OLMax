@@ -3,12 +3,12 @@ import jax
 import olmax.nn as nn
 
 
-def test_transformer_block(
+def test_transformer_layer(
     d_model: int = 16, hidden_size: int = 32, batch_size: int = 2, seq_len: int = 12
 ):
     key = jax.random.PRNGKey(0)
     key, data_key = jax.random.split(key, 2)
-    block = nn.TransformerBlock(
+    layer = nn.TransformerLayer(
         d_model=d_model,
         hidden_size=hidden_size,
         key=key,
@@ -16,16 +16,16 @@ def test_transformer_block(
         norm=nn.LayerNorm.Config(),
     )
     batch = jax.random.normal(data_key, (batch_size, seq_len, d_model))
-    out = block(batch)
+    out = layer(batch)
     assert out.shape == (batch_size, seq_len, d_model)
 
 
-def test_reordered_norm_transformer_block(
+def test_reordered_norm_transformer_layer(
     d_model: int = 16, hidden_size: int = 32, batch_size: int = 2, seq_len: int = 12
 ):
     key = jax.random.PRNGKey(0)
     key, data_key = jax.random.split(key, 2)
-    block = nn.ReorderedNormTransformerBlock(  # pyright: ignore
+    layer = nn.ReorderedNormTransformerLayer(  # pyright: ignore
         d_model=d_model,  # pyright: ignore
         hidden_size=hidden_size,  # pyright: ignore
         key=key,  # pyright: ignore
@@ -33,5 +33,5 @@ def test_reordered_norm_transformer_block(
         norm=nn.LayerNorm.Config(),  # pyright: ignore
     )
     batch = jax.random.normal(data_key, (batch_size, seq_len, d_model))
-    out = block(batch)
+    out = layer(batch)
     assert out.shape == (batch_size, seq_len, d_model)

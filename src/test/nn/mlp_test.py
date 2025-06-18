@@ -60,15 +60,15 @@ def _run_mlp_parallel(mesh_resource: dist.MeshResource):
         mesh_resource=mesh_resource,
     )
 
-    assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
-    assert allclose(full_mlp.w2.weight, dist_mlp.w2.weight)
-    assert allclose(full_mlp.w3.weight, dist_mlp.w3.weight)
+    assert allclose(full_mlp.up_proj.weight, dist_mlp.up_proj.weight)
+    assert allclose(full_mlp.down_proj.weight, dist_mlp.down_proj.weight)
+    assert allclose(full_mlp.gate_proj.weight, dist_mlp.gate_proj.weight)
 
     full_loss, full_grads = _get_loss_and_grads(full_mlp, full_batch)
     dist_loss, dist_grads = _get_loss_and_grads(dist_mlp, dist_batch)
     assert allclose(full_loss, dist_loss), f"{full_loss} != {dist_loss}"
-    assert allclose(full_grads.w1.weight, dist_grads.w1.weight)
-    assert allclose(full_grads.w1.bias, dist_grads.w1.bias)
+    assert allclose(full_grads.gate_proj.weight, dist_grads.gate_proj.weight)
+    assert allclose(full_grads.gate_proj.bias, dist_grads.gate_proj.bias)
 
 
 @pytest.mark.parametrize(
@@ -125,9 +125,9 @@ if __name__ == "__main__":
 
     full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False)
     dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False, mesh_resource=mesh_resource)
-    assert allclose(full_mlp.w1.weight, dist_mlp.w1.weight)
-    assert allclose(full_mlp.w2.weight, dist_mlp.w2.weight)
-    assert allclose(full_mlp.w3.weight, dist_mlp.w3.weight)
+    assert allclose(full_mlp.gate_proj.weight, dist_mlp.gate_proj.weight)
+    assert allclose(full_mlp.down_proj.weight, dist_mlp.down_proj.weight)
+    assert allclose(full_mlp.up_proj.weight, dist_mlp.up_proj.weight)
 
     full_preds = jax.jit(full_mlp)(full_batch[0])
     dist_preds = jax.jit(dist_mlp)(dist_batch[0])

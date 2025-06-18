@@ -31,8 +31,9 @@ class Normalizer(Module):
         bias: bool = True,
         dtype: DTypeLike = float,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ):
-        super().__init__(mesh_resource)
+        super().__init__(mesh_resource, checkpoint_name)
         if isinstance(shape, int):
             shape = (shape,)
         else:
@@ -70,7 +71,7 @@ class LayerNorm(Normalizer):
         return LayerNormConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.LayerNorm")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         return layer_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
 
 
@@ -80,7 +81,7 @@ class RMSNorm(Normalizer):
         return RMSNormConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.RMSNorm")
-    def __call__(self, x: Array) -> Array:
+    def forward(self, x: Array) -> Array:
         return rms_norm(x, weight=self.weight, bias=self.bias, eps=self.eps)
 
 
@@ -117,6 +118,7 @@ class NormalizerConfig(Registrable, Generic[N]):
         bias: bool | None = None,
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
     ) -> N:
         return self.get_class()(
             shape,
@@ -128,6 +130,7 @@ class NormalizerConfig(Registrable, Generic[N]):
             bias=bias if bias is not None else self.bias,
             dtype=dtype if dtype is not None else self.dtype,
             mesh_resource=mesh_resource,
+            checkpoint_name=checkpoint_name,
         )
 
 
