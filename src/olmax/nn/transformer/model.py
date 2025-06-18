@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
+from itertools import chain
 from typing import Generic, Type, TypeVar
 
 import equinox as eqx
@@ -85,7 +86,7 @@ class Transformer(Module):
         )
         self.scan_layers = scan_layers
         if isinstance(ac_policy, NamedCheckpointPolicy):
-            ac_policy.resolve_names(self.get_checkpoint_names())
+            ac_policy.resolve_names(chain(*[layer.get_checkpoint_names() for layer in self.layers]))
 
     @classmethod
     def Config(cls, **kwargs) -> TransformerConfig:
