@@ -46,9 +46,8 @@ class Module(eqx.Module):
         Create a new subclass with the given activation checkpointing policy applied.
         """
 
-        @policy.wrap
         def remat_call(self_, *args, **kwargs):
-            return cls.__call__(self_, *args, **kwargs)
+            return policy.wrap(cls.__call__)(self_, *args, **kwargs)
 
         return typing.cast(Type[M], type(f"Remat{cls.__name__}", (cls,), {"__call__": remat_call}))
 
