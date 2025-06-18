@@ -46,7 +46,7 @@ class IntegrationTestConfig:
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
     scan_layers: bool = False
-    ac_policy: olmax.ActivationCheckpointingPolicy | None = None
+    layer_ac_policy: olmax.ActivationCheckpointingPolicy | None = None
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -69,7 +69,6 @@ def train(
     instances_per_device = batch_size_per_device // config.recipe.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
-    ac_policy = config.ac_policy or olmax.ActivationCheckpointingPolicy.no_policy()
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
@@ -94,7 +93,10 @@ def train(
     log.info("Initializing model...")
     model_config = config.recipe.build_config(param_dtype=config.param_dtype)
     model = model_config.build(
-        model_key, mesh_resource=config.mesh, scan_layers=config.scan_layers, ac_policy=ac_policy
+        model_key,
+        mesh_resource=config.mesh,
+        scan_layers=config.scan_layers,
+        layer_ac_policy=config.layer_ac_policy,
     )
     dist.barrier("post-init-model")
     if config.show_model:

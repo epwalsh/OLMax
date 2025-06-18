@@ -45,7 +45,7 @@ class Transformer(Module):
         scan_layers: bool = False,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
-        ac_policy: ActivationCheckpointingPolicy | None = None,
+        layer_ac_policy: ActivationCheckpointingPolicy | None = None,
     ):
         super().__init__(mesh_resource, checkpoint_name)
         emb_key, layers_key, norm_key, lm_head_key = jax.random.split(key, 4)
@@ -68,7 +68,7 @@ class Transformer(Module):
             mesh_resource=mesh_resource,
             checkpoint_name=checkpoint_name,
             scan_layers=scan_layers,
-            ac_policy=ac_policy,
+            ac_policy=layer_ac_policy,
         )
         self.norm = norm.build(
             d_model,
@@ -85,8 +85,10 @@ class Transformer(Module):
             checkpoint_name="lm_head" if checkpoint_name is None else f"{checkpoint_name}.lm_head",
         )
         self.scan_layers = scan_layers
-        if isinstance(ac_policy, NamedCheckpointPolicy):
-            ac_policy.resolve_names(chain(*[layer.get_checkpoint_names() for layer in self.layers]))
+        if isinstance(layer_ac_policy, NamedCheckpointPolicy):
+            layer_ac_policy.resolve_names(
+                chain(*[layer.get_checkpoint_names() for layer in self.layers])
+            )
 
     @classmethod
     def Config(cls, **kwargs) -> TransformerConfig:
@@ -141,7 +143,7 @@ class TransformerConfig(Registrable, Generic[T]):
     lm_head: LMHeadConfig
     dtype: DTypeLike = float
     scan_layers: bool = False
-    ac_policy: ActivationCheckpointingPolicy | None = None
+    layer_ac_policy: ActivationCheckpointingPolicy | None = None
 
     @classmethod
     @abstractmethod
@@ -167,7 +169,7 @@ class TransformerConfig(Registrable, Generic[T]):
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         scan_layers: bool | None = None,
-        ac_policy: ActivationCheckpointingPolicy | None = None,
+        layer_ac_policy: ActivationCheckpointingPolicy | None = None,
     ) -> T:
         return self.get_class()(
             key=key,
@@ -182,7 +184,9 @@ class TransformerConfig(Registrable, Generic[T]):
             mesh_resource=mesh_resource,
             checkpoint_name=checkpoint_name,
             scan_layers=scan_layers if scan_layers is not None else self.scan_layers,
-            ac_policy=ac_policy if ac_policy is not None else self.ac_policy,
+            layer_ac_policy=layer_ac_policy
+            if layer_ac_policy is not None
+            else self.layer_ac_policy,
         )
 
 

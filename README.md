@@ -32,7 +32,7 @@ python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integr
 
 **Example launch command:**
 ```fish
-python -m olmax.launch.beaker --allow-dirty --gpu-type=h100 -- python src/integration_tests/train_transformer.py olmo_7B
+python -m olmax.launch.beaker --gpu-type=h100 -- python src/integration_tests/train_transformer.py olmo_7B
 ```
 
 ### Gemma2 27B
@@ -65,4 +65,22 @@ python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integratio
 **Example launch command:**
 ```fish
 python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- python src/integration_tests/train_transformer.py gemma3_like_27B
+```
+
+### OLMo2 32B
+
+**Common configuration:**
+- Sequence length: `4096`
+- Compute data type: `BF16`
+- Optimizer data type: `FP32`
+
+**Results:**
+- [2,144 TPS/GPU](https://beaker.org/ex/01JY24TWEJTCK18AJAGTE831ZM) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 4 instances/GPU, full block activation checkpointing.
+
+**Example launch command:**
+```fish
+python -m olmax.launch.beaker --nodes=2 --gpu-type=h100 -- python src/integration_tests/train_transformer.py olmo_32B \
+  --layer_ac_policy='{type: nothing_saveable, prevent_cse: false}' \
+  --scan_layers \
+  --batch-size-per-device=16384
 ```
