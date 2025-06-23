@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import abstractmethod
 from dataclasses import dataclass
 from itertools import chain
@@ -91,7 +89,7 @@ class Transformer(Module):
             )
 
     @classmethod
-    def Config(cls, **kwargs) -> TransformerConfig:
+    def Config(cls, **kwargs) -> "TransformerConfig":
         return DefaultTransformerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.Transformer")
@@ -151,7 +149,7 @@ class TransformerConfig(Registrable, Generic[T]):
         raise NotImplementedError
 
     @classmethod
-    def Default(cls, **kwargs) -> DefaultTransformerConfig:
+    def Default(cls, **kwargs) -> "DefaultTransformerConfig":
         return DefaultTransformerConfig(**kwargs)
 
     def build(

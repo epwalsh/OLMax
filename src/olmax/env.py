@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import dataclasses
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -65,7 +63,9 @@ class XLAConfig(_EnvBaseConfig):
     gpu_enable_triton_gemm: bool = False
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None = None, **overrides) -> XLAConfig:
+    def recommended(
+        cls, gpu_architecture: GPUArchitecture | None = None, **overrides
+    ) -> "XLAConfig":
         if gpu_architecture == GPUArchitecture.blackwell:
             return cls(
                 #  gpu_enable_command_buffer="FUSION,CUSTOM_CALL",
@@ -158,7 +158,7 @@ class NCCLConfig(_EnvBaseConfig):
     @classmethod
     def recommended(
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
-    ) -> NCCLConfig:
+    ) -> "NCCLConfig":
         del gpu_architecture
         return cls(**overrides)
 
@@ -190,7 +190,7 @@ class CUDAConfig(_EnvBaseConfig):
     @classmethod
     def recommended(
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
-    ) -> CUDAConfig:
+    ) -> "CUDAConfig":
         if gpu_architecture != GPUArchitecture.blackwell:
             return cls(device_max_connections=1, **overrides)
         return cls(**overrides)
@@ -222,7 +222,9 @@ class JAXConfig(_EnvBaseConfig):
     compiler_enable_remat_pass: bool | None = None
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None = None, **overrides) -> JAXConfig:
+    def recommended(
+        cls, gpu_architecture: GPUArchitecture | None = None, **overrides
+    ) -> "JAXConfig":
         del gpu_architecture
         return cls(**overrides)
 
@@ -241,7 +243,7 @@ class EnvConfig(_EnvBaseConfig):
     cuda: CUDAConfig = dataclasses.field(default_factory=CUDAConfig)
 
     @classmethod
-    def recommended(cls, gpu_architecture: GPUArchitecture | None = None) -> EnvConfig:  # type: ignore[override]
+    def recommended(cls, gpu_architecture: GPUArchitecture | None = None) -> "EnvConfig":  # type: ignore[override]
         return cls(
             xla=XLAConfig.recommended(gpu_architecture),
             jax=JAXConfig.recommended(gpu_architecture),

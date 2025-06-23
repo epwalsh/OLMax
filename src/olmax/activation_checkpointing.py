@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import dataclasses
 import fnmatch
 import logging
@@ -27,7 +25,7 @@ class ActivationCheckpointingPolicy(Registrable):
     prevent_cse: bool = True
 
     @classmethod
-    def no_policy(cls) -> NoPolicy:
+    def no_policy(cls) -> "NoPolicy":
         return NoPolicy()
 
     @abstractmethod

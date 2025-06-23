@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import argparse
 import dataclasses
 import gc
 import logging
@@ -17,9 +16,9 @@ import olmax
 import olmax.distributed as dist
 import olmax.nn as nn
 import olmax.nn.functional as F
-import olmax.nn.transformer.recipes as recipes
 from olmax.config import parse_config_from_args
 from olmax.launch.beaker import BeakerRuntime
+from olmax.nn.transformer import TransformerConfig, TransformerRecipeType
 from olmax.types import *
 
 log = logging.getLogger("main")
@@ -28,25 +27,19 @@ beaker_runtime: BeakerRuntime | None = None
 
 @dataclass
 class IntegrationTestConfig:
-    recipe: nn.transformer.recipes.TransformerRecipe
+    model: TransformerConfig
+    optim: olmax.optim.OptimConfig
+    sequence_length: int
+    device_microbatch_size: int
+    env: olmax.EnvConfig
 
-    env: olmax.EnvConfig = dataclasses.field(
-        default_factory=lambda: olmax.EnvConfig.recommended()
-        if beaker_runtime is None
-        else beaker_runtime.get_env_config()
-    )
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
         default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
     )
 
     steps: int = 100
-    batch_size_per_device: int | None = None
     max_grad_norm: float | None = None
-    param_dtype: DTypeLike = "float32"
-    compute_dtype: DTypeLike = "bfloat16"
-    scan_layers: bool = False
-    layer_ac_policy: olmax.ActivationCheckpointingPolicy | None = None
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -59,24 +52,25 @@ class IntegrationTestConfig:
 
 
 def train(
+    recipe_type: TransformerRecipeType,
     config: IntegrationTestConfig,
     running_avg_tps_count: int = 10,
+    param_dtype: str = "float32",
+    compute_dtype: str = "bfloat16",
 ) -> tuple[float, int, int]:
-    recipe_name = recipes.TransformerRecipe.get_registered_name(config.recipe.__class__)
-    batch_size_per_device = config.batch_size_per_device or config.recipe.get_mbz_per_device(
-        None if beaker_runtime is None else beaker_runtime.node.gpu_type
-    )
-    instances_per_device = batch_size_per_device // config.recipe.sequence_length
+    recipe_name = recipe_type.name
+    batch_size_per_device = config.device_microbatch_size
+    instances_per_device = batch_size_per_device // config.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
-        f"which is {global_batch_size_instances:,d} instances of length {config.recipe.sequence_length:,d}."
+        f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
         f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
-        f"which is {instances_per_device:,d} instances of length {config.recipe.sequence_length:,d}."
+        f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
@@ -91,12 +85,9 @@ def train(
 
     dist.barrier("pre-init-model")
     log.info("Initializing model...")
-    model_config = config.recipe.build_config(param_dtype=config.param_dtype)
-    model = model_config.build(
+    model = config.model.build(
         model_key,
         mesh_resource=config.mesh,
-        scan_layers=config.scan_layers,
-        layer_ac_policy=config.layer_ac_policy,
     )
     dist.barrier("post-init-model")
     if config.show_model:
@@ -110,16 +101,7 @@ def train(
     )
 
     log.info("Initializing optimizer...")
-    optim, opt_state = olmax.optim.AdamWConfig(
-        lr=olmax.optim.WarmupCosineDecaySchedule(
-            warmup_steps=20,
-            decay_steps=80,
-            peak_value=config.recipe.learning_rate,
-            init_value=config.recipe.learning_rate * 0.01,
-            end_value=config.recipe.learning_rate * 0.01,
-        ),
-        no_decay_modules=["embedding.weight"],
-    ).build(model)
+    optim, opt_state = config.optim.build(model)
 
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
@@ -150,8 +132,8 @@ def train(
         step_metrics: dict[str, Array] = {}
 
         # Cast model to lower precision compute dtype.
-        if config.compute_dtype != config.param_dtype:
-            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, config.compute_dtype)
+        if compute_dtype != param_dtype:
+            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, compute_dtype)
         else:
             model_with_compute_dtype = model
 
@@ -162,8 +144,8 @@ def train(
             step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Cast grads back to param dtype.
-        if config.compute_dtype != config.param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, config.param_dtype)
+        if compute_dtype != param_dtype:
+            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Maybe clip gradient norm.
@@ -201,8 +183,8 @@ def train(
 
     batches = olmax.data.utils.generate_batches_of_sequential_tokens(
         data_key,
-        vocab_size=config.recipe.vocab_size,
-        sequence_length=config.recipe.sequence_length,
+        vocab_size=config.model.vocab_size,
+        sequence_length=config.sequence_length,
         global_batch_size_instances=global_batch_size_instances,
         total_batches=config.steps,
         mesh_resource=config.mesh,
@@ -297,20 +279,52 @@ def train(
 
 
 def main():
-    recipe_names = recipes.TransformerRecipe.get_registered_names()
-    if len(sys.argv) < 2 or (recipe_name := sys.argv[1]) not in recipe_names:
-        print(
-            f"usage: {sys.argv[0]} RECIPE_NAME [OVERRIDES...]\n"
-            f"where RECIPE_NAME should be one of {recipe_names}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        prog=sys.argv[0],
+        usage=f"{sys.argv[0]} --recipe RECIPE --device-type DEVICE_TYPE [OVERRIDES...]",
+    )
+    parser.add_argument("--recipe", choices=[r.name for r in TransformerRecipeType], required=True)
+    parser.add_argument(
+        "--device-type",
+        choices=[g.name for g in GPUType],
+        required=beaker_runtime is None,
+        default=None if beaker_runtime is None else beaker_runtime.node.gpu_type,
+    )
+
+    opts, overrides = parser.parse_known_args()
+
+    recipe_type = TransformerRecipeType(opts.recipe)
+    device_type = GPUType(opts.device_type)
+    env = (
+        olmax.EnvConfig.recommended() if beaker_runtime is None else beaker_runtime.get_env_config()
+    )
+    recipe = recipe_type.build_recipe(env, device_type)
+
+    learning_rate: float
+    if "32B" in opts.recipe or "27B" in opts.recipe:
+        learning_rate = 1e-5
+    elif "7B" in opts.recipe or "8B" in opts.recipe:
+        learning_rate = 1e-4
+    else:
+        learning_rate = 1e-3
 
     config = IntegrationTestConfig(
-        recipe=recipes.TransformerRecipe.get_registered_class(recipe_name)()
+        model=recipe.model,
+        optim=olmax.optim.AdamWConfig(
+            lr=olmax.optim.WarmupCosineDecaySchedule(
+                warmup_steps=20,
+                decay_steps=80,
+                peak_value=learning_rate,
+                init_value=learning_rate * 0.01,
+                end_value=learning_rate * 0.01,
+            ),
+            no_decay_modules=["embedding.weight"],
+        ),
+        sequence_length=recipe.sequence_length,
+        device_microbatch_size=recipe.device_microbatch_size,
+        env=recipe.env,
     )
-    config.recipe.set_env_defaults(config.env)
-    config = parse_config_from_args(config, args=sys.argv[2:])
+    config = parse_config_from_args(config, args=overrides)
 
     if config.show_config or config.dry_run:
         log.info(config)
@@ -333,7 +347,7 @@ def main():
         )
 
     try:
-        train(config)
+        train(recipe_type, config)
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()

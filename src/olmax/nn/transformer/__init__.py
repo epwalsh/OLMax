@@ -1,4 +1,3 @@
-from . import recipes
 from .layer import (
     DefaultTransformerLayerConfig,
     ReorderedNormTransformerLayer,
@@ -7,9 +6,9 @@ from .layer import (
     TransformerLayerConfig,
 )
 from .model import Transformer, TransformerConfig
+from .recipes import TransformerRecipe, TransformerRecipeType
 
 __all__ = [
-    "recipes",
     "Transformer",
     "TransformerLayer",
     "ReorderedNormTransformerLayer",
@@ -17,4 +16,6 @@ __all__ = [
     "TransformerLayerConfig",
     "DefaultTransformerLayerConfig",
     "ReorderedNormTransformerLayerConfig",
+    "TransformerRecipeType",
+    "TransformerRecipe",
 ]

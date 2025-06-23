@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import functools as ft
 import logging
@@ -29,7 +27,7 @@ class BeakerWorkloadInfo:
     result_dataset_path: str | None
 
     @classmethod
-    def from_env(cls) -> BeakerWorkloadInfo:
+    def from_env(cls) -> "BeakerWorkloadInfo":
         return cls(
             id=os.environ["BEAKER_WORKLOAD_ID"],
             task_id=os.environ.get("BEAKER_TASK_ID"),
@@ -51,7 +49,7 @@ class BeakerResourcesInfo:
     cpu_count: int
 
     @classmethod
-    def from_env(cls) -> BeakerResourcesInfo:
+    def from_env(cls) -> "BeakerResourcesInfo":
         return cls(
             gpu_count=int(os.environ["BEAKER_ASSIGNED_GPU_COUNT"]),
             cpu_count=int(os.environ["BEAKER_ASSIGNED_CPU_COUNT"]),
@@ -64,7 +62,7 @@ class BeakerNodeInfo:
     hostname: str
 
     @classmethod
-    def from_env(cls) -> BeakerNodeInfo:
+    def from_env(cls) -> "BeakerNodeInfo":
         return cls(
             id=os.environ["BEAKER_NODE_ID"],
             hostname=os.environ["BEAKER_NODE_HOSTNAME"],
@@ -103,7 +101,7 @@ class BeakerReplicaInfo:
     leader_node: BeakerNodeInfo
 
     @classmethod
-    def from_env(cls) -> BeakerReplicaInfo | None:
+    def from_env(cls) -> "BeakerReplicaInfo | None":
         if "BEAKER_REPLICA_RANK" not in os.environ:
             return None
 
@@ -126,7 +124,7 @@ class BeakerRuntime:
     replica: BeakerReplicaInfo | None
 
     @classmethod
-    def from_env(cls) -> BeakerRuntime | None:
+    def from_env(cls) -> "BeakerRuntime | None":
         if "BEAKER_WORKLOAD_ID" not in os.environ:
             return None
 

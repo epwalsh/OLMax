@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import fnmatch
 import logging
 import warnings
@@ -84,7 +82,7 @@ class WarmupStableDecaySchedule(Schedule):
 @dataclass
 class OptimConfig(Registrable):
     @classmethod
-    def AdamW(cls, *args, **kwargs) -> AdamWConfig:
+    def AdamW(cls, *args, **kwargs) -> "AdamWConfig":
         return AdamWConfig(*args, **kwargs)
 
     @abstractmethod

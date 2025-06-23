@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import warnings
 from dataclasses import dataclass
 from typing import Literal
@@ -148,7 +146,7 @@ class MultiheadSelfAttention(Attention):
         self.qk_norm_headwise = qk_norm_headwise
 
     @classmethod
-    def Config(cls, **kwargs) -> MultiheadSelfAttentionConfig:
+    def Config(cls, **kwargs) -> "MultiheadSelfAttentionConfig":
         return MultiheadSelfAttentionConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")

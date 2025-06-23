@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import ClassVar, Type
 
@@ -30,7 +28,7 @@ class RotaryPositionalEmbeddingConfig:
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
-    ) -> RotaryPositionalEmbedding:
+    ) -> "RotaryPositionalEmbedding":
         return RotaryPositionalEmbedding(
             head_dim=head_dim,
             key=key,

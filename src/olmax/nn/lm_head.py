@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 import jax
@@ -24,7 +22,7 @@ class LMHeadConfig:
         dtype: DTypeLike | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
-    ) -> LMHead:
+    ) -> "LMHead":
         return LMHead(
             d_model,
             vocab_size,

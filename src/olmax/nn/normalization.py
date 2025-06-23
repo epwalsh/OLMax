@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Generic, Sequence, Type, TypeVar
@@ -67,7 +65,7 @@ class Normalizer(Module):
 
 class LayerNorm(Normalizer):
     @classmethod
-    def Config(cls, **kwargs) -> LayerNormConfig:
+    def Config(cls, **kwargs) -> "LayerNormConfig":
         return LayerNormConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.LayerNorm")
@@ -77,7 +75,7 @@ class LayerNorm(Normalizer):
 
 class RMSNorm(Normalizer):
     @classmethod
-    def Config(cls, **kwargs) -> RMSNormConfig:
+    def Config(cls, **kwargs) -> "RMSNormConfig":
         return RMSNormConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.RMSNorm")
@@ -101,11 +99,11 @@ class NormalizerConfig(Registrable, Generic[N]):
         raise NotImplementedError
 
     @classmethod
-    def LayerNorm(cls, **kwargs) -> LayerNormConfig:
+    def LayerNorm(cls, **kwargs) -> "LayerNormConfig":
         return LayerNormConfig(**kwargs)
 
     @classmethod
-    def RMSNorm(cls, **kwargs) -> RMSNormConfig:
+    def RMSNorm(cls, **kwargs) -> "RMSNormConfig":
         return RMSNormConfig(**kwargs)
 
     def build(

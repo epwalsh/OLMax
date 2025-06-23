@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import functools as ft
 import typing
 from abc import abstractmethod
@@ -89,7 +87,7 @@ class Module(eqx.Module):
         """
         return jax.tree.flatten(self)[0]
 
-    def children(self, recurse: bool = False) -> Iterable[Module]:
+    def children(self, recurse: bool = False) -> Iterable["Module"]:
         """
         Returns an iterator of children modules.
         """

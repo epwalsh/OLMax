@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import functools as ft
 import typing
 from abc import abstractmethod
@@ -76,7 +74,7 @@ class TransformerLayer(Module):
         )
 
     @classmethod
-    def Config(cls, **kwargs) -> TransformerLayerConfig:
+    def Config(cls, **kwargs) -> "TransformerLayerConfig":
         return DefaultTransformerLayerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.TransformerLayer")
@@ -89,7 +87,7 @@ class TransformerLayer(Module):
 
 class ReorderedNormTransformerLayer(TransformerLayer):
     @classmethod
-    def Config(cls, **kwargs) -> ReorderedNormTransformerLayerConfig:
+    def Config(cls, **kwargs) -> "ReorderedNormTransformerLayerConfig":
         return ReorderedNormTransformerLayerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.ReorderedTransformerLayer")
@@ -147,7 +145,7 @@ class GemmaTransformerLayer(TransformerLayer):
         )
 
     @classmethod
-    def Config(cls, **kwargs) -> GemmaTransformerLayerConfig:
+    def Config(cls, **kwargs) -> "GemmaTransformerLayerConfig":
         return GemmaTransformerLayerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.Gemma2TransformerLayer")
@@ -174,15 +172,15 @@ class TransformerLayerConfig(Registrable, Generic[B]):
         raise NotImplementedError
 
     @classmethod
-    def Default(cls, **kwargs) -> DefaultTransformerLayerConfig:
+    def Default(cls, **kwargs) -> "DefaultTransformerLayerConfig":
         return DefaultTransformerLayerConfig(**kwargs)
 
     @classmethod
-    def ReorderedNorm(cls, **kwargs) -> ReorderedNormTransformerLayerConfig:
+    def ReorderedNorm(cls, **kwargs) -> "ReorderedNormTransformerLayerConfig":
         return ReorderedNormTransformerLayerConfig(**kwargs)
 
     @classmethod
-    def Gemma(cls, **kwargs) -> GemmaTransformerLayerConfig:
+    def Gemma(cls, **kwargs) -> "GemmaTransformerLayerConfig":
         return GemmaTransformerLayerConfig(**kwargs)
 
     def build(
