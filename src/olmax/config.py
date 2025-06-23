@@ -11,7 +11,6 @@ from dataclass_extensions import decode, encode
 from .types import *
 
 encode.register_encoder(str, np.dtype)
-encode.register_encoder(lambda x: getattr(x, "__name__", str(x)), type)
 
 C = TypeVar("C", bound=Dataclass)
 

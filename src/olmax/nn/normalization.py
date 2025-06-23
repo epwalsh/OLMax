@@ -27,7 +27,7 @@ class Normalizer(Module):
         eps: float = 1e-5,
         elementwise_affine: bool = True,
         bias: bool = True,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
     ):
@@ -89,7 +89,7 @@ N = TypeVar("N", bound=Normalizer)
 @dataclass
 class NormalizerConfig(Registrable, Generic[N]):
     eps: float = 1e-5
-    dtype: DTypeLike = float
+    dtype: DTypeLike = "float32"
     elementwise_affine: bool = True
     bias: bool = True
 

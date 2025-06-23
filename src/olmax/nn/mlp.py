@@ -23,7 +23,7 @@ class GatedMLP(Module):
         key: PRNGKeyArray,
         activation: Callable[[Array], Array] = jax.nn.silu,
         bias: bool = True,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
     ):

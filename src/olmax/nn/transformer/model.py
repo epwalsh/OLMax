@@ -39,7 +39,7 @@ class Transformer(Module):
         norm: NormalizerConfig,
         lm_head: LMHeadConfig,
         key: PRNGKeyArray,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         scan_layers: bool = False,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
@@ -139,7 +139,7 @@ class TransformerConfig(Registrable, Generic[T]):
     layer: TransformerLayerConfig
     norm: NormalizerConfig
     lm_head: LMHeadConfig
-    dtype: DTypeLike = float
+    dtype: DTypeLike = "float32"
     scan_layers: bool = False
     layer_ac_policy: ActivationCheckpointingPolicy | None = None
 

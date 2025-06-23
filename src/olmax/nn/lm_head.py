@@ -11,7 +11,7 @@ from .module import Module
 @dataclass
 class LMHeadConfig:
     bias: bool = False
-    dtype: DTypeLike = float
+    dtype: DTypeLike = "float32"
 
     def build(
         self,
@@ -43,7 +43,7 @@ class LMHead(Module):
         vocab_size: int,
         key: PRNGKeyArray,
         bias: bool = False,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
     ):

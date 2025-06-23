@@ -12,7 +12,7 @@ def truncated_normal(
     key: PRNGKeyArray,
     shape: tuple[int, ...],
     *,
-    dtype: DTypeLike = float,
+    dtype: DTypeLike = "float32",
     sharding: NamedSharding | None = None,
     stddev: float = 0.02,
     lower: float = -3.0,
@@ -34,7 +34,7 @@ def zeros(
     key: PRNGKeyArray,
     shape: tuple[int, ...],
     *,
-    dtype: DTypeLike = float,
+    dtype: DTypeLike = "float32",
     sharding: NamedSharding | None = None,
 ) -> Array:
     out = jax.nn.initializers.zeros(key, shape, dtype=dtype)
@@ -51,7 +51,7 @@ def ones(
     key: PRNGKeyArray,
     shape: tuple[int, ...],
     *,
-    dtype: DTypeLike = float,
+    dtype: DTypeLike = "float32",
     sharding: NamedSharding | None = None,
 ) -> Array:
     out = jax.nn.initializers.ones(key, shape, dtype=dtype)

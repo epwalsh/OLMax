@@ -19,7 +19,7 @@ class Linear(Module):
         out_size: int,
         key: PRNGKeyArray,
         bias: bool = True,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         tp_style: TPStyle | None = None,

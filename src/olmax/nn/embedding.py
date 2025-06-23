@@ -15,7 +15,7 @@ class Embedding(Module):
         num_embeddings: int,
         key: PRNGKeyArray,
         *,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
     ):

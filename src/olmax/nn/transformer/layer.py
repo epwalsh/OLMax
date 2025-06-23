@@ -31,7 +31,7 @@ class TransformerLayer(Module):
         attention: MultiheadSelfAttentionConfig,
         norm: NormalizerConfig,
         bias: bool = False,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         layer_idx: int | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
@@ -111,7 +111,7 @@ class GemmaTransformerLayer(TransformerLayer):
         norm: NormalizerConfig,
         bias: bool = False,
         layer_idx: int | None = None,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         activation: Callable[[Array], Array] = jax.nn.gelu,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
@@ -164,7 +164,7 @@ class TransformerLayerConfig(Registrable, Generic[B]):
     attention: MultiheadSelfAttentionConfig
     norm: NormalizerConfig
     bias: bool = False
-    dtype: DTypeLike = float
+    dtype: DTypeLike = "float32"
 
     @classmethod
     @abstractmethod

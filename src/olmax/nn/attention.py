@@ -47,7 +47,7 @@ class MultiheadSelfAttention(Attention):
         head_dim: int | None = None,
         bias: bool = True,
         window_size: int | tuple[int, int] | None = None,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         implementation: Literal["xla", "cudnn"] | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
@@ -212,7 +212,7 @@ class MultiheadSelfAttentionConfig:
     bias: bool = True
     window_size: int | tuple[int, int] | None = None
     implementation: Literal["xla", "cudnn"] | None = None
-    dtype: DTypeLike = float
+    dtype: DTypeLike = "float32"
 
     def build(
         self,

@@ -17,7 +17,7 @@ cache_clears.append(internal_rope_embedding_cache.clear)
 @dataclass
 class RotaryPositionalEmbeddingConfig:
     theta: float = 10_000.0
-    dtype: DTypeLike = float
+    dtype: DTypeLike = "float32"
 
     def build(
         self,
@@ -52,7 +52,7 @@ class RotaryPositionalEmbedding(Module):
         key: PRNGKeyArray,
         *,
         theta: float = 10_000.0,
-        dtype: DTypeLike = float,
+        dtype: DTypeLike = "float32",
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
     ):
