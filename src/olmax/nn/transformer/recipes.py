@@ -42,7 +42,7 @@ class TransformerRecipe:
         device_mbz: int
         if device_type == GPUType.NVIDIA_A100_40GB:
             device_mbz = 16 * 1024
-        if device_type == GPUType.NVIDIA_H100:
+        elif device_type == GPUType.NVIDIA_H100:
             device_mbz = 32 * 1024
         elif device_type == GPUType.NVIDIA_B200:
             device_mbz = 64 * 1024
