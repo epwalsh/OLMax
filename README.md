@@ -8,14 +8,13 @@ Run `python src/integration_tests/train_transformer.py --help` to see the script
 The benchmarks listed below were launched on Beaker via OLMax's `launch.beaker` module.
 Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
-### Llama-like 7B
-
-**Common configuration:**
+Each benchmark below was run with these trainer settings:
 - Sequence length: `4096`
 - Compute data type: `BF16`
 - Optimizer data type: `FP32`
 
-**Results:**
+### Llama-like 7B
+
 - [12,035 TPS/GPU](https://beaker.org/ex/01JXDC25DM5GJRMWNDXSJ2QA7J) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --cluster=ai2/jupiter-cirrascale-2 --nodes=2 -- \
@@ -34,12 +33,6 @@ Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
 ### OLMo2 7B
 
-**Common configuration:**
-- Sequence length: `4096`
-- Compute data type: `BF16`
-- Optimizer data type: `FP32`
-
-**Results:**
 - [11,122 TPS/GPU](https://beaker.org/ex/01JX98QAKVVMC8YJX3400T96TA) on 1 Jupiter H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --gpu-type=h100 -- \
@@ -53,12 +46,6 @@ Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
 ### Gemma2 27B
 
-**Common configuration:**
-- Sequence length: `4096`
-- Compute data type: `BF16`
-- Optimizer data type: `FP32`
-
-**Results:**
 - [5,358 TPS/GPU](https://beaker.org/ex/01JX3D0TECNJ28WVZE4Q5DKHKM) on 2 Titan B200 nodes with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- \
@@ -67,12 +54,6 @@ Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
 ### Gemma3 27B
 
-**Common configuration:**
-- Sequence length: `4096`
-- Compute data type: `BF16`
-- Optimizer data type: `FP32`
-
-**Results:**
 - [4,917 TPS/GPU](https://beaker.org/ex/01JX3CB9A4PD69Q715RPMDYWNY) on 2 Titan B200 nodes with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --nodes=2 --gpu-type=b200 -- \
@@ -81,12 +62,6 @@ Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
 ### OLMo2 32B
 
-**Common configuration:**
-- Sequence length: `4096`
-- Compute data type: `BF16`
-- Optimizer data type: `FP32`
-
-**Results:**
 - [2,155 TPS/GPU](https://beaker.org/ex/01JYHCTA0YM9X8B5F7457WESR0) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 4 instances/GPU, full block activation checkpointing.
   ```fish
   python -m olmax.launch.beaker --nodes=2 --gpu-type=h100 -- \
