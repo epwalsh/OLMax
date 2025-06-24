@@ -87,7 +87,7 @@ Run `python -m olmax.launch.beaker --help` to see the module's usage.
 - Optimizer data type: `FP32`
 
 **Results:**
-- [2,144 TPS/GPU](https://beaker.org/ex/01JY24TWEJTCK18AJAGTE831ZM) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 4 instances/GPU, full block activation checkpointing.
+- [2,155 TPS/GPU](https://beaker.org/ex/01JYHCTA0YM9X8B5F7457WESR0) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 4 instances/GPU, full block activation checkpointing.
   ```fish
   python -m olmax.launch.beaker --nodes=2 --gpu-type=h100 -- \
     python src/integration_tests/train_transformer.py --recipe=olmo2_32B
