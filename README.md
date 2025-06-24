@@ -8,7 +8,7 @@ Run `python src/integration_tests/train_transformer.py --help` to see the script
 The benchmarks listed below were launched on Beaker via OLMax's `launch.beaker` module.
 Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
-Each benchmark below was run with these trainer settings:
+All benchmarks shared these trainer settings:
 - Sequence length: `4096`
 - Compute data type: `BF16`
 - Optimizer data type: `FP32`
