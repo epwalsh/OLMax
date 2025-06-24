@@ -33,14 +33,19 @@ All benchmarks shared these trainer settings:
 
 ### OLMo2 7B
 
+- [11,146 TPS/GPU](https://beaker.org/ex/01JX98C8XPW4BSVVG8XEE3MHN2) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+  ```fish
+  python -m olmax.launch.beaker --cluster=ai2/jupiter-cirrascale-2 --nodes=2 -- \
+    python src/integration_tests/train_transformer.py --recipe=olmo2_7B
+  ```
+- [10,617 TPS/GPU](https://beaker.org/ex/01JYHEFDPPAK408XES6C5Y31J5) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+  ```fish
+  python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
+    python src/integration_tests/train_transformer.py --recipe=olmo2_7B
+  ```
 - [11,122 TPS/GPU](https://beaker.org/ex/01JX98QAKVVMC8YJX3400T96TA) on 1 Jupiter H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --gpu-type=h100 -- \
-    python src/integration_tests/train_transformer.py --recipe=olmo2_7B
-  ```
-- [11,146 TPS/GPU](https://beaker.org/ex/01JX98C8XPW4BSVVG8XEE3MHN2) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
-  ```fish
-  python -m olmax.launch.beaker --gpu-type=h100 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=olmo2_7B
   ```
 
