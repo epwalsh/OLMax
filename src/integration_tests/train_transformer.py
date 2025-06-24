@@ -3,6 +3,7 @@ import dataclasses
 import gc
 import logging
 import sys
+import textwrap
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -276,13 +277,38 @@ def train(
     return loss, int(running_avg_tps_best), peak_mib_in_use
 
 
-def main():
+def _parse_args():
     parser = argparse.ArgumentParser(
         prog=sys.argv[0],
         usage=f"{sys.argv[0]} --recipe=RECIPE [OPTIONS...] [CONFIG_OVERRIDES...]",
-        description="""Run a short transformer training integration test.
-        In addition to the options listed below, you can override any field in the config using dot
-        notation for nested fields. For example, '--model.scan_layers=true' (values are parsed as YAML).""",
+        description=textwrap.dedent(
+            """
+            Run a short transformer training integration test.
+
+            In addition to the options listed below, you can override any field in the config using dot
+            notation for nested fields. Values are parsed as YAML.
+            """
+        ),
+        epilog=textwrap.dedent(
+            """
+            examples:
+              Do a dry run to check the config before actually running anything:
+              ❯ python {sys.argv[0]} --recipe=llama_like_271M --dry-run
+
+              Run the integration test while overriding some configuration options:
+              ❯ python {sys.argv[0]} --recipe=llama_like_271M \\
+                  --model.scan_layers=true \\
+                  --model.layer_ac_policy='{{type: nothing_saveable, prevent_cse: false}}'
+            """
+        ),
+        formatter_class=type(
+            "CustomFormatter",
+            (
+                argparse.ArgumentDefaultsHelpFormatter,
+                argparse.RawDescriptionHelpFormatter,
+            ),
+            {},
+        ),
     )
     parser.add_argument(
         "--recipe",
@@ -310,7 +336,11 @@ def main():
     )
 
     opts, overrides = parser.parse_known_args()
+    return opts, overrides
 
+
+def main():
+    opts, overrides = _parse_args()
     recipe_type = TransformerRecipeType(opts.recipe)
     device_type = DeviceType(opts.device_type)
     env = (

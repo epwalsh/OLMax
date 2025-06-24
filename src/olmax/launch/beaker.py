@@ -3,6 +3,7 @@ import functools as ft
 import logging
 import os
 import sys
+import textwrap
 from dataclasses import dataclass
 
 from beaker import Beaker, BeakerGpuType
@@ -194,18 +195,57 @@ def _parse_args():
     parser = argparse.ArgumentParser(
         "olmax.launch.beaker",
         usage="python -m olmax.launch.beaker [OPTIONS...] -- [CMD...]",
-        description="""Launch a command on Beaker.
-        For example: python -m olmax.launch.beaker -- echo 'Hello, World!'.""",
+        description=textwrap.dedent(
+            """
+            Launch a command on Beaker.
+            """
+        ),
+        epilog=textwrap.dedent(
+            """
+            examples:
+              ❯ python -m olmax.launch.beaker -- echo 'Hello, World!'
+            """
+        ),
+        formatter_class=type(
+            "CustomFormatter",
+            (
+                argparse.ArgumentDefaultsHelpFormatter,
+                argparse.RawDescriptionHelpFormatter,
+            ),
+            {},
+        ),
     )
-    parser.add_argument("--nodes", type=int, default=1)
-    parser.add_argument("--gpus-per-node", type=int, default=8)
-    parser.add_argument("--gpu-type", type=str, choices=["h100", "b200"])
-    parser.add_argument("--cluster", type=str, nargs="*")
-    parser.add_argument("--hostname", type=str, nargs="*")
-    parser.add_argument("--allow-dirty", action="store_true")
-    parser.add_argument("--priority", choices=["low", "normal", "high", "urgent"], default="high")
-    parser.add_argument("--preemptible", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--beaker-image", type=str, default="petew/olmax")
+    parser.add_argument("--nodes", type=int, default=1, help="""The number of nodes/replicas.""")
+    parser.add_argument(
+        "--gpus-per-node",
+        type=int,
+        default=8,
+        help="""The number of GPUs to request per node/replica.""",
+    )
+    parser.add_argument(
+        "--gpu-type", type=str, choices=["h100", "b200"], help="""The type of GPU to request."""
+    )
+    parser.add_argument(
+        "--cluster", type=str, nargs="*", help="""Clusters to launch on (multiple allowed)."""
+    )
+    parser.add_argument(
+        "--hostname", type=str, nargs="*", help="""Hostname restrictions (multiple allowed)."""
+    )
+    parser.add_argument("--allow-dirty", action="store_true", help="""Allow uncommitted changes.""")
+    parser.add_argument(
+        "--priority",
+        choices=["low", "normal", "high", "urgent"],
+        default="high",
+        help="""The job priority.""",
+    )
+    parser.add_argument(
+        "--preemptible",
+        action=argparse.BooleanOptionalAction,
+        help="""If the job should be preemptible.""",
+    )
+    parser.add_argument(
+        "--beaker-image", type=str, default="petew/olmax", help="""The Beaker image to use."""
+    )
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
         parser.print_help()

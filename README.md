@@ -3,9 +3,9 @@
 ## Benchmarks
 
 Benchmarks on various transformer models can be executed via the script `src/integration_tests/train_transformer.py`.
-Run `python src/integration_tests/train_transformer.py --help` to see script's usage.
+Run `python src/integration_tests/train_transformer.py --help` to see the script's usage.
 
-The benchmarks listed below were launched on Beaker via OLMax's launch module.
+The benchmarks listed below were launched on Beaker via OLMax's `launch.beaker` module.
 Run `python -m olmax.launch.beaker --help` to see the module's usage.
 
 ### Llama-like 7B
