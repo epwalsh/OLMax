@@ -290,7 +290,7 @@ def _parse_args():
             """
         ),
         epilog=textwrap.dedent(
-            """
+            f"""
             examples:
               Do a dry run to check the config before actually running anything:
               ❯ python {sys.argv[0]} --recipe=llama_like_271M --dry-run
