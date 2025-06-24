@@ -14,7 +14,7 @@ __all__ = [
     "Specs",
     "Scalar",
     "GPUArchitecture",
-    "GPUType",
+    "DeviceType",
     "PathOrStr",
     "Dataclass",
 ]
@@ -31,7 +31,7 @@ class GPUArchitecture(StrEnum):
     ampere = "ampere"
 
 
-class GPUType(StrEnum):
+class DeviceType(StrEnum):
     NVIDIA_H100 = "NVIDIA_H100"
     NVIDIA_A100_80GB = "NVIDIA_A100_80GB"
     NVIDIA_A100_40GB = "NVIDIA_A100_40GB"

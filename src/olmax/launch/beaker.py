@@ -69,28 +69,28 @@ class BeakerNodeInfo:
         )
 
     @ft.cached_property
-    def gpu_type(self) -> GPUType | None:
+    def device_type(self) -> DeviceType | None:
         with Beaker.from_env() as beaker:
             node = beaker.node.get(self.id)
             try:
                 beaker_gpu_type = BeakerGpuType(node.node_resources.gpu_type)
             except ValueError:
                 return None
-        return GPUType(beaker_gpu_type.name)
+        return DeviceType(beaker_gpu_type.name)
 
     @property
     def gpu_architecture(self) -> GPUArchitecture | None:
-        gpu_type = self.gpu_type
-        if gpu_type is None:
+        device_type = self.device_type
+        if device_type is None or "NVIDIA" not in device_type.name:
             return None
-        elif "H100" in gpu_type.name:
+        elif "H100" in device_type.name:
             return GPUArchitecture.hopper
-        elif "B200" in gpu_type.name:
+        elif "B200" in device_type.name:
             return GPUArchitecture.blackwell
-        elif "A100" in gpu_type.name:
+        elif "A100" in device_type.name:
             return GPUArchitecture.ampere
         else:
-            raise ValueError(f"unexpected GPU type {gpu_type}")
+            raise ValueError(f"unexpected GPU type {device_type}")
 
 
 @dataclass
@@ -140,11 +140,11 @@ class BeakerRuntime:
             f"❯ Workload: {beaker_runtime.workload.url}",
         ]
         if (gpu_count := beaker_runtime.resources.gpu_count) > 0 and (
-            gpu_type := beaker_runtime.node.gpu_type
+            device_type := beaker_runtime.node.device_type
         ) is not None:
             arch = beaker_runtime.node.gpu_architecture
             info.append(
-                f"❯ Resources: {gpu_count} {gpu_type.replace('_', ' ')} GPU(s) ({arch} architecture)"
+                f"❯ Resources: {gpu_count} {device_type.replace('_', ' ')} accelerator(s) ({arch} architecture)"
             )
         if (replica := beaker_runtime.replica) is not None:
             info.append(f"❯ Replicas: {replica.count}")
@@ -192,7 +192,10 @@ class BeakerRuntime:
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        "olmax.launch.beaker", usage="python -m olmax.launch.beaker [OPTIONS...] -- [CMD...]"
+        "olmax.launch.beaker",
+        usage="python -m olmax.launch.beaker [OPTIONS...] -- [CMD...]",
+        description="""Launch a command on Beaker.
+        For example: python -m olmax.launch.beaker -- echo 'Hello, World!'.""",
     )
     parser.add_argument("--nodes", type=int, default=1)
     parser.add_argument("--gpus-per-node", type=int, default=8)
@@ -200,6 +203,9 @@ def _parse_args():
     parser.add_argument("--cluster", type=str, nargs="*")
     parser.add_argument("--hostname", type=str, nargs="*")
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--priority", choices=["low", "normal", "high", "urgent"], default="high")
+    parser.add_argument("--preemptible", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--beaker-image", type=str, default="petew/olmax")
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
         parser.print_help()
@@ -218,14 +224,14 @@ def main():
     is_multi_node = opts.nodes > 1
     launch_experiment(
         command,
-        priority="high",
+        priority=opts.priority,
         yes=True,
         timeout=-1,
         gpus=opts.gpus_per_node,
         gpu_types=None if not opts.gpu_type else (opts.gpu_type,),
         clusters=opts.cluster,
         hostnames=opts.hostname,
-        beaker_image="petew/olmax",
+        beaker_image=opts.beaker_image,
         env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"],
         env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
@@ -236,6 +242,7 @@ def main():
         propagate_failure=is_multi_node,
         propagate_preemption=is_multi_node,
         synchronized_start_timeout="5m" if is_multi_node else None,
+        preemptible=opts.preemptible,
     )
 
 

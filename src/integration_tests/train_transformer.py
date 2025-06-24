@@ -46,9 +46,6 @@ class IntegrationTestConfig:
         if beaker_runtime is None
         else beaker_runtime.workload.result_dataset_path
     )
-    show_config: bool = True
-    show_model: bool = False
-    dry_run: bool = False
 
 
 def train(
@@ -57,6 +54,7 @@ def train(
     running_avg_tps_count: int = 10,
     param_dtype: str = "float32",
     compute_dtype: str = "bfloat16",
+    show_model: bool = False,
 ) -> tuple[float, int, int]:
     recipe_name = recipe_type.name
     batch_size_per_device = config.device_microbatch_size
@@ -90,7 +88,7 @@ def train(
         mesh_resource=config.mesh,
     )
     dist.barrier("post-init-model")
-    if config.show_model:
+    if show_model:
         log.info(model)
 
     num_params = olmax.jax_utils.count_params(model)
@@ -281,20 +279,40 @@ def train(
 def main():
     parser = argparse.ArgumentParser(
         prog=sys.argv[0],
-        usage=f"{sys.argv[0]} --recipe RECIPE --device-type DEVICE_TYPE [OVERRIDES...]",
+        usage=f"{sys.argv[0]} --recipe=RECIPE [OPTIONS...] [CONFIG_OVERRIDES...]",
+        description="""Run a short transformer training integration test.
+        In addition to the options listed below, you can override any field in the config using dot
+        notation for nested fields. For example, '--model.scan_layers=true' (values are parsed as YAML).""",
     )
-    parser.add_argument("--recipe", choices=[r.name for r in TransformerRecipeType], required=True)
+    parser.add_argument(
+        "--recipe",
+        choices=[r.name for r in TransformerRecipeType],
+        required=True,
+        help="""The name of the recipe to run.""",
+    )
     parser.add_argument(
         "--device-type",
-        choices=[g.name for g in GPUType],
+        choices=[d.name for d in DeviceType],
         required=beaker_runtime is None,
-        default=None if beaker_runtime is None else beaker_runtime.node.gpu_type,
+        default=None if beaker_runtime is None else beaker_runtime.node.device_type,
+        help="""The device type. When running on Beaker this doesn't need to specified manually as
+        it will be determined automatically.""",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="""Print the config and exit. This can be useful for seeing which fields can be overridden.""",
+    )
+    parser.add_argument(
+        "--show-model",
+        action="store_true",
+        help="""Print out the model structure after initialization.""",
     )
 
     opts, overrides = parser.parse_known_args()
 
     recipe_type = TransformerRecipeType(opts.recipe)
-    device_type = GPUType(opts.device_type)
+    device_type = DeviceType(opts.device_type)
     env = (
         olmax.EnvConfig.recommended() if beaker_runtime is None else beaker_runtime.get_env_config()
     )
@@ -326,9 +344,8 @@ def main():
     )
     config = parse_config_from_args(config, args=overrides)
 
-    if config.show_config or config.dry_run:
-        log.info(config)
-    if config.dry_run:
+    log.info(config)
+    if opts.dry_run:
         return
 
     olmax.prepare_training_environment(
@@ -347,7 +364,7 @@ def main():
         )
 
     try:
-        train(recipe_type, config)
+        train(recipe_type, config, show_model=opts.show_model)
     finally:
         if dist.is_distributed():
             dist.teardown_distributed()

@@ -24,7 +24,7 @@ class TransformerRecipeType(StrEnum):
     gemma2_like_27B = "gemma2_like_27B"
     gemma3_like_27B = "gemma3_like_27B"
 
-    def build_recipe(self, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def build_recipe(self, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
         return getattr(TransformerRecipe, self.name)(
             env_defaults=env_defaults, device_type=device_type
         )
@@ -38,13 +38,15 @@ class TransformerRecipe:
     env: EnvConfig
 
     @classmethod
-    def llama_like_271M(cls, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def llama_like_271M(
+        cls, env_defaults: EnvConfig, device_type: DeviceType
+    ) -> "TransformerRecipe":
         device_mbz: int
-        if device_type == GPUType.NVIDIA_A100_40GB:
+        if device_type == DeviceType.NVIDIA_A100_40GB:
             device_mbz = 16 * 1024
-        elif device_type == GPUType.NVIDIA_H100:
+        elif device_type == DeviceType.NVIDIA_H100:
             device_mbz = 32 * 1024
-        elif device_type == GPUType.NVIDIA_B200:
+        elif device_type == DeviceType.NVIDIA_B200:
             device_mbz = 64 * 1024
         else:
             raise NotImplementedError(
@@ -76,11 +78,11 @@ class TransformerRecipe:
         )
 
     @classmethod
-    def llama_like_7B(cls, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def llama_like_7B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
         device_mbz: int
-        if device_type == GPUType.NVIDIA_H100:
+        if device_type == DeviceType.NVIDIA_H100:
             device_mbz = 2 * 4096
-        elif device_type == GPUType.NVIDIA_B200:
+        elif device_type == DeviceType.NVIDIA_B200:
             device_mbz = 4 * 4096
         else:
             raise NotImplementedError(
@@ -117,11 +119,11 @@ class TransformerRecipe:
         )
 
     @classmethod
-    def olmo2_7B(cls, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def olmo2_7B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
         device_mbz: int
-        if device_type == GPUType.NVIDIA_H100:
+        if device_type == DeviceType.NVIDIA_H100:
             device_mbz = 2 * 4096
-        elif device_type == GPUType.NVIDIA_B200:
+        elif device_type == DeviceType.NVIDIA_B200:
             device_mbz = 4 * 4096
         else:
             raise NotImplementedError(
@@ -160,9 +162,9 @@ class TransformerRecipe:
         )
 
     @classmethod
-    def olmo2_32B(cls, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def olmo2_32B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
         device_mbz: int
-        if device_type == GPUType.NVIDIA_H100:
+        if device_type == DeviceType.NVIDIA_H100:
             device_mbz = 4 * 4096
         else:
             raise NotImplementedError(
@@ -199,9 +201,11 @@ class TransformerRecipe:
         )
 
     @classmethod
-    def gemma2_like_27B(cls, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def gemma2_like_27B(
+        cls, env_defaults: EnvConfig, device_type: DeviceType
+    ) -> "TransformerRecipe":
         device_mbz: int
-        if device_type == GPUType.NVIDIA_B200:
+        if device_type == DeviceType.NVIDIA_B200:
             device_mbz = 2 * 4096
         else:
             raise NotImplementedError(
@@ -235,9 +239,11 @@ class TransformerRecipe:
         )
 
     @classmethod
-    def gemma3_like_27B(cls, env_defaults: EnvConfig, device_type: GPUType) -> "TransformerRecipe":
+    def gemma3_like_27B(
+        cls, env_defaults: EnvConfig, device_type: DeviceType
+    ) -> "TransformerRecipe":
         device_mbz: int
-        if device_type == GPUType.NVIDIA_B200:
+        if device_type == DeviceType.NVIDIA_B200:
             device_mbz = 2 * 4096
         else:
             raise NotImplementedError(
