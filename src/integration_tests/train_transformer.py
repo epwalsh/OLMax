@@ -206,12 +206,13 @@ def train(
             break
 
         # Do a step.
-        array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
-        for key, arr in array_metrics.items():
-            value = arr.item()
-            if key == "loss":
-                loss = value
-            metrics_to_log[key] = value
+        with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
+            array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
+            for key, arr in array_metrics.items():
+                value = arr.item()
+                if key == "loss":
+                    loss = value
+                metrics_to_log[key] = value
 
         # Maybe record memory metrics.
         if step % 5 == 0:
