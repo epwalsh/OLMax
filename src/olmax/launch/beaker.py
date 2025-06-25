@@ -206,7 +206,7 @@ def _parse_args():
               ❯ python -m olmax.launch.beaker -- echo 'Hello, World!'
             """
         ),
-        formatter_class=type(
+        formatter_class=type(  # type: ignore[arg-type]
             "CustomFormatter",
             (
                 argparse.ArgumentDefaultsHelpFormatter,
