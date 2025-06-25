@@ -57,6 +57,10 @@ jobs:
         run: |
           make dev-install
 
+      - name: Pip freeze
+        run: |
+          pip freeze
+
       - name: ${{ matrix.task.name }}
         run: |
           ${{ matrix.task.run }}

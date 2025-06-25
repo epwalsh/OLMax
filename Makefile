@@ -15,7 +15,7 @@ lint :
 
 .PHONY : test
 test :
-	pytest -v src/test/
+	pytest -v --color=yes --durations=3 src/test/
 
 .PHONY : build
 build :

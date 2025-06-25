@@ -301,7 +301,7 @@ def _parse_args():
                   --model.layer_ac_policy='{{type: nothing_saveable, prevent_cse: false}}'
             """
         ),
-        formatter_class=type(
+        formatter_class=type(  # type: ignore[arg-type]
             "CustomFormatter",
             (
                 argparse.ArgumentDefaultsHelpFormatter,
