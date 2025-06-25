@@ -112,7 +112,7 @@ def train(
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
-        with jax.named_scope("compute_loss"):
+        with jax.named_scope("compute_loss"), jax.profiler.TraceAnnotation("compute_loss"):
             logits = model(input_ids)
             logits = jax.lax.with_sharding_constraint(logits, data_sharding)
             loss = F.cross_entropy_loss(logits, labels)
@@ -137,7 +137,9 @@ def train(
             model_with_compute_dtype = model
 
         # Calculate loss and gradients.
-        with jax.named_scope("compute_loss_and_grads"):
+        with jax.named_scope("compute_loss_and_grads"), jax.profiler.TraceAnnotation(
+            "compute_loss_and_grads"
+        ):
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
             step_metrics["loss"] = jax.copy_to_host_async(loss)
@@ -149,12 +151,12 @@ def train(
 
         # Maybe clip gradient norm.
         if config.max_grad_norm is not None:
-            with jax.named_scope("clip_grads"):
+            with jax.named_scope("clip_grads"), jax.profiler.TraceAnnotation("clip_grads"):
                 grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, config.max_grad_norm)
                 step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
-        with jax.named_scope("optim_step"):
+        with jax.named_scope("optim_step"), jax.profiler.TraceAnnotation("optim_step"):
             updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
