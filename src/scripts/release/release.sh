@@ -10,7 +10,7 @@ git fetch -t > /dev/null
 TAG=$(python -c 'from olmax.version import VERSION; print("v" + VERSION)')
 
 # Make sure tag/release doesn't already exist.
-STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://github.com/epwalsh/jax-dev/releases/tag/${TAG}")
+STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://github.com/epwalsh/OLMax/releases/tag/${TAG}")
 if [[ $STATUS_CODE == "200" ]]; then
     echo "Release tag ${TAG} already exists"
     exit 1

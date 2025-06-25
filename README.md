@@ -1,4 +1,4 @@
-# JAX-dev
+# OLMax
 
 ## Benchmarks
 
