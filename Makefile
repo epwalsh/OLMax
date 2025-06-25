@@ -1,11 +1,26 @@
 BEAKER_WORKSPACE = ai2/OLMo-pretraining-stability
 
 .PHONY : check
-check :
+check : style lint
+
+.PHONY : style
+style :
 	black --check .
 	isort --check .
+
+.PHONY : lint
+lint :
 	ruff check .
 	mypy .
+
+.PHONY : test
+test :
+	pytest -v src/test/
+
+.PHONY : build
+build :
+	rm -rf *.egg-info/
+	python -m build
 
 .PHONY : dev-install
 dev-install :
