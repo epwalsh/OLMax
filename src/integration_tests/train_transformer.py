@@ -141,9 +141,8 @@ def train(
             model_with_compute_dtype,
             batch,
             num_microbatches=config.num_microbatches,
-            param_sharding=param_sharding,
-            batch_sharding=batch_sharding,
-            acc_dtype=param_dtype,
+            accum_sharding=(None, param_sharding),
+            accum_dtype=param_dtype,
         )
         step_metrics["loss"] = jax.copy_to_host_async(loss)
 

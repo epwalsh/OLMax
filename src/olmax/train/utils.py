@@ -1,24 +1,26 @@
-from typing import Callable
+from typing import Callable, TypeVar
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from ..jax_utils import cast_tree, zeros_like_tree
+from ..jax_utils import zeros_like_tree
 from ..types import *
+
+M = TypeVar("M", bound=eqx.Module)
+T = TypeVar("T")
 
 
 def microbatched(
-    loss_fn: Callable[[PyTree, dict[str, Array]], Array],
-    model: PyTree,
+    fun: Callable[[M, dict[str, Array]], T],
+    model: M,
     batch: dict[str, Array],
     *,
     num_microbatches: int,
-    param_sharding: Specs | None = None,
-    batch_sharding: Specs | None = None,
-    acc_dtype: DTypeLike = jnp.float32,
+    accum_sharding: Specs | None = None,
+    accum_dtype: DTypeLike = jnp.float32,
     divide_factor: ArrayLike | None = None,
-) -> tuple[Array, Array]:
+) -> T:
     batch_size = next(iter(batch.values())).shape[0]
     assert (
         batch_size % num_microbatches == 0
@@ -35,43 +37,27 @@ def microbatched(
         limits = {k: [length] + list(b.shape[1:]) for k, b in batch.items()}
         return {k: jax.lax.dynamic_slice(b, starts[k], limits[k]) for k, b in batch.items()}
 
-    @eqx.filter_value_and_grad
-    @jax.named_scope("per_microbatch_loss_fn")
-    def per_microbatch_loss_fn(model: PyTree, microbatch: dict[str, Array]):
+    @jax.named_scope("per_microbatch_fun")
+    def per_microbatch_fun(model: M, microbatch: dict[str, Array]):
         """Compute the micro-batch loss."""
-        if param_sharding is not None:
-            model = jax.lax.with_sharding_constraint(model, param_sharding)
-        if batch_sharding is not None:
-            microbatch = jax.lax.with_sharding_constraint(microbatch, batch_sharding)
-        return loss_fn(model, microbatch) / divide_factor
+        out = fun(model, microbatch)
+        return jax.tree.map(lambda x: (x / divide_factor).astype(accum_dtype), out)
 
     @jax.named_scope("per_microbatch_train_step")
-    def per_microbatch_train_step(
-        loop_cnt: int,
-        state: tuple[Array, Array],
-    ) -> tuple[Array, Array]:
+    def per_microbatch_train_step(loop_cnt: int, state: tuple[M, T]) -> tuple[M, T]:
         """Run a training step on a micro-batch."""
-        loss_acc, grad_acc = state
+        model, accum = state
         microbatch = get_microbatch(batch, loop_cnt)
+        result = per_microbatch_fun(model, microbatch)
+        accum = jax.tree.map(jnp.add, accum, result, is_leaf=eqx.is_array)
+        if accum_sharding is not None:
+            accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
+        return (model, accum)
 
-        loss, grads = per_microbatch_loss_fn(model, microbatch)
-        grads = cast_tree(grads, acc_dtype)
-        if param_sharding is not None:
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+    accum_shape = eqx.filter_eval_shape(fun, model, batch)
+    accum = zeros_like_tree(accum_shape, accum_dtype)
+    if accum_sharding is not None:
+        accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
 
-        loss_acc = loss_acc + loss
-        grad_acc = jax.tree.map(jnp.add, grad_acc, grads)
-        if param_sharding is not None:
-            grad_acc = jax.lax.with_sharding_constraint(grad_acc, param_sharding)
-
-        return loss_acc, grad_acc
-
-    loss_acc = jnp.array(0.0)
-    grad_acc = zeros_like_tree(model, acc_dtype)
-    if param_sharding is not None:
-        grad_acc = jax.lax.with_sharding_constraint(grad_acc, param_sharding)
-
-    loss_acc, grad_acc = jax.lax.fori_loop(
-        0, num_microbatches, per_microbatch_train_step, (loss_acc, grad_acc)
-    )
-    return loss_acc, grad_acc
+    model, accum = jax.lax.fori_loop(0, num_microbatches, per_microbatch_train_step, (model, accum))
+    return accum
