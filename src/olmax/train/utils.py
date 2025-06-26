@@ -55,8 +55,8 @@ def microbatched(
         microbatch = get_microbatch(batch, loop_cnt)
 
         loss, grads = per_microbatch_loss_fn(model, microbatch)
+        grads = cast_tree(grads, acc_dtype)
         if param_sharding is not None:
-            grads = cast_tree(grads, acc_dtype)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         loss_acc = loss_acc + loss
