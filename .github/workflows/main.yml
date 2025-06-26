@@ -46,7 +46,15 @@ jobs:
               name: Test olmax.nn
               run: |
                 pytest -v --color=yes --durations=3 \
+                  --ignore-glob='src/test/nn/transformer/*' \
                   src/test/nn/
+
+          - python: '3.12'
+            task:
+              name: Test olmax.nn.transformer
+              run: |
+                pytest -v --color=yes --durations=3 \
+                  src/test/nn/transformer/
 
           - python: '3.12'
             task:
