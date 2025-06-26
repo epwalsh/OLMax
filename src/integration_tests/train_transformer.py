@@ -109,6 +109,7 @@ def train(
     accum_sharding = (config.mesh.get_replicated_sharding(), param_sharding)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
+    @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
     def compute_loss(model: nn.Transformer, batch: dict[str, Array]):
         input_ids, labels = batch["input_ids"], batch["labels"]
