@@ -25,6 +25,10 @@ def cast_tree(tree: T, dtype: DTypeLike) -> T:
     return jax.tree.map(lambda x: x.astype(dtype), tree)
 
 
+def zeros_like_tree(tree: T, dtype: DTypeLike | None = None) -> T:
+    return jax.tree.map(lambda x: jnp.zeros_like(x, dtype=dtype), tree)
+
+
 @eqx.filter_jit(donate="all")
 def count_params(tree: PyTree) -> int:
     return jax.tree.reduce(lambda c, p: c + p.size, tree, 0)

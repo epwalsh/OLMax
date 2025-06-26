@@ -40,6 +40,7 @@ class IntegrationTestConfig:
     )
 
     steps: int = 100
+    num_microbatches: int = 2
     max_grad_norm: float | None = None
 
     trace_dir: str | None = dataclasses.field(
@@ -58,7 +59,7 @@ def train(
     show_model: bool = False,
 ) -> tuple[float, int, int]:
     recipe_name = recipe_type.name
-    batch_size_per_device = config.device_microbatch_size
+    batch_size_per_device = config.device_microbatch_size * config.num_microbatches
     instances_per_device = batch_size_per_device // config.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
@@ -68,7 +69,7 @@ def train(
         f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
+        f"Using per-device batch size of {batch_size_per_device:,d} tokens over {config.num_microbatches} microbatches, "
         f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
     )
 
@@ -104,28 +105,26 @@ def train(
 
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
+    batch_sharding = {"input_ids": data_sharding, "labels": data_sharding}
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
-    @eqx.filter_value_and_grad
-    def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+    @jax.named_scope("compute_loss")
+    def compute_loss(model: nn.Transformer, batch: dict[str, Array]):
+        input_ids, labels = batch["input_ids"], batch["labels"]
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
-        with jax.named_scope("compute_loss"):
-            logits = model(input_ids)
-            logits = jax.lax.with_sharding_constraint(logits, data_sharding)
-            loss = F.cross_entropy_loss(logits, labels)
-
-        return loss
+        logits = model(input_ids)
+        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+        return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
     def train_step(
-        model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
+        model: nn.Transformer, batch: dict[str, Array], opt_state: optax.OptState
     ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
+        batch = jax.lax.with_sharding_constraint(batch, batch_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         step_metrics: dict[str, Array] = {}
@@ -137,15 +136,16 @@ def train(
             model_with_compute_dtype = model
 
         # Calculate loss and gradients.
-        with jax.named_scope("compute_loss_and_grads"):
-            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
-            step_metrics["loss"] = jax.copy_to_host_async(loss)
-
-        # Cast grads back to param dtype.
-        if compute_dtype != param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+        loss, grads = olmax.train.utils.microbatched(
+            compute_loss,
+            model_with_compute_dtype,
+            batch,
+            num_microbatches=config.num_microbatches,
+            param_sharding=param_sharding,
+            batch_sharding=batch_sharding,
+            acc_dtype=param_dtype,
+        )
+        step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Maybe clip gradient norm.
         if config.max_grad_norm is not None:
@@ -207,7 +207,9 @@ def train(
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
+            array_metrics, model, opt_state = train_step(
+                model, dict(input_ids=input_ids, labels=labels), opt_state
+            )
             for key, arr in array_metrics.items():
                 value = arr.item()
                 if key == "loss":
