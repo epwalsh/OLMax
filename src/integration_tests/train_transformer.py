@@ -106,6 +106,7 @@ def train(
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
     batch_sharding = {"input_ids": data_sharding, "labels": data_sharding}
+    accum_sharding = (config.mesh.get_replicated_sharding(), param_sharding)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @jax.named_scope("compute_loss")
@@ -141,7 +142,7 @@ def train(
             model_with_compute_dtype,
             batch,
             num_microbatches=config.num_microbatches,
-            accum_sharding=(None, param_sharding),
+            accum_sharding=accum_sharding,
             accum_dtype=param_dtype,
         )
         step_metrics["loss"] = jax.copy_to_host_async(loss)
