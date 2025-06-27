@@ -223,6 +223,9 @@ def train(
                     loss = value
                 metrics_to_log[key] = value
 
+        if step == 1:
+            gc.collect()
+
         # Maybe record memory metrics.
         if step % 5 == 0:
             peak_mib_in_use = int(
