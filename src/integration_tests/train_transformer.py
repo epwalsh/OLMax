@@ -121,7 +121,7 @@ def train(
 
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, data_sharding)
-        return F.cross_entropy_loss(logits, labels)
+        return F.cross_entropy_loss(logits, labels) / config.num_microbatches
 
     @eqx.filter_jit(donate="all")
     def train_step(
@@ -145,8 +145,10 @@ def train(
         accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
         accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
         for input_ids, labels in batch:
-            result = compute_loss(model_with_compute_dtype, input_ids, labels)
-            accum = jax.tree.map(jnp.add, accum, result)
+            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+            if compute_dtype != param_dtype:
+                grads = olmax.jax_utils.cast_tree(grads, param_dtype)
+            accum = jax.tree.map(jnp.add, accum, (loss, grads))
             accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
 
         loss, grads = accum
