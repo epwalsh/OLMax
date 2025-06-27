@@ -125,11 +125,9 @@ def train(
 
     @eqx.filter_jit(donate="all")
     def train_step(
-        model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
+        model: nn.Transformer, batch: list[tuple[Array, Array]], opt_state: optax.OptState
     ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         step_metrics: dict[str, Array] = {}
@@ -141,37 +139,13 @@ def train(
             model_with_compute_dtype = model
 
         # Determine shape for accumulated loss and gradients.
-        accum_shape = eqx.filter_eval_shape(
-            compute_loss, model_with_compute_dtype, input_ids, labels
-        )
-
-        # Reshape for micro-batches such that data-parallel sharding is maintained.
-        input_ids = input_ids.reshape(dist.get_global_device_count(), -1, config.sequence_length)
-        labels = labels.reshape(dist.get_global_device_count(), -1, config.sequence_length)
+        accum_shape = eqx.filter_eval_shape(compute_loss, model_with_compute_dtype, *batch[0])
 
         # Accumulate loss and gradients over micro-batches.
         accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
         accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
-        for idx in range(config.num_microbatches):
-            mb_input_ids = jax.lax.dynamic_slice(
-                input_ids,
-                [0, idx, 0],
-                [
-                    input_ids.shape[0],
-                    instances_per_device // config.num_microbatches,
-                    input_ids.shape[2],
-                ],
-            ).squeeze(1)
-            mb_labels = jax.lax.dynamic_slice(
-                labels,
-                [0, idx, 0],
-                [
-                    labels.shape[0],
-                    instances_per_device // config.num_microbatches,
-                    labels.shape[2],
-                ],
-            ).squeeze(1)
-            result = compute_loss(model_with_compute_dtype, mb_input_ids, mb_labels)
+        for input_ids, labels in batch:
+            result = compute_loss(model_with_compute_dtype, input_ids, labels)
             accum = jax.tree.map(jnp.add, accum, result)
             accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
 
@@ -218,6 +192,7 @@ def train(
         global_batch_size_instances=global_batch_size_instances,
         total_batches=config.steps,
         mesh_resource=config.mesh,
+        num_microbatches=config.num_microbatches,
     )
 
     while True:
@@ -232,13 +207,13 @@ def train(
 
         # Get batch.
         try:
-            input_ids, labels = next(batches)
+            batch = next(batches)
         except StopIteration:
             break
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
+            array_metrics, model, opt_state = train_step(model, batch, opt_state)
             for key, arr in array_metrics.items():
                 value = arr.item()
                 if key == "loss":
