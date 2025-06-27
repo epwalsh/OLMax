@@ -49,7 +49,7 @@ def microbatched(
         model, accum = state
         microbatch = get_microbatch(batch, loop_cnt)
         result = per_microbatch_fun(model, microbatch)
-        accum = jax.tree.map(jnp.add, accum, result, is_leaf=eqx.is_array)
+        accum = jax.tree.map(jnp.add, accum, result)
         if accum_sharding is not None:
             accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
         return (model, accum)
