@@ -156,7 +156,7 @@ def train(
                     instances_per_device // config.num_microbatches,
                     input_ids.shape[2],
                 ],
-            )
+            ).squeeze(1)
             mb_labels = jax.lax.dynamic_slice(
                 labels,
                 [0, idx, 0],
@@ -165,7 +165,7 @@ def train(
                     instances_per_device // config.num_microbatches,
                     labels.shape[2],
                 ],
-            )
+            ).squeeze(1)
             result = compute_loss(model_with_compute_dtype, mb_input_ids, mb_labels)
             accum = jax.tree.map(jnp.add, accum, result)
             accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
