@@ -138,17 +138,30 @@ def train(
         else:
             model_with_compute_dtype = model
 
-        # Accumulate loss and gradients over micro-batches.
-        accum_shape = eqx.filter_eval_shape(compute_loss, model_with_compute_dtype, *batch[0])
-        accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
-        accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
-        for input_ids, labels in batch:
+        def train_microbatch(
+            idx: int, accum: tuple[Array, nn.Transformer]
+        ) -> tuple[Array, nn.Transformer]:
+            input_ids, labels = batch[idx]
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
             # Cast grads to param dtype.
             if compute_dtype != param_dtype:
                 grads = olmax.jax_utils.cast_tree(grads, param_dtype)
             accum = jax.tree.map(jnp.add, accum, (loss, grads))
             accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
+            return accum
+
+        # Accumulate loss and gradients over micro-batches.
+        accum_shape = eqx.filter_eval_shape(compute_loss, model_with_compute_dtype, *batch[0])
+        accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
+        accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
+        accum = jax.lax.fori_loop(0, len(batch), train_microbatch, accum)
+        #  for input_ids, labels in batch:
+        #      loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+        #      # Cast grads to param dtype.
+        #      if compute_dtype != param_dtype:
+        #          grads = olmax.jax_utils.cast_tree(grads, param_dtype)
+        #      accum = jax.tree.map(jnp.add, accum, (loss, grads))
+        #      accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
 
         loss, grads = accum
         step_metrics["loss"] = jax.copy_to_host_async(loss)
