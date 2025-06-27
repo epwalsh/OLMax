@@ -69,8 +69,12 @@ def train(
         f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device batch size of {batch_size_per_device:,d} tokens over {config.num_microbatches} microbatches, "
+        f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
         f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
+    )
+    log.info(
+        f"Using per-device micro-batch size of {config.device_microbatch_size:,d} tokens, "
+        f"which is {instances_per_device//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
