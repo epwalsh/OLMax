@@ -143,8 +143,6 @@ def train(
         accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
         accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
         for input_ids, labels in batch:
-            input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-            labels = jax.lax.with_sharding_constraint(labels, data_sharding)
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
             # Cast grads to param dtype.
             if compute_dtype != param_dtype:
