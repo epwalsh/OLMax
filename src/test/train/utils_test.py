@@ -15,25 +15,22 @@ def test_microbatched():
     num_microbatches = batch_size // microbatch_size
 
     model = nn.Linear(in_size, out_size, model_key)
-    batch = {
-        "x": jax.random.normal(x_key, (batch_size, in_size)),
-        "y": jax.random.normal(y_key, (batch_size, out_size)),
-    }
+    x = jax.random.normal(x_key, (batch_size, in_size))
+    y = jax.random.normal(y_key, (batch_size, out_size))
 
     @eqx.filter_value_and_grad
-    def _loss_fn(model: nn.Linear, batch: dict[str, Array]) -> Array:
-        x, y = batch["x"], batch["y"]
+    def _loss_fn(model: nn.Linear, x: Array, y: Array) -> Array:
         return jnp.mean(jnp.sum((model(x) - y) ** 2, axis=-1))
 
     @jax.jit
-    def _get_loss_and_grads(model, batch: dict[str, Array]):
-        return _loss_fn(model, batch)
+    def _get_loss_and_grads(model, x: Array, y: Array):
+        return _loss_fn(model, x, y)
 
     @jax.jit
-    def _get_microbatched_loss_and_grads(model, batch: dict[str, Array]):
-        return microbatched(_get_loss_and_grads, model, batch, num_microbatches=num_microbatches)
+    def _get_microbatched_loss_and_grads(model, x: Array, y: Array):
+        return microbatched(_get_loss_and_grads, model, x, y, num_microbatches=num_microbatches)
 
-    full_loss, full_grads = _get_loss_and_grads(model, batch)
-    loss_acc, grad_acc = _get_microbatched_loss_and_grads(model, batch)
+    full_loss, full_grads = _get_loss_and_grads(model, x, y)
+    loss_acc, grad_acc = _get_microbatched_loss_and_grads(model, x, y)
     assert allclose(full_loss, loss_acc)
     assert allclose(full_grads, grad_acc)

@@ -105,14 +105,12 @@ def train(
 
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
-    batch_sharding = {"input_ids": data_sharding, "labels": data_sharding}
     accum_sharding = (config.mesh.get_replicated_sharding(), param_sharding)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
-    def compute_loss(model: nn.Transformer, batch: dict[str, Array]):
-        input_ids, labels = batch["input_ids"], batch["labels"]
+    def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
@@ -123,10 +121,11 @@ def train(
 
     @eqx.filter_jit(donate="all")
     def train_step(
-        model: nn.Transformer, batch: dict[str, Array], opt_state: optax.OptState
+        model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
     ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        batch = jax.lax.with_sharding_constraint(batch, batch_sharding)
+        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
+        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         step_metrics: dict[str, Array] = {}
@@ -141,7 +140,8 @@ def train(
         loss, grads = olmax.train.utils.microbatched(
             compute_loss,
             model_with_compute_dtype,
-            batch,
+            input_ids,
+            labels,
             num_microbatches=config.num_microbatches,
             accum_sharding=accum_sharding,
             accum_dtype=param_dtype,
@@ -208,9 +208,7 @@ def train(
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            array_metrics, model, opt_state = train_step(
-                model, dict(input_ids=input_ids, labels=labels), opt_state
-            )
+            array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
             for key, arr in array_metrics.items():
                 value = arr.item()
                 if key == "loss":
