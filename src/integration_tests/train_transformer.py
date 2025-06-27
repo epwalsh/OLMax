@@ -144,7 +144,9 @@ def train(
             model_with_compute_dtype = model
 
         # Calculate loss and gradients.
-        accum_shape = eqx.filter_eval_shape(compute_loss, input_ids, labels)
+        accum_shape = eqx.filter_eval_shape(
+            compute_loss, model_with_compute_dtype, input_ids, labels
+        )
         accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
         accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
         for idx in range(config.num_microbatches):
