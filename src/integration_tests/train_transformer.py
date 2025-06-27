@@ -133,6 +133,9 @@ def train(
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         step_metrics: dict[str, Array] = {}
+        # Reshape for micro-batches such that data-parallel sharding is maintained.
+        input_ids = input_ids.reshape(dist.get_global_device_count(), -1, config.sequence_length)
+        labels = labels.reshape(dist.get_global_device_count(), -1, config.sequence_length)
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -141,15 +144,33 @@ def train(
             model_with_compute_dtype = model
 
         # Calculate loss and gradients.
-        loss, grads = olmax.train.utils.microbatched(
-            compute_loss,
-            model_with_compute_dtype,
-            input_ids,
-            labels,
-            num_microbatches=config.num_microbatches,
-            accum_sharding=accum_sharding,
-            accum_dtype=param_dtype,
-        )
+        accum_shape = eqx.filter_eval_shape(compute_loss, input_ids, labels)
+        accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
+        accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
+        for idx in range(config.num_microbatches):
+            mb_input_ids = jax.lax.dynamic_slice(
+                input_ids,
+                [0, idx, 0],
+                [
+                    input_ids.shape[0],
+                    instances_per_device // config.num_microbatches,
+                    input_ids.shape[2],
+                ],
+            )
+            mb_labels = jax.lax.dynamic_slice(
+                labels,
+                [0, idx, 0],
+                [
+                    labels.shape[0],
+                    instances_per_device // config.num_microbatches,
+                    labels.shape[2],
+                ],
+            )
+            result = compute_loss(model_with_compute_dtype, mb_input_ids, mb_labels)
+            accum = jax.tree.map(jnp.add, accum, result)
+            accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
+
+        loss, grads = accum
         step_metrics["loss"] = jax.copy_to_host_async(loss)
 
         # Maybe clip gradient norm.

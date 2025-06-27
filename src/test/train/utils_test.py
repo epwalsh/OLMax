@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 import olmax.nn as nn
 from olmax.testing.utils import allclose
-from olmax.train.utils import microbatched
+from olmax.train.utils import microbatched, split_into_microbatches
 from olmax.types import *
 
 
@@ -17,6 +17,8 @@ def test_microbatched():
     model = nn.Linear(in_size, out_size, model_key)
     x = jax.random.normal(x_key, (batch_size, in_size))
     y = jax.random.normal(y_key, (batch_size, out_size))
+    xs = split_into_microbatches(x, num_microbatches)
+    ys = split_into_microbatches(y, num_microbatches)
 
     @eqx.filter_value_and_grad
     def _loss_fn(model: nn.Linear, x: Array, y: Array) -> Array:
@@ -27,10 +29,12 @@ def test_microbatched():
         return _loss_fn(model, x, y)
 
     @jax.jit
-    def _get_microbatched_loss_and_grads(model, x: Array, y: Array):
-        return microbatched(_get_loss_and_grads, model, x, y, num_microbatches=num_microbatches)
+    def _get_microbatched_loss_and_grads(model, xs: list[Array], ys: list[Array]):
+        return microbatched(
+            _get_loss_and_grads, model, list(zip(xs, ys)), num_microbatches=num_microbatches
+        )
 
     full_loss, full_grads = _get_loss_and_grads(model, x, y)
-    loss_acc, grad_acc = _get_microbatched_loss_and_grads(model, x, y)
+    loss_acc, grad_acc = _get_microbatched_loss_and_grads(model, xs, ys)
     assert allclose(full_loss, loss_acc)
     assert allclose(full_grads, grad_acc)
