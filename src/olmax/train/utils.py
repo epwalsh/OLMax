@@ -27,6 +27,7 @@ def microbatched(
     microbatch_size = batch_size // num_microbatches
     if divide_factor is None:
         divide_factor = num_microbatches
+    print(f"{batch_size=}, {microbatch_size=}")
 
     @jax.named_scope("per_microbatch_fun")
     def per_microbatch_fun(*mb_args: Args.args, **mb_kwargs: Args.kwargs) -> R:

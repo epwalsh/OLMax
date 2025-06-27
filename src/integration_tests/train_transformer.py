@@ -115,7 +115,6 @@ def train(
     @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
-        print(input_ids.shape, labels.shape)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
