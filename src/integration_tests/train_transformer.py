@@ -119,6 +119,7 @@ def train(
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
+        print(input_ids.shape, labels.shape)
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, data_sharding)
         return F.cross_entropy_loss(logits, labels) / config.num_microbatches
