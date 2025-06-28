@@ -206,11 +206,8 @@ def train(
 
         # Collect train metrics.
         assert batch_loss is not None
-        loss = batch_loss.item()
         metrics_to_log["loss"] = batch_loss
-        lr = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
-        assert isinstance(lr, Array)
-        metrics_to_log["lr"] = jax.copy_to_host_async(lr)
+        metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
         if (
             clipping_state := olmax.optim.extract_state(
                 opt_state, olmax.optim.ClipByGlobalNormState
@@ -253,6 +250,7 @@ def train(
                 for name, value in metrics_to_log.items()
             ),
         )
+        loss = batch_loss.item()
 
     gc.collect()
 

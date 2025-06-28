@@ -56,5 +56,5 @@ def extract_state(opt_state: Any, state_class: Type[S]) -> S | None:
 def extract_hyperparameter(opt_state: Any, hparam: str) -> Any:
     state = extract_state(opt_state, optax.InjectStatefulHyperparamsState)
     if state is not None:
-        return state.hyperparams[hparam]
+        return jax.copy_to_host_async(state.hyperparams[hparam])
     raise KeyError(hparam)
