@@ -33,7 +33,7 @@ def clip_grads_by_global_norm_transform(max_norm: float) -> optax.GradientTransf
         g_norm = get_global_norm(updates)
         g_norm_clamped = jnp.maximum(max_norm, g_norm)
         updates = jax.tree.map(lambda t: (t / g_norm_clamped) * max_norm, updates)
-        return updates, ClipByGlobalNormState(global_norm=g_norm)
+        return updates, ClipByGlobalNormState(global_norm=jax.copy_to_host_async(g_norm))
 
     return optax.GradientTransformation(init_fn, update_fn)
 

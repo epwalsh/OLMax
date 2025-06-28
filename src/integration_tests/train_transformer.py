@@ -181,7 +181,7 @@ def train(
         # Bookkeeping.
         batch_start = time.perf_counter()
         step += 1
-        metrics_to_log: dict[str, float | int] = {}
+        metrics_to_log: dict[str, float | int | Array] = {}
 
         # Maybe start tracing.
         if step == 3 and config.trace_dir is not None:
@@ -204,19 +204,19 @@ def train(
                 else:
                     batch_loss += mb_loss
 
-        # Collect step metrics.
+        # Collect train metrics.
+        assert batch_loss is not None
+        loss = batch_loss.item()
+        metrics_to_log["loss"] = batch_loss
         lr = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
         assert isinstance(lr, Array)
-        metrics_to_log["lr"] = lr.item()
+        metrics_to_log["lr"] = jax.copy_to_host_async(lr)
         if (
             clipping_state := olmax.optim.extract_state(
                 opt_state, olmax.optim.ClipByGlobalNormState
             )
         ) is not None:
-            metrics_to_log["g_norm"] = clipping_state.global_norm.item()
-
-        assert batch_loss is not None
-        loss = batch_loss.item()
+            metrics_to_log["g_norm"] = clipping_state.global_norm
 
         if step == 1:
             gc.collect()

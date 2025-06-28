@@ -3,9 +3,8 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any, Type, cast
+from typing import Any, Type
 
-import equinox as eqx
 import rich
 from rich.console import Console, ConsoleRenderable
 from rich.highlighter import NullHighlighter
@@ -134,8 +133,7 @@ def bytes_to_mib(b: int) -> float:
 
 
 def format_scalar(value: Scalar) -> str:
-    if eqx.is_array(value):
-        value = cast(Array, value)
+    if isinstance(value, Array):
         assert value.ndim == 0
         value = value.item()
 
