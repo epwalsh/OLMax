@@ -113,6 +113,7 @@ def train(
     @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+        # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
@@ -128,6 +129,7 @@ def train(
         labels: Array,
         opt_state: optax.OptState,
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
@@ -137,6 +139,7 @@ def train(
         else:
             model_with_compute_dtype = model
 
+        # Compute loss and gradients.
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
 
         # Cast grads to param dtype.
@@ -146,11 +149,17 @@ def train(
 
         # Take optimizer step.
         with jax.named_scope("optim_step"):
+            # Prepare updates.
             updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+
+            # Reinforce sharding constraints.
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
+            # Apply updates.
             model = eqx.apply_updates(model, updates)
+
+            # Reinforce sharding constraints.
             model = jax.lax.with_sharding_constraint(model, param_sharding)
 
         return model, opt_state, jax.copy_to_host_async(loss)
@@ -207,12 +216,14 @@ def train(
         # Collect train metrics.
         assert batch_loss is not None
         metrics_to_log["loss"] = batch_loss
+        # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
         metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
         if (
             clipping_state := olmax.optim.extract_state(
                 opt_state, olmax.optim.ClipByGlobalNormState
             )
         ) is not None:
+            # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
             metrics_to_log["g_norm"] = clipping_state.global_norm
 
         if step == 1:
