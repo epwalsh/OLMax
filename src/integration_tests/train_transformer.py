@@ -340,6 +340,11 @@ def _parse_args():
         action="store_true",
         help="""Print out the model structure after initialization.""",
     )
+    # Some configuration depend on others, so it's better to parse those base fields here instead of
+    # as overrides.
+    parser.add_argument(
+        "--steps", type=int, default=100, help="""The number of steps to train for."""
+    )
 
     opts, overrides = parser.parse_known_args()
     return opts, overrides
@@ -367,7 +372,7 @@ def main():
         optim=olmax.optim.AdamWConfig(
             lr=olmax.optim.WarmupCosineDecaySchedule(
                 warmup_steps=20,
-                decay_steps=80,
+                decay_steps=opts.steps - 20,
                 peak_value=learning_rate,
                 init_value=learning_rate * 0.01,
                 end_value=learning_rate * 0.01,
@@ -377,6 +382,7 @@ def main():
         sequence_length=recipe.sequence_length,
         device_microbatch_size=recipe.device_microbatch_size,
         env=recipe.env,
+        steps=opts.steps,
     )
     config = parse_config_from_args(config, args=overrides)
 
