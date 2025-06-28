@@ -105,11 +105,10 @@ def train(
     )
 
     log.info("Initializing optimizer...")
-    optim, opt_state = config.optim.build(model)
+    optim, opt_state = config.optim.build(model, config.num_microbatches)
 
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
-    accum_sharding = (config.mesh.get_replicated_sharding(), param_sharding)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
@@ -121,22 +120,13 @@ def train(
 
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, data_sharding)
-        return F.cross_entropy_loss(logits, labels) / config.num_microbatches
-
-    @eqx.filter_jit(donate="all-except-first")
-    def train_microbatch(model: nn.Transformer, input_ids: Array, labels: Array, accum):
-        loss, grads = compute_loss(model, input_ids, labels)
-        # Cast grads to param dtype.
-        if compute_dtype != param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
-        accum = jax.tree.map(jnp.add, accum, (loss, grads))
-        accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
-        return accum
+        return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
     def train_step(
         model: nn.Transformer,
-        batch: list[tuple[Array, Array]],
+        input_ids: Array,
+        labels: Array,
         opt_state: optax.OptState,
     ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
@@ -150,21 +140,19 @@ def train(
         else:
             model_with_compute_dtype = model
 
-        # Accumulate loss and gradients over micro-batches.
-        accum_shape = eqx.filter_eval_shape(compute_loss, model_with_compute_dtype, *batch[0])
-        accum = olmax.jax_utils.zeros_like_tree(accum_shape, param_dtype)
-        accum = jax.lax.with_sharding_constraint(accum, accum_sharding)
-        for input_ids, labels in batch:
-            accum = train_microbatch(model_with_compute_dtype, input_ids, labels, accum)
+        loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+        step_metrics["loss"] = jax.copy_to_host_async(loss) / config.num_microbatches
 
-        loss, grads = accum
-        step_metrics["loss"] = jax.copy_to_host_async(loss)
+        # Cast grads to param dtype.
+        if compute_dtype != param_dtype:
+            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
+        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Maybe clip gradient norm.
         if config.max_grad_norm is not None:
             with jax.named_scope("clip_grads"):
                 grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, config.max_grad_norm)
-                step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
+                step_metrics["g_norm"] = jax.copy_to_host_async(g_norm) / config.num_microbatches
 
         # Take optimizer step.
         with jax.named_scope("optim_step"):
@@ -221,13 +209,16 @@ def train(
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            array_metrics, model, opt_state = train_step(model, batch, opt_state)
-            for key, arr in array_metrics.items():
-                value = arr.item()
-                if key == "loss":
-                    loss = value
-                metrics_to_log[key] = value
+            for input_ids, labels in batch:
+                array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
+                for key, arr in array_metrics.items():
+                    value = arr.item()
+                    if key not in metrics_to_log:
+                        metrics_to_log[key] = value
+                    elif key in ("loss", "g_norm"):
+                        metrics_to_log[key] += value
 
+        loss = metrics_to_log["loss"]
         if step == 1:
             gc.collect()
 

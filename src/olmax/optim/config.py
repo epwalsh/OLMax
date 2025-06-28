@@ -86,7 +86,9 @@ class OptimConfig(Registrable):
         return AdamWConfig(*args, **kwargs)
 
     @abstractmethod
-    def build(self, model: PyTree) -> tuple[optax.GradientTransformation, optax.OptState]:
+    def build(
+        self, model: PyTree, num_grad_accumulation_steps: int = 1
+    ) -> tuple[optax.GradientTransformation | optax.MultiSteps, optax.OptState]:
         raise NotImplementedError
 
     @classmethod
@@ -131,7 +133,9 @@ class AdamWConfig(OptimConfig):
     weight_decay: float = 1e-4
     no_decay_modules: list[str] | None = None
 
-    def build(self, model: PyTree) -> tuple[optax.GradientTransformation, optax.OptState]:
+    def build(
+        self, model: PyTree, num_grad_accumulation_steps: int = 1
+    ) -> tuple[optax.GradientTransformation | optax.MultiSteps, optax.OptState]:
         weight_decay_mask: PyTree | None = None
         if self.no_decay_modules:
             weight_decay_mask = self.build_weight_decay_mask(model, self.no_decay_modules)
@@ -144,5 +148,8 @@ class AdamWConfig(OptimConfig):
             weight_decay=self.weight_decay,
             mask=weight_decay_mask,
         )
+
+        if num_grad_accumulation_steps > 1:
+            optim = optax.MultiSteps(optim, num_grad_accumulation_steps)
 
         return optim, optim.init(model)
