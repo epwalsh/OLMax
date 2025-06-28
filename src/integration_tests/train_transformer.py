@@ -41,7 +41,6 @@ class IntegrationTestConfig:
 
     steps: int = 100
     num_microbatches: int = 2
-    max_grad_norm: float | None = None
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -128,11 +127,9 @@ def train(
         input_ids: Array,
         labels: Array,
         opt_state: optax.OptState,
-    ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
+    ) -> tuple[nn.Transformer, optax.OptState, Array]:
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-        step_metrics: dict[str, Array] = {}
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -141,18 +138,11 @@ def train(
             model_with_compute_dtype = model
 
         loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-        step_metrics["loss"] = jax.copy_to_host_async(loss) / config.num_microbatches
 
         # Cast grads to param dtype.
         if compute_dtype != param_dtype:
             grads = olmax.jax_utils.cast_tree(grads, param_dtype)
         grads = jax.lax.with_sharding_constraint(grads, param_sharding)
-
-        # Maybe clip gradient norm.
-        if config.max_grad_norm is not None:
-            with jax.named_scope("clip_grads"):
-                grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, config.max_grad_norm)
-                step_metrics["g_norm"] = jax.copy_to_host_async(g_norm) / config.num_microbatches
 
         # Take optimizer step.
         with jax.named_scope("optim_step"):
@@ -163,14 +153,7 @@ def train(
             model = eqx.apply_updates(model, updates)
             model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        lr: Array
-        if isinstance(opt_state, optax.MultiStepsState):
-            lr = opt_state.inner_opt_state.hyperparams["learning_rate"]
-        else:
-            lr = opt_state.hyperparams["learning_rate"]  # type: ignore
-        step_metrics["lr"] = jax.copy_to_host_async(lr)
-
-        return step_metrics, model, opt_state
+        return model, opt_state, jax.copy_to_host_async(loss)
 
     dist.barrier("pre-train-loop")
     log.info("Starting training...")
@@ -212,16 +195,29 @@ def train(
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
+            batch_loss: Array | None = None
             for input_ids, labels in batch:
-                array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
-                for key, arr in array_metrics.items():
-                    value = arr.item()
-                    if key not in metrics_to_log:
-                        metrics_to_log[key] = value
-                    elif key in ("loss", "g_norm"):
-                        metrics_to_log[key] += value
+                model, opt_state, mb_loss = train_step(model, input_ids, labels, opt_state)
+                mb_loss = mb_loss / config.num_microbatches
+                if batch_loss is None:
+                    batch_loss = mb_loss
+                else:
+                    batch_loss += mb_loss
 
-        loss = metrics_to_log["loss"]
+        # Collect step metrics.
+        lr = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
+        assert isinstance(lr, Array)
+        metrics_to_log["lr"] = lr.item()
+        if (
+            clipping_state := olmax.optim.extract_state(
+                opt_state, olmax.optim.ClipByGlobalNormState
+            )
+        ) is not None:
+            metrics_to_log["g_norm"] = clipping_state.global_norm.item()
+
+        assert batch_loss is not None
+        loss = batch_loss.item()
+
         if step == 1:
             gc.collect()
 

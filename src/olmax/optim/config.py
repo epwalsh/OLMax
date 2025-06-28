@@ -11,6 +11,7 @@ import optax
 from dataclass_extensions import Registrable
 
 from ..types import PyTree
+from .utils import clip_grads_by_global_norm_transform
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +133,7 @@ class AdamWConfig(OptimConfig):
     eps: float = 1e-8
     weight_decay: float = 1e-4
     no_decay_modules: list[str] | None = None
+    max_grad_norm: float | None = None
 
     def build(
         self, model: PyTree, num_grad_accumulation_steps: int = 1
@@ -148,6 +150,9 @@ class AdamWConfig(OptimConfig):
             weight_decay=self.weight_decay,
             mask=weight_decay_mask,
         )
+
+        if self.max_grad_norm is not None:
+            optim = optax.chain(clip_grads_by_global_norm_transform(self.max_grad_norm), optim)
 
         if num_grad_accumulation_steps > 1:
             optim = optax.MultiSteps(optim, num_grad_accumulation_steps)

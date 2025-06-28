@@ -6,7 +6,13 @@ from .config import (
     WarmupCosineDecaySchedule,
     WarmupStableDecaySchedule,
 )
-from .utils import clip_grads_by_global_norm
+from .utils import (
+    ClipByGlobalNormState,
+    clip_grads_by_global_norm,
+    clip_grads_by_global_norm_transform,
+    extract_hyperparameter,
+    extract_state,
+)
 
 __all__ = [
     "OptimConfig",
@@ -15,5 +21,9 @@ __all__ = [
     "ConstantSchedule",
     "WarmupStableDecaySchedule",
     "WarmupCosineDecaySchedule",
+    "ClipByGlobalNormState",
     "clip_grads_by_global_norm",
+    "clip_grads_by_global_norm_transform",
+    "extract_state",
+    "extract_hyperparameter",
 ]
