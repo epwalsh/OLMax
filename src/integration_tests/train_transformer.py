@@ -163,9 +163,12 @@ def train(
             model = eqx.apply_updates(model, updates)
             model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        step_metrics["lr"] = jax.copy_to_host_async(
-            opt_state.hyperparams["learning_rate"]  # pyright: ignore
-        )
+        lr: Array
+        if isinstance(opt_state, optax.MultiStepsState):
+            lr = opt_state.inner_opt_state.hyperparams["learning_rate"]
+        else:
+            lr = opt_state.hyperparams["learning_rate"]  # type: ignore
+        step_metrics["lr"] = jax.copy_to_host_async(lr)
 
         return step_metrics, model, opt_state
 
