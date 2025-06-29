@@ -140,12 +140,13 @@ def train(
             model_with_compute_dtype = model
 
         # Compute loss and gradients.
-        loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+        with jax.named_scope("compute_loss_and_grads"):
+            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
         if compute_dtype != param_dtype:
             grads = olmax.jax_utils.cast_tree(grads, param_dtype)
-        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Take optimizer step.
         with jax.named_scope("optim_step"):
