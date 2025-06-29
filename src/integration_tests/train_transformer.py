@@ -162,7 +162,7 @@ def train(
             # Reinforce sharding constraints.
             model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        return model, opt_state, jax.copy_to_host_async(loss)
+        return model, opt_state, loss
 
     dist.barrier("pre-train-loop")
     log.info("Starting training...")
@@ -214,6 +214,7 @@ def train(
                     batch_loss += mb_loss
 
         # Collect train metrics.
+        batch_loss = jax.copy_to_host_async(batch_loss)
         assert batch_loss is not None
         metrics_to_log["loss"] = batch_loss
         # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
