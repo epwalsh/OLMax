@@ -142,6 +142,7 @@ def train(
         # Compute loss and gradients.
         with jax.named_scope("compute_loss_and_grads"):
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+            loss = jax.copy_to_host_async(loss)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
@@ -205,19 +206,12 @@ def train(
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            batch_loss: Array | None = None
+            batch_losses: list[Array] = []
             for input_ids, labels in batch:
                 model, opt_state, mb_loss = train_step(model, input_ids, labels, opt_state)
-                mb_loss = mb_loss / config.num_microbatches
-                if batch_loss is None:
-                    batch_loss = mb_loss
-                else:
-                    batch_loss += mb_loss
+                batch_losses.append(mb_loss)
 
         # Collect train metrics.
-        batch_loss = jax.copy_to_host_async(batch_loss)
-        assert batch_loss is not None
-        metrics_to_log["loss"] = batch_loss
         # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
         metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
         if (
@@ -256,6 +250,8 @@ def train(
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
         # Log metrics.
+        loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
+        metrics_to_log["loss"] = loss
         log.info(
             f"[step {step:03d}] "
             + ", ".join(
@@ -263,7 +259,6 @@ def train(
                 for name, value in metrics_to_log.items()
             ),
         )
-        loss = batch_loss.item()
 
     gc.collect()
 
