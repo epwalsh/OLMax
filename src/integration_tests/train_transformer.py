@@ -40,7 +40,7 @@ class IntegrationTestConfig:
     )
 
     steps: int = 100
-    max_grad_norm: float | None = None
+    num_microbatches: int = 1
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -58,7 +58,7 @@ def train(
     show_model: bool = False,
 ) -> tuple[float, int, int]:
     recipe_name = recipe_type.name
-    batch_size_per_device = config.device_microbatch_size
+    batch_size_per_device = config.device_microbatch_size * config.num_microbatches
     instances_per_device = batch_size_per_device // config.sequence_length
     global_batch_size = batch_size_per_device * dist.get_global_device_count()
     global_batch_size_instances = instances_per_device * dist.get_global_device_count()
@@ -70,6 +70,10 @@ def train(
     log.info(
         f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
         f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
+    )
+    log.info(
+        f"Using per-device micro-batch size of {config.device_microbatch_size:,d} tokens, "
+        f"which is {instances_per_device//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
@@ -100,35 +104,37 @@ def train(
     )
 
     log.info("Initializing optimizer...")
-    optim, opt_state = config.optim.build(model)
+    optim, opt_state = config.optim.build(model, config.num_microbatches)
 
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
+    @jax.named_scope("compute_loss")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+        # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
-        with jax.named_scope("compute_loss"):
-            logits = model(input_ids)
-            logits = jax.lax.with_sharding_constraint(logits, data_sharding)
-            loss = F.cross_entropy_loss(logits, labels)
+        # Get predicted logits.
+        logits = model(input_ids)
+        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
 
-        return loss
+        # Compute and reduce loss.
+        return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
     def train_step(
-        model: nn.Transformer, input_ids: Array, labels: Array, opt_state: optax.OptState
-    ) -> tuple[dict[str, Array], nn.Transformer, optax.OptState]:
+        model: nn.Transformer,
+        input_ids: Array,
+        labels: Array,
+        opt_state: optax.OptState,
+    ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-        step_metrics: dict[str, Array] = {}
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -136,37 +142,32 @@ def train(
         else:
             model_with_compute_dtype = model
 
-        # Calculate loss and gradients.
+        # Compute loss and gradients.
         with jax.named_scope("compute_loss_and_grads"):
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+            loss = jax.copy_to_host_async(loss)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
-            step_metrics["loss"] = jax.copy_to_host_async(loss)
 
-        # Cast grads back to param dtype.
+        # Cast grads to param dtype.
         if compute_dtype != param_dtype:
             grads = olmax.jax_utils.cast_tree(grads, param_dtype)
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
-
-        # Maybe clip gradient norm.
-        if config.max_grad_norm is not None:
-            with jax.named_scope("clip_grads"):
-                grads, g_norm = olmax.optim.clip_grads_by_global_norm(grads, config.max_grad_norm)
-                step_metrics["g_norm"] = jax.copy_to_host_async(g_norm)
 
         # Take optimizer step.
         with jax.named_scope("optim_step"):
+            # Prepare updates.
             updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+
+            # Reinforce sharding constraints.
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
+            # Apply updates.
             model = eqx.apply_updates(model, updates)
+
+            # Reinforce sharding constraints.
             model = jax.lax.with_sharding_constraint(model, param_sharding)
 
-        step_metrics["lr"] = jax.copy_to_host_async(
-            opt_state.hyperparams["learning_rate"]  # pyright: ignore
-        )
-
-        return step_metrics, model, opt_state
+        return model, opt_state, loss
 
     dist.barrier("pre-train-loop")
     log.info("Starting training...")
@@ -187,13 +188,14 @@ def train(
         global_batch_size_instances=global_batch_size_instances,
         total_batches=config.steps,
         mesh_resource=config.mesh,
+        num_microbatches=config.num_microbatches,
     )
 
     while True:
         # Bookkeeping.
         batch_start = time.perf_counter()
         step += 1
-        metrics_to_log: dict[str, float | int] = {}
+        metrics_to_log: dict[str, float | int | Array] = {}
 
         # Maybe start tracing.
         if step == 3 and config.trace_dir is not None:
@@ -201,18 +203,27 @@ def train(
 
         # Get batch.
         try:
-            input_ids, labels = next(batches)
+            batch = next(batches)
         except StopIteration:
             break
 
         # Do a step.
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            array_metrics, model, opt_state = train_step(model, input_ids, labels, opt_state)
-            for key, arr in array_metrics.items():
-                value = arr.item()
-                if key == "loss":
-                    loss = value
-                metrics_to_log[key] = value
+            batch_losses: list[Array] = []
+            for input_ids, labels in batch:
+                model, opt_state, mb_loss = train_step(model, input_ids, labels, opt_state)
+                batch_losses.append(mb_loss)
+
+        # Collect train metrics.
+        # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
+        metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
+        if (
+            clipping_state := olmax.optim.extract_state(
+                opt_state, olmax.optim.ClipByGlobalNormState
+            )
+        ) is not None:
+            # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
+            metrics_to_log["g_norm"] = clipping_state.global_norm
 
         # Maybe record memory metrics.
         if step % 5 == 0:
@@ -239,6 +250,8 @@ def train(
             running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
         # Log metrics.
+        loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
+        metrics_to_log["loss"] = loss
         log.info(
             f"[step {step:03d}] "
             + ", ".join(
@@ -335,6 +348,11 @@ def _parse_args():
         action="store_true",
         help="""Print out the model structure after initialization.""",
     )
+    # Some configuration depend on others, so it's better to parse those base fields here instead of
+    # as overrides.
+    parser.add_argument(
+        "--steps", type=int, default=100, help="""The number of steps to train for."""
+    )
 
     opts, overrides = parser.parse_known_args()
     return opts, overrides
@@ -362,7 +380,7 @@ def main():
         optim=olmax.optim.AdamWConfig(
             lr=olmax.optim.WarmupCosineDecaySchedule(
                 warmup_steps=20,
-                decay_steps=80,
+                decay_steps=opts.steps - 20,
                 peak_value=learning_rate,
                 init_value=learning_rate * 0.01,
                 end_value=learning_rate * 0.01,
@@ -372,6 +390,7 @@ def main():
         sequence_length=recipe.sequence_length,
         device_microbatch_size=recipe.device_microbatch_size,
         env=recipe.env,
+        steps=opts.steps,
     )
     config = parse_config_from_args(config, args=overrides)
 

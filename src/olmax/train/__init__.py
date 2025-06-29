@@ -6,6 +6,8 @@ from ..env import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
 from ..jax_utils import get_cudnn_version
 from ..types import *
 
+__all__ = ["prepare_training_environment"]
+
 log = logging.getLogger(__name__)
 
 
