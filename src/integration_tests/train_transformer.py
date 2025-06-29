@@ -131,6 +131,8 @@ def train(
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
+        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
+        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         # Cast model to lower precision compute dtype.
@@ -221,9 +223,6 @@ def train(
         ) is not None:
             # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
             metrics_to_log["g_norm"] = clipping_state.global_norm
-
-        if step == 1:
-            gc.collect()
 
         # Maybe record memory metrics.
         if step % 5 == 0:
