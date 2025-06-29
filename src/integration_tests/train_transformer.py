@@ -40,7 +40,7 @@ class IntegrationTestConfig:
     )
 
     steps: int = 100
-    num_microbatches: int = 2
+    num_microbatches: int = 1
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -118,8 +118,11 @@ def train(
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
         labels = jax.lax.with_sharding_constraint(labels, data_sharding)
 
+        # Get predicted logits.
         logits = model(input_ids)
         logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+
+        # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
@@ -131,8 +134,6 @@ def train(
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         # Cast model to lower precision compute dtype.
