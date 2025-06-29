@@ -140,28 +140,28 @@ def train(
             model_with_compute_dtype = model
 
         # Compute loss and gradients.
-        #  with jax.named_scope("compute_loss_and_grads"):
-        loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+        with jax.named_scope("compute_loss_and_grads"):
+            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
         if compute_dtype != param_dtype:
             grads = olmax.jax_utils.cast_tree(grads, param_dtype)
 
         # Take optimizer step.
-        #  with jax.named_scope("optim_step"):
-        # Prepare updates.
-        updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+        with jax.named_scope("optim_step"):
+            # Prepare updates.
+            updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
 
-        # Reinforce sharding constraints.
-        updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+            # Reinforce sharding constraints.
+            updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+            opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
-        # Apply updates.
-        model = eqx.apply_updates(model, updates)
+            # Apply updates.
+            model = eqx.apply_updates(model, updates)
 
-        # Reinforce sharding constraints.
-        model = jax.lax.with_sharding_constraint(model, param_sharding)
+            # Reinforce sharding constraints.
+            model = jax.lax.with_sharding_constraint(model, param_sharding)
 
         return model, opt_state, loss
 
