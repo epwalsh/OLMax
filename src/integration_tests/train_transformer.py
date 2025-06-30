@@ -263,9 +263,9 @@ def train(
                     ),
                 )
 
-                # Maybe stop tracing.
-                if step == 5 and config.trace_dir is not None:
-                    jax.profiler.stop_trace()
+        # Maybe stop tracing.
+        if step == 5 and config.trace_dir is not None:
+            jax.profiler.stop_trace()
 
     gc.collect()
 
@@ -293,6 +293,14 @@ def train(
             f"running best TPS = {int(running_avg_tps_best):,d}, "
             f"peak mem usage (MiB) = {peak_mib_in_use:,d}"
         )
+        if (
+            config.trace_dir is not None
+            and (result_dataset_id := beaker_runtime.workload.result_dataset_id) is not None
+        ):
+            log.info(
+                "You can download the profiler results by running:\n"
+                f"'beaker dataset fetch {result_dataset_id} --output=traces/ --prefix=plugins'"
+            )
 
     gc.enable()
     return loss, int(running_avg_tps_best), peak_mib_in_use
