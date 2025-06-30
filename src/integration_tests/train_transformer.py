@@ -126,7 +126,8 @@ def train(
         return F.cross_entropy_loss(logits, labels)
 
     @eqx.filter_jit(donate="all")
-    def train_step(
+    @jax.named_scope("process_microbatch")
+    def process_microbatch(
         model: nn.Transformer,
         input_ids: Array,
         labels: Array,
@@ -208,57 +209,63 @@ def train(
             except StopIteration:
                 break
 
-            # Do a step.
+            # Do a step, one micro-batch at a time.
             batch_losses: list[Array] = []
             for input_ids, labels in batch:
-                model, opt_state, mb_loss = train_step(model, input_ids, labels, opt_state)
+                model, opt_state, mb_loss = process_microbatch(model, input_ids, labels, opt_state)
                 batch_losses.append(mb_loss)
 
-            # Collect train metrics.
-            # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
-            metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
-            if (
-                clipping_state := olmax.optim.extract_state(
-                    opt_state, olmax.optim.ClipByGlobalNormState
+            # Collect and log metrics.
+            with jax.profiler.TraceAnnotation("bookkeeping"):
+                # Collect train metrics.
+                # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
+                metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(
+                    opt_state, "learning_rate"
                 )
-            ) is not None:
-                # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
-                metrics_to_log["g_norm"] = clipping_state.global_norm
+                if (
+                    clipping_state := olmax.optim.extract_state(
+                        opt_state, olmax.optim.ClipByGlobalNormState
+                    )
+                ) is not None:
+                    # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
+                    metrics_to_log["g_norm"] = clipping_state.global_norm
 
-            # Maybe record memory metrics.
-            if step % 5 == 0:
-                peak_mib_in_use = int(
-                    olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+                # Maybe record memory metrics.
+                if step % 5 == 0:
+                    peak_mib_in_use = int(
+                        olmax.utils.bytes_to_mib(
+                            olmax.jax_utils.get_peak_local_device_memory_usage()
+                        )
+                    )
+                    metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
+
+                # Record throughput.
+                batch_end = time.perf_counter()
+                tps = batch_size_per_device / (batch_end - batch_start)
+                metrics_to_log["TPS"] = int(tps)
+                if step > 5:
+                    running_avg_tps.append(tps)
+                    all_steps_tps.append(tps)
+                if len(running_avg_tps) > running_avg_tps_count:
+                    running_avg_tps.popleft()
+                if len(running_avg_tps) >= running_avg_tps_count:
+                    avg_tps = sum(running_avg_tps) / len(running_avg_tps)
+                    running_avg_tps_best = max(running_avg_tps_best, avg_tps)
+
+                # Log metrics.
+                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
+                metrics_to_log["loss"] = loss
+                log.info(
+                    f"[step {step:03d}] "
+                    + ", ".join(
+                        f"{name} = {olmax.utils.format_scalar(value)}"
+                        for name, value in metrics_to_log.items()
+                    ),
                 )
-                metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
-            # Record throughput.
-            batch_end = time.perf_counter()
-            tps = batch_size_per_device / (batch_end - batch_start)
-            metrics_to_log["TPS"] = int(tps)
-            if step > 5:
-                running_avg_tps.append(tps)
-                all_steps_tps.append(tps)
-            if len(running_avg_tps) > running_avg_tps_count:
-                running_avg_tps.popleft()
-            if len(running_avg_tps) >= running_avg_tps_count:
-                avg_tps = sum(running_avg_tps) / len(running_avg_tps)
-                running_avg_tps_best = max(running_avg_tps_best, avg_tps)
-
-            # Log metrics.
-            loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
-            metrics_to_log["loss"] = loss
-            log.info(
-                f"[step {step:03d}] "
-                + ", ".join(
-                    f"{name} = {olmax.utils.format_scalar(value)}"
-                    for name, value in metrics_to_log.items()
-                ),
-            )
-
-            # Maybe stop tracing.
-            if step == 5 and config.trace_dir is not None:
-                jax.profiler.stop_trace()
+                # Maybe stop tracing.
+                if step == 5 and config.trace_dir is not None:
+                    jax.profiler.stop_trace()
 
     gc.collect()
 
