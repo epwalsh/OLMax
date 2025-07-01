@@ -43,7 +43,7 @@ All run below shared these common trainer settings:
   python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=llama_like_7B
   ```
-- [12,217 TPS/GPU](https://beaker.org/ex/01JYFJ7KQ0CE6WJ1HXWQ40Y88B) on 1 Ceres H100 node with full FSDP, micro-batch size of 2 instances/GPU
+- [12,375 TPS/GPU](https://beaker.org/ex/01JZ1QKWY9E43BC0VYDVF26QKN) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --gpu-type=h100 -- \
     python src/integration_tests/train_transformer.py --recipe=llama_like_7B
