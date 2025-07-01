@@ -238,7 +238,7 @@ def train(
                     loss = typing.cast(Array, metrics_to_log["loss"]).item()
                 metrics_per_step.clear()
 
-            # Collect and log metrics.
+            # Collect metrics from this step.
             with jax.profiler.TraceAnnotation("collect_metrics"):
                 # Collect train metrics.
                 # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
@@ -273,12 +273,11 @@ def train(
                     avg_tps = sum(running_avg_tps) / len(running_avg_tps)
                     running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
-                metrics_per_step[step] = step_metrics
-
         # Maybe stop tracing.
         if step == 5 and config.trace_dir is not None:
             jax.profiler.stop_trace()
 
+        metrics_per_step[step] = step_metrics
         batch_start = batch_end
 
     gc.collect()
