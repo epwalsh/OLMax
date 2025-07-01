@@ -203,7 +203,8 @@ def train(
         # Bookkeeping.
         batch_start = time.perf_counter()
         step += 1
-        metrics_to_log: dict[str, float | int | Array] = {}
+        step_metrics: dict[str, Array] = {}
+        metrics_to_log: dict[str, float | int] = {}
 
         # Maybe start tracing.
         if step == 3 and config.trace_dir is not None:
@@ -228,29 +229,28 @@ def train(
             with jax.profiler.TraceAnnotation("bookkeeping"):
                 # Collect train metrics.
                 # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
-                metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(
-                    opt_state, "learning_rate"
-                )
+                step_metrics["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
                 # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
                 if (
                     clipping_state := olmax.optim.extract_state(
                         opt_state, olmax.optim.ClipByGlobalNormState
                     )
                 ) is not None:
-                    metrics_to_log["g_norm"] = clipping_state.global_norm
+                    step_metrics["g_norm"] = clipping_state.global_norm
 
-                # Maybe record memory metrics.
-                if step % 5 == 0:
-                    peak_mib_in_use = int(
-                        olmax.utils.bytes_to_mib(
-                            olmax.jax_utils.get_peak_local_device_memory_usage()
-                        )
-                    )
-                    metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
+                # Record memory statistics.
+                peak_mib_in_use = int(
+                    olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+                )
+                metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
                 # Reduce loss over micro-batches.
                 loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
                 metrics_to_log["loss"] = loss
+
+                # Move all 'step_metrics' to host.
+                for k, v in step_metrics.items():
+                    metrics_to_log[k] = v.item()
 
                 # Record throughput.
                 batch_end = time.perf_counter()
@@ -265,7 +265,7 @@ def train(
                     avg_tps = sum(running_avg_tps) / len(running_avg_tps)
                     running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
-                # Log metrics.
+                # And finally log the metrics to the console.
                 log.info(
                     f"[step {step:03d}] "
                     + ", ".join(
