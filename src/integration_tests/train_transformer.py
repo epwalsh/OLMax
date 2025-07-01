@@ -222,12 +222,12 @@ def train(
                 metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(
                     opt_state, "learning_rate"
                 )
+                # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
                 if (
                     clipping_state := olmax.optim.extract_state(
                         opt_state, olmax.optim.ClipByGlobalNormState
                     )
                 ) is not None:
-                    # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
                     metrics_to_log["g_norm"] = clipping_state.global_norm
 
                 # Maybe record memory metrics.
