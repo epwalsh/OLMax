@@ -285,9 +285,8 @@ def train(
         metrics_per_step[step] = step_metrics
         batch_start = batch_end
 
+    # Log left-over metrics.
     log_metrics()
-
-    gc.collect()
 
     # Collect final metrics.
     assert loss is not None
@@ -322,7 +321,10 @@ def train(
                 f"'beaker dataset fetch {result_dataset_id} --output=traces/ --prefix=plugins'"
             )
 
+    # Reset garbage collection (good practice).
+    gc.collect()
     gc.enable()
+
     return loss, int(running_avg_tps_best), peak_mib_in_use
 
 
