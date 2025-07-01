@@ -244,14 +244,13 @@ def train(
                 )
                 metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
-                if step % 5 == 0:
-                    # Reduce loss over micro-batches.
-                    loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
-                    metrics_to_log["loss"] = loss
+                # Reduce loss over micro-batches.
+                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
+                metrics_to_log["loss"] = loss
 
-                    # Move all 'step_metrics' to host.
-                    for k, v in step_metrics.items():
-                        metrics_to_log[k] = v.item()
+                # Move all 'step_metrics' to host.
+                for k, v in step_metrics.items():
+                    metrics_to_log[k] = v.item()
 
                 # Record throughput.
                 batch_end = time.perf_counter()
