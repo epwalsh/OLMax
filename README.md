@@ -43,7 +43,7 @@ All run below shared these common trainer settings:
   python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=llama_like_7B
   ```
-- [12,489 TPS/GPU](https://beaker.org/ex/01JZ1RNS1V1PF3ZQE5A39C87VJ) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
+- [12,597 TPS/GPU](https://beaker.org/ex/01JZ1TRYXKNYQVHANM168D234X) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --gpu-type=h100 -- \
     python src/integration_tests/train_transformer.py --recipe=llama_like_7B
@@ -61,7 +61,7 @@ All run below shared these common trainer settings:
   python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=olmo2_7B
   ```
-- [11,378 TPS/GPU](https://beaker.org/ex/01JZ1SK54CN3R6BBYHWCPRV3EN) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
+- [11,535 TPS/GPU](https://beaker.org/ex/01JZ1V17B7G86DJ8GY9SANRX1F) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --gpu-type=h100 -- \
     python src/integration_tests/train_transformer.py --recipe=olmo2_7B
