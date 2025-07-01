@@ -153,7 +153,6 @@ def train(
         # Compute loss and gradients.
         with jax.named_scope("compute_loss_and_grads"):
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-            loss = jax.copy_to_host_async(loss)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
