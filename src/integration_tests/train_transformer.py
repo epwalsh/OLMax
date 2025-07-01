@@ -1,5 +1,6 @@
 import argparse
 import dataclasses
+import functools as ft
 import gc
 import logging
 import sys
@@ -109,6 +110,7 @@ def train(
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
+    params, static = eqx.partition(model, eqx.is_array)
 
     @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
@@ -125,14 +127,17 @@ def train(
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
 
-    @eqx.filter_jit(donate="all")
+    #  @eqx.filter_jit(donate="all")
+    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
     @jax.named_scope("process_microbatch")
     def process_microbatch(
-        model: nn.Transformer,
+        params: nn.Transformer,
         input_ids: Array,
         labels: Array,
         opt_state: optax.OptState,
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        model = eqx.combine(params, static)
+
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
@@ -156,19 +161,19 @@ def train(
         # Take optimizer step.
         with jax.named_scope("optim_step"):
             # Prepare updates.
-            updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+            updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
 
             # Reinforce sharding constraints.
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
             # Apply updates.
-            model = eqx.apply_updates(model, updates)
+            params = eqx.apply_updates(params, updates)
 
             # Reinforce sharding constraints.
-            model = jax.lax.with_sharding_constraint(model, param_sharding)
+            params = jax.lax.with_sharding_constraint(params, param_sharding)
 
-        return model, opt_state, loss
+        return params, opt_state, loss
 
     dist.barrier("pre-train-loop")
     log.info("Starting training...")
@@ -212,7 +217,9 @@ def train(
             # Do a step, one micro-batch at a time.
             batch_losses: list[Array] = []
             for input_ids, labels in batch:
-                model, opt_state, mb_loss = process_microbatch(model, input_ids, labels, opt_state)
+                params, opt_state, mb_loss = process_microbatch(
+                    params, input_ids, labels, opt_state
+                )
                 batch_losses.append(mb_loss)
 
             # Collect and log metrics.
