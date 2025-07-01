@@ -1,5 +1,6 @@
 import argparse
 import dataclasses
+import functools as ft
 import gc
 import logging
 import sys
@@ -103,11 +104,13 @@ def train(
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
-    log.info("Initializing optimizer...")
-    optim, opt_state = config.optim.build(model, config.num_microbatches)
-
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
+
+    params, static = eqx.partition(model, eqx.is_array)
+
+    log.info("Initializing optimizer...")
+    optim, opt_state = config.optim.build(params, config.num_microbatches)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
@@ -125,14 +128,17 @@ def train(
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
 
-    @eqx.filter_jit(donate="all")
+    #  @eqx.filter_jit(donate="all")
+    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
     @jax.named_scope("process_microbatch")
     def process_microbatch(
-        model: nn.Transformer,
+        params: nn.Transformer,
         input_ids: Array,
         labels: Array,
         opt_state: optax.OptState,
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        model = eqx.combine(params, static)
+
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
@@ -156,19 +162,19 @@ def train(
         # Take optimizer step.
         with jax.named_scope("optim_step"):
             # Prepare updates.
-            updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+            updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
 
             # Reinforce sharding constraints.
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
             # Apply updates.
-            model = eqx.apply_updates(model, updates)
+            params = eqx.apply_updates(params, updates)
 
             # Reinforce sharding constraints.
-            model = jax.lax.with_sharding_constraint(model, param_sharding)
+            params = jax.lax.with_sharding_constraint(params, param_sharding)
 
-        return model, opt_state, loss
+        return params, opt_state, loss
 
     dist.barrier("pre-train-loop")
     log.info("Starting training...")
@@ -192,11 +198,12 @@ def train(
         num_microbatches=config.num_microbatches,
     )
 
+    batch_start = time.perf_counter()
     while True:
         # Bookkeeping.
-        batch_start = time.perf_counter()
         step += 1
-        metrics_to_log: dict[str, float | int | Array] = {}
+        step_metrics: dict[str, Array] = {}
+        metrics_to_log: dict[str, float | int] = {}
 
         # Maybe start tracing.
         if step == 3 and config.trace_dir is not None:
@@ -212,38 +219,43 @@ def train(
             # Do a step, one micro-batch at a time.
             batch_losses: list[Array] = []
             for input_ids, labels in batch:
-                model, opt_state, mb_loss = process_microbatch(model, input_ids, labels, opt_state)
+                params, opt_state, mb_loss = process_microbatch(
+                    params, input_ids, labels, opt_state
+                )
                 batch_losses.append(mb_loss)
 
             # Collect and log metrics.
             with jax.profiler.TraceAnnotation("bookkeeping"):
                 # Collect train metrics.
                 # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
-                metrics_to_log["lr"] = olmax.optim.extract_hyperparameter(
-                    opt_state, "learning_rate"
-                )
+                step_metrics["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
                 # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
                 if (
                     clipping_state := olmax.optim.extract_state(
                         opt_state, olmax.optim.ClipByGlobalNormState
                     )
                 ) is not None:
-                    metrics_to_log["g_norm"] = clipping_state.global_norm
+                    step_metrics["g_norm"] = clipping_state.global_norm
 
-                # Maybe record memory metrics.
-                if step % 5 == 0:
-                    peak_mib_in_use = int(
-                        olmax.utils.bytes_to_mib(
-                            olmax.jax_utils.get_peak_local_device_memory_usage()
-                        )
-                    )
-                    metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
+                # Record memory statistics.
+                peak_mib_in_use = int(
+                    olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+                )
+                metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
+
+                # Reduce loss over micro-batches.
+                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
+                metrics_to_log["loss"] = loss
+
+                # Move all 'step_metrics' to host.
+                for k, v in step_metrics.items():
+                    metrics_to_log[k] = v.item()
 
                 # Record throughput.
                 batch_end = time.perf_counter()
                 tps = batch_size_per_device / (batch_end - batch_start)
                 metrics_to_log["TPS"] = int(tps)
-                if step > 5:
+                if step > 6:
                     running_avg_tps.append(tps)
                     all_steps_tps.append(tps)
                 if len(running_avg_tps) > running_avg_tps_count:
@@ -252,9 +264,7 @@ def train(
                     avg_tps = sum(running_avg_tps) / len(running_avg_tps)
                     running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
-                # Log metrics.
-                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
-                metrics_to_log["loss"] = loss
+                # And finally log the metrics to the console.
                 log.info(
                     f"[step {step:03d}] "
                     + ", ".join(
@@ -266,6 +276,8 @@ def train(
         # Maybe stop tracing.
         if step == 5 and config.trace_dir is not None:
             jax.profiler.stop_trace()
+
+        batch_start = batch_end
 
     gc.collect()
 
