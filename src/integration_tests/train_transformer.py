@@ -248,6 +248,10 @@ def train(
                     )
                     metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
 
+                # Reduce loss over micro-batches.
+                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
+                metrics_to_log["loss"] = loss
+
                 # Record throughput.
                 batch_end = time.perf_counter()
                 tps = batch_size_per_device / (batch_end - batch_start)
@@ -262,8 +266,6 @@ def train(
                     running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
                 # Log metrics.
-                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
-                metrics_to_log["loss"] = loss
                 log.info(
                     f"[step {step:03d}] "
                     + ", ".join(
