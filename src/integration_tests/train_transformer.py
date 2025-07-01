@@ -6,7 +6,8 @@ import logging
 import sys
 import textwrap
 import time
-from collections import deque
+import typing
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 
 import equinox as eqx
@@ -187,6 +188,7 @@ def train(
     running_avg_tps: deque[float] = deque()
     running_avg_tps_best: float = 0.0
     loss: float | None = None
+    metrics_per_step: OrderedDict[int, dict[str, float | int | Array]] = OrderedDict()
 
     batches = olmax.data.utils.generate_batches_of_sequential_tokens(
         data_key,
@@ -202,8 +204,7 @@ def train(
     while True:
         # Bookkeeping.
         step += 1
-        step_metrics: dict[str, Array] = {}
-        metrics_to_log: dict[str, float | int] = {}
+        step_metrics: dict[str, float | int | Array] = {}
 
         # Maybe start tracing.
         if step == 3 and config.trace_dir is not None:
@@ -224,8 +225,21 @@ def train(
                 )
                 batch_losses.append(mb_loss)
 
+            # Log metrics from previous steps.
+            with jax.profiler.TraceAnnotation("log_metrics"):
+                for step_to_log, metrics_to_log in metrics_per_step.items():
+                    log.info(
+                        f"[step {step_to_log:03d}] "
+                        + ", ".join(
+                            f"{name} = {olmax.utils.format_scalar(value)}"
+                            for name, value in metrics_to_log.items()
+                        ),
+                    )
+                    loss = typing.cast(Array, metrics_to_log["loss"]).item()
+                metrics_per_step.clear()
+
             # Collect and log metrics.
-            with jax.profiler.TraceAnnotation("bookkeeping"):
+            with jax.profiler.TraceAnnotation("collect_metrics"):
                 # Collect train metrics.
                 # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
                 step_metrics["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
@@ -237,24 +251,19 @@ def train(
                 ) is not None:
                     step_metrics["g_norm"] = clipping_state.global_norm
 
+                # Reduce loss over micro-batches.
+                step_metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
+
                 # Record memory statistics.
                 peak_mib_in_use = int(
                     olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
                 )
-                metrics_to_log["peak mem usage (MiB)"] = peak_mib_in_use
-
-                # Reduce loss over micro-batches.
-                loss = sum([mb_loss.item() for mb_loss in batch_losses]) / len(batch_losses)
-                metrics_to_log["loss"] = loss
-
-                # Move all 'step_metrics' to host.
-                for k, v in step_metrics.items():
-                    metrics_to_log[k] = v.item()
+                step_metrics["peak mem usage (MiB)"] = peak_mib_in_use
 
                 # Record throughput.
                 batch_end = time.perf_counter()
                 tps = batch_size_per_device / (batch_end - batch_start)
-                metrics_to_log["TPS"] = int(tps)
+                step_metrics["TPS"] = int(tps)
                 if step > 6:
                     running_avg_tps.append(tps)
                     all_steps_tps.append(tps)
@@ -263,15 +272,6 @@ def train(
                 if len(running_avg_tps) >= running_avg_tps_count:
                     avg_tps = sum(running_avg_tps) / len(running_avg_tps)
                     running_avg_tps_best = max(running_avg_tps_best, avg_tps)
-
-                # And finally log the metrics to the console.
-                log.info(
-                    f"[step {step:03d}] "
-                    + ", ".join(
-                        f"{name} = {olmax.utils.format_scalar(value)}"
-                        for name, value in metrics_to_log.items()
-                    ),
-                )
 
         # Maybe stop tracing.
         if step == 5 and config.trace_dir is not None:
