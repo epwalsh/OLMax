@@ -242,13 +242,12 @@ def train(
                 # Collect train metrics.
                 # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
                 step_metrics["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
-                # NOTE: `jax.copy_to_host_async()` will have already been called on `clipping_state.global_norm`
                 if (
                     clipping_state := olmax.optim.extract_state(
                         opt_state, olmax.optim.ClipByGlobalNormState
                     )
                 ) is not None:
-                    step_metrics["g_norm"] = clipping_state.global_norm
+                    step_metrics["g_norm"] = jax.copy_to_host_async(clipping_state.global_norm)
 
                 # Reduce loss over micro-batches.
                 step_metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
