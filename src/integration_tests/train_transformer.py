@@ -256,7 +256,7 @@ def train(
                 batch_end = time.perf_counter()
                 tps = batch_size_per_device / (batch_end - batch_start)
                 metrics_to_log["TPS"] = int(tps)
-                if step > 5:
+                if step > 6:
                     running_avg_tps.append(tps)
                     all_steps_tps.append(tps)
                 if len(running_avg_tps) > running_avg_tps_count:
