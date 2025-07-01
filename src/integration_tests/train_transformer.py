@@ -199,9 +199,9 @@ def train(
         num_microbatches=config.num_microbatches,
     )
 
+    batch_start = time.perf_counter()
     while True:
         # Bookkeeping.
-        batch_start = time.perf_counter()
         step += 1
         step_metrics: dict[str, Array] = {}
         metrics_to_log: dict[str, float | int] = {}
@@ -277,6 +277,8 @@ def train(
         # Maybe stop tracing.
         if step == 5 and config.trace_dir is not None:
             jax.profiler.stop_trace()
+
+        batch_start = batch_end
 
     gc.collect()
 
