@@ -24,6 +24,10 @@ You can view these profiles with tensorboard (recommended) or [ui.perfetto.dev](
    ```
 3. Visit [http://localhost:6006/](http://localhost:6006/) through Chrome (this won't work with Safari).
 
+### Known performance issues
+
+- When using HSDP with gradient accumulation enabled (e.g. `--mesh.dp.replicate_degree=-1 --mesh.dp.shard_degree=8 --num_microbatches=2`), gradients are all-reduced after each micro-batch when ideally we should only issue an all-reduce on the last micro-batch.
+
 ### Runs
 
 All run below shared these common trainer settings:
@@ -51,20 +55,25 @@ All run below shared these common trainer settings:
 
 #### OLMo2 7B
 
-- [11,146 TPS/GPU](https://beaker.org/ex/01JX98C8XPW4BSVVG8XEE3MHN2) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
-  ```fish
-  python -m olmax.launch.beaker --cluster=ai2/jupiter-cirrascale-2 --nodes=2 -- \
-    python src/integration_tests/train_transformer.py --recipe=olmo2_7B
-  ```
-- [10,867 TPS/GPU](https://beaker.org/ex/01JZ1SBH7YRYMY7HCVSPCHFVMB) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
+- [11,274 TPS/GPU](https://beaker.org/ex/01JZ1VQ7B1VASJBGAXQ4FYD7R2) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
-    python src/integration_tests/train_transformer.py --recipe=olmo2_7B
+    python src/integration_tests/train_transformer.py --recipe=olmo2_7B \
+    --env.jax.compiler_enable_remat_pass=false
   ```
-- [11,535 TPS/GPU](https://beaker.org/ex/01JZ1V17B7G86DJ8GY9SANRX1F) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
+- [11,366 TPS/GPU](https://beaker.org/ex/01JZ3JB9KRXGQAS175GGSS5H8E) on 2 Augusta H100 nodes with node-wise HSDP, micro-batch size of 2 instances/GPU
+  ```fish
+  python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
+    python src/integration_tests/train_transformer.py --recipe=olmo2_7B \
+    --env.jax.compiler_enable_remat_pass=false \
+    --mesh.dp.replicate_degree=-1 \
+    --mesh.dp.shard_degree=8
+  ```
+- [12,006 TPS/GPU](https://beaker.org/ex/01JZ1VB0RMCQWBSYCQHM4WQDMD) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
   python -m olmax.launch.beaker --gpu-type=h100 -- \
-    python src/integration_tests/train_transformer.py --recipe=olmo2_7B
+    python src/integration_tests/train_transformer.py --recipe=olmo2_7B \
+    --env.jax.compiler_enable_remat_pass=false
   ```
 
 #### Gemma2 27B
