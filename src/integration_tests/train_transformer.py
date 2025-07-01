@@ -239,6 +239,9 @@ def train(
 
             # Collect metrics from this step.
             with jax.profiler.TraceAnnotation("collect_metrics"):
+                # Reduce loss over micro-batches.
+                step_metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
+
                 # Collect train metrics.
                 step_metrics["lr"] = jax.copy_to_host_async(
                     olmax.optim.extract_hyperparameter(opt_state, "learning_rate").copy()
@@ -251,9 +254,6 @@ def train(
                     step_metrics["g_norm"] = jax.copy_to_host_async(
                         clipping_state.global_norm.copy()
                     )
-
-                # Reduce loss over micro-batches.
-                step_metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
 
                 # Record memory statistics.
                 peak_mib_in_use = int(
