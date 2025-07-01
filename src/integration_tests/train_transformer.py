@@ -174,8 +174,6 @@ def train(
             # Reinforce sharding constraints.
             params = jax.lax.with_sharding_constraint(params, param_sharding)
 
-        #  params, _ = eqx.partition(model, eqx.is_array)
-
         return params, opt_state, loss
 
     dist.barrier("pre-train-loop")
