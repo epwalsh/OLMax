@@ -114,6 +114,7 @@ def train(
     optim, opt_state = config.optim.build(params, config.num_microbatches)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
+    @jax.named_scope("compute_loss_and_grads")
     @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
     def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
@@ -133,7 +134,7 @@ def train(
     def update_optim_state(
         params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState
     ):
-        updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
+        _, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
         return params, opt_state
 
     @jax.named_scope("update_optim_state_and_params")
@@ -167,9 +168,8 @@ def train(
             model_with_compute_dtype = model
 
         # Compute loss and gradients.
-        with jax.named_scope("compute_loss_and_grads"):
-            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-            #  grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+        loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
+        #  grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
         if compute_dtype != param_dtype:
