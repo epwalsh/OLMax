@@ -153,7 +153,7 @@ def train(
         # Compute loss and gradients.
         with jax.named_scope("compute_loss_and_grads"):
             loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+            #  grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
         if compute_dtype != param_dtype:
@@ -165,8 +165,8 @@ def train(
             updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
 
             # Reinforce sharding constraints.
-            updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-            opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+            #  updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+            #  opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
             # Apply updates.
             params = eqx.apply_updates(params, updates)
