@@ -240,14 +240,17 @@ def train(
             # Collect metrics from this step.
             with jax.profiler.TraceAnnotation("collect_metrics"):
                 # Collect train metrics.
-                # NOTE: `extract_hyperparameter()` will have already called `jax.copy_to_host_async()`
-                step_metrics["lr"] = olmax.optim.extract_hyperparameter(opt_state, "learning_rate")
+                step_metrics["lr"] = jax.copy_to_host_async(
+                    olmax.optim.extract_hyperparameter(opt_state, "learning_rate").copy()
+                )
                 if (
                     clipping_state := olmax.optim.extract_state(
                         opt_state, olmax.optim.ClipByGlobalNormState
                     )
                 ) is not None:
-                    step_metrics["g_norm"] = jax.copy_to_host_async(clipping_state.global_norm)
+                    step_metrics["g_norm"] = jax.copy_to_host_async(
+                        clipping_state.global_norm.copy()
+                    )
 
                 # Reduce loss over micro-batches.
                 step_metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
