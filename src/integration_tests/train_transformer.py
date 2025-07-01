@@ -189,6 +189,19 @@ def train(
     loss: float | None = None
     metrics_per_step: OrderedDict[int, dict[str, float | int | Array]] = OrderedDict()
 
+    def log_metrics():
+        nonlocal loss
+        for step_to_log, metrics_to_log in metrics_per_step.items():
+            log.info(
+                f"[step {step_to_log:03d}] "
+                + ", ".join(
+                    f"{name} = {olmax.utils.format_scalar(value)}"
+                    for name, value in metrics_to_log.items()
+                ),
+            )
+            loss = typing.cast(Array, metrics_to_log["loss"]).item()
+        metrics_per_step.clear()
+
     batches = olmax.data.utils.generate_batches_of_sequential_tokens(
         data_key,
         vocab_size=config.model.vocab_size,
@@ -226,16 +239,7 @@ def train(
 
             # Log metrics from previous steps.
             with jax.profiler.TraceAnnotation("log_metrics"):
-                for step_to_log, metrics_to_log in metrics_per_step.items():
-                    log.info(
-                        f"[step {step_to_log:03d}] "
-                        + ", ".join(
-                            f"{name} = {olmax.utils.format_scalar(value)}"
-                            for name, value in metrics_to_log.items()
-                        ),
-                    )
-                    loss = typing.cast(Array, metrics_to_log["loss"]).item()
-                metrics_per_step.clear()
+                log_metrics()
 
             # Collect metrics from this step.
             with jax.profiler.TraceAnnotation("collect_metrics"):
@@ -280,6 +284,8 @@ def train(
 
         metrics_per_step[step] = step_metrics
         batch_start = batch_end
+
+    log_metrics()
 
     gc.collect()
 
