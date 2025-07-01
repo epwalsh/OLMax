@@ -104,13 +104,14 @@ def train(
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
-    log.info("Initializing optimizer...")
-    optim, opt_state = config.optim.build(model, config.num_microbatches)
-
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
-    opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
+
     params, static = eqx.partition(model, eqx.is_array)
+
+    log.info("Initializing optimizer...")
+    optim, opt_state = config.optim.build(params, config.num_microbatches)
+    opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
     @eqx.filter_value_and_grad
     @jax.named_scope("compute_loss")
@@ -161,19 +162,19 @@ def train(
         # Take optimizer step.
         with jax.named_scope("optim_step"):
             # Prepare updates.
-            updates, opt_state = optim.update(grads, opt_state, model)  # pyright: ignore
+            updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
 
             # Reinforce sharding constraints.
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
             # Apply updates.
-            model = eqx.apply_updates(model, updates)
+            params = eqx.apply_updates(params, updates)
 
             # Reinforce sharding constraints.
-            model = jax.lax.with_sharding_constraint(model, param_sharding)
+            params = jax.lax.with_sharding_constraint(params, param_sharding)
 
-        params, _ = eqx.partition(model, eqx.is_array)
+        #  params, _ = eqx.partition(model, eqx.is_array)
 
         return params, opt_state, loss
 
