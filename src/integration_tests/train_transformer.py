@@ -129,6 +129,21 @@ def train(
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
 
+    @jax.named_scope("update_optim_state")
+    def update_optim_state(
+        params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState
+    ):
+        updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
+        return params, opt_state
+
+    @jax.named_scope("update_optim_state_and_params")
+    def update_optim_state_and_params(
+        params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState
+    ):
+        updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
+        params = eqx.apply_updates(params, updates)
+        return params, opt_state
+
     #  @eqx.filter_jit(donate="all")
     @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
     @jax.named_scope("process_microbatch")
@@ -137,12 +152,13 @@ def train(
         input_ids: Array,
         labels: Array,
         opt_state: optax.OptState,
+        is_final_microbatch: bool = True,
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
         model = eqx.combine(params, static)
 
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        #  opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         # Cast model to lower precision compute dtype.
         if compute_dtype != param_dtype:
@@ -160,19 +176,27 @@ def train(
             grads = olmax.jax_utils.cast_tree(grads, param_dtype)
 
         # Take optimizer step.
-        with jax.named_scope("optim_step"):
-            # Prepare updates.
-            updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
+        params, opt_state = jax.lax.cond(
+            is_final_microbatch,
+            update_optim_state_and_params,
+            update_optim_state,
+            params,
+            grads,
+            opt_state,
+        )
+        #  with jax.named_scope("optim_step"):
+        #      # Prepare updates.
+        #      updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
 
-            # Reinforce sharding constraints.
-            #  updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-            #  opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        #      # Reinforce sharding constraints.
+        #      #  updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+        #      #  opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
-            # Apply updates.
-            params = eqx.apply_updates(params, updates)
+        #      # Apply updates.
+        #      params = eqx.apply_updates(params, updates)
 
-            # Reinforce sharding constraints.
-            params = jax.lax.with_sharding_constraint(params, param_sharding)
+        #      # Reinforce sharding constraints.
+        #      params = jax.lax.with_sharding_constraint(params, param_sharding)
 
         return params, opt_state, loss
 
@@ -231,9 +255,13 @@ def train(
 
             # Do a step, one micro-batch at a time.
             batch_losses: list[Array] = []
-            for input_ids, labels in batch:
+            for mbz_idx, (input_ids, labels) in enumerate(batch):
                 params, opt_state, mb_loss = process_microbatch(
-                    params, input_ids, labels, opt_state
+                    params,
+                    input_ids,
+                    labels,
+                    opt_state,
+                    is_final_microbatch=(mbz_idx + 1) == config.num_microbatches,
                 )
                 batch_losses.append(mb_loss)
 
