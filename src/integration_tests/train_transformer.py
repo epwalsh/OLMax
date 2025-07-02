@@ -195,7 +195,7 @@ def train(
             updates = jax.lax.with_sharding_constraint(updates, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
-        # Take optimizer step.
+        # Take optimizer step on the final micro-batch.
         with jax.named_scope("step_optimizer"):
             params = jax.lax.cond(is_final_mb, eqx.apply_updates, lambda p, _: p, params, updates)
             params = jax.lax.with_sharding_constraint(params, param_sharding)
