@@ -36,13 +36,16 @@ class IntegrationTestConfig:
     device_microbatch_size: int
     env: olmax.EnvConfig
 
+    steps: int = 100
+    num_microbatches: int = 1
+
+    param_dtype: DTypeLike = "float32"
+    compute_dtype: DTypeLike = "bfloat16"
+
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
         default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
     )
-
-    steps: int = 100
-    num_microbatches: int = 1
 
     trace_dir: str | None = dataclasses.field(
         default_factory=lambda: None
@@ -55,8 +58,6 @@ def train(
     recipe_type: TransformerRecipeType,
     config: IntegrationTestConfig,
     running_avg_tps_count: int = 10,
-    param_dtype: str = "float32",
-    compute_dtype: str = "bfloat16",
     show_model: bool = False,
 ) -> tuple[float, int, int]:
     recipe_name = recipe_type.name
@@ -154,8 +155,8 @@ def train(
         model: nn.Transformer, input_ids: Array, labels: Array
     ) -> tuple[Array, nn.Transformer]:
         # Cast model to lower precision compute dtype.
-        if compute_dtype != param_dtype:
-            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, compute_dtype)
+        if config.compute_dtype != config.param_dtype:
+            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, config.compute_dtype)
         else:
             model_with_compute_dtype = model
 
@@ -166,8 +167,8 @@ def train(
         grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
-        if compute_dtype != param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
+        if config.compute_dtype != config.param_dtype:
+            grads = olmax.jax_utils.cast_tree(grads, config.param_dtype)
 
         return loss, grads
 
@@ -209,6 +210,37 @@ def train(
 
         return params, opt_state, loss
 
+    def train_step(
+        params: nn.Transformer,
+        opt_state: optax.OptState,
+        batch: list[tuple[Array, Array]],
+    ) -> tuple[nn.Transformer, optax.OptState, dict[str, float | int | Array]]:
+        # Process one micro-batch at a time.
+        batch_losses: list[Array] = []
+        for input_ids, labels in batch:
+            params, opt_state, mb_loss = process_microbatch(params, input_ids, labels, opt_state)
+            batch_losses.append(mb_loss)
+
+        metrics: dict[str, float | int | Array] = {}
+
+        # Reduced loss over micro-batches.
+        metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
+
+        # Collect learning rate.
+        metrics["lr"] = jax.copy_to_host_async(
+            olmax.optim.extract_hyperparameter(opt_state, "learning_rate").copy()
+        )
+
+        # If using gradient clipping, collect the global gradient norm.
+        if (
+            clipping_state := olmax.optim.extract_state(
+                opt_state, olmax.optim.ClipByGlobalNormState
+            )
+        ) is not None:
+            metrics["g_norm"] = jax.copy_to_host_async(clipping_state.global_norm.copy())
+
+        return params, opt_state, metrics
+
     dist.barrier("pre-train-loop")
     gc.disable()
     gc.collect()
@@ -227,7 +259,6 @@ def train(
     while True:
         # Bookkeeping.
         step += 1
-        step_metrics: dict[str, float | int | Array] = {}
 
         # Maybe start tracing.
         if step == 3 and config.trace_dir is not None:
@@ -241,12 +272,7 @@ def train(
                 break
 
             # Do a step, one micro-batch at a time.
-            batch_losses: list[Array] = []
-            for input_ids, labels in batch:
-                params, opt_state, mb_loss = process_microbatch(
-                    params, input_ids, labels, opt_state
-                )
-                batch_losses.append(mb_loss)
+            params, opt_state, step_metrics = train_step(params, opt_state, batch)
 
             # Log metrics from previous steps.
             with jax.profiler.TraceAnnotation("log_metrics"):
@@ -254,22 +280,6 @@ def train(
 
             # Collect metrics from this step.
             with jax.profiler.TraceAnnotation("collect_metrics"):
-                # Reduce loss over micro-batches.
-                step_metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
-
-                # Collect train metrics.
-                step_metrics["lr"] = jax.copy_to_host_async(
-                    olmax.optim.extract_hyperparameter(opt_state, "learning_rate").copy()
-                )
-                if (
-                    clipping_state := olmax.optim.extract_state(
-                        opt_state, olmax.optim.ClipByGlobalNormState
-                    )
-                ) is not None:
-                    step_metrics["g_norm"] = jax.copy_to_host_async(
-                        clipping_state.global_norm.copy()
-                    )
-
                 # Record memory statistics.
                 peak_mib_in_use = int(
                     olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
