@@ -249,9 +249,7 @@ def train(
         nonlocal grads_shape, grads_accum
 
         if grads_shape is None:
-            _, grads_shape = jax.eval_shape(
-                compute_loss_and_grads, batch[0][0], batch[0][1], opt_state
-            )
+            _, grads_shape = jax.eval_shape(compute_loss_and_grads, batch[0][0], batch[0][1])
         if grads_accum is None:
             grads_accum = olmax.jax_utils.zeros_like_tree(grads_shape, config.param_dtype)
 
