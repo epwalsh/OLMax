@@ -172,23 +172,6 @@ def train(
 
         return loss, grads
 
-    @jax.named_scope("step_optimizer")
-    def step_optimizer(params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState):
-        # Prepare updates.
-        updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
-
-        # Reinforce sharding constraints.
-        updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-        # Apply updates.
-        params = eqx.apply_updates(params, updates)
-
-        # Reinforce sharding constraints.
-        params = jax.lax.with_sharding_constraint(params, param_sharding)
-
-        return params, opt_state
-
     @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
     @jax.named_scope("process_microbatch")
     def process_microbatch(
@@ -196,6 +179,7 @@ def train(
         input_ids: Array,
         labels: Array,
         opt_state: optax.OptState,
+        is_final_mb: bool,
     ) -> tuple[nn.Transformer, optax.OptState, Array]:
         # Reconstruct full model object and enforce sharding constraints.
         model = eqx.combine(params, static)
@@ -205,8 +189,16 @@ def train(
         # Compute loss and gradients.
         loss, grads = compute_loss_and_grads(model, input_ids, labels)
 
+        # Update optimizer.
+        with jax.named_scope("update_optimizer"):
+            updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
+            updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+            opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+
         # Take optimizer step.
-        params, opt_state = step_optimizer(params, grads, opt_state)
+        with jax.named_scope("step_optimizer"):
+            params = jax.lax.cond(is_final_mb, eqx.apply_updates, lambda p, _: p, params, updates)
+            params = jax.lax.with_sharding_constraint(params, param_sharding)
 
         return params, opt_state, loss
 
@@ -217,8 +209,11 @@ def train(
     ) -> tuple[nn.Transformer, optax.OptState, dict[str, float | int | Array]]:
         # Process one micro-batch at a time.
         batch_losses: list[Array] = []
-        for input_ids, labels in batch:
-            params, opt_state, mb_loss = process_microbatch(params, input_ids, labels, opt_state)
+        for mb_idx, (input_ids, labels) in enumerate(batch):
+            is_final_mb = (mb_idx + 1) == len(batch)
+            params, opt_state, mb_loss = process_microbatch(
+                params, input_ids, labels, opt_state, is_final_mb
+            )
             batch_losses.append(mb_loss)
 
         metrics: dict[str, float | int | Array] = {}
