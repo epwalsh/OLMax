@@ -114,73 +114,6 @@ def train(
     optim, opt_state = config.optim.build(params, config.num_microbatches)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
 
-    @eqx.filter_value_and_grad
-    @jax.named_scope("compute_loss")
-    def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
-        # Enforce sharding constraints.
-        model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
-
-        # Get predicted logits.
-        logits = model(input_ids)
-        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
-
-        # Compute and reduce loss.
-        return F.cross_entropy_loss(logits, labels)
-
-    #  @eqx.filter_jit(donate="all")
-    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
-    @jax.named_scope("process_microbatch")
-    def process_microbatch(
-        params: nn.Transformer,
-        input_ids: Array,
-        labels: Array,
-        opt_state: optax.OptState,
-    ) -> tuple[nn.Transformer, optax.OptState, Array]:
-        model = eqx.combine(params, static)
-
-        # Enforce sharding constraints.
-        model = jax.lax.with_sharding_constraint(model, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-        # Cast model to lower precision compute dtype.
-        if compute_dtype != param_dtype:
-            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, compute_dtype)
-        else:
-            model_with_compute_dtype = model
-
-        # Compute loss and gradients.
-        with jax.named_scope("compute_loss_and_grads"):
-            loss, grads = compute_loss(model_with_compute_dtype, input_ids, labels)
-            grads = jax.lax.with_sharding_constraint(grads, param_sharding)
-
-        # Cast grads to param dtype.
-        if compute_dtype != param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
-
-        # Take optimizer step.
-        with jax.named_scope("optim_step"):
-            # Prepare updates.
-            updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
-
-            # Reinforce sharding constraints.
-            updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-            opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-            # Apply updates.
-            params = eqx.apply_updates(params, updates)
-
-            # Reinforce sharding constraints.
-            params = jax.lax.with_sharding_constraint(params, param_sharding)
-
-        return params, opt_state, loss
-
-    dist.barrier("pre-train-loop")
-    log.info("Starting training...")
-    gc.disable()
-    gc.collect()
-
     # Bookkeeping variables.
     step = 0
     all_steps_tps: list[float] = []
@@ -202,6 +135,85 @@ def train(
             loss = typing.cast(Array, metrics_to_log["loss"]).item()
         metrics_per_step.clear()
 
+    @jax.named_scope("compute_loss")
+    def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+        # Enforce sharding constraints.
+        model = jax.lax.with_sharding_constraint(model, param_sharding)
+        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
+        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
+
+        # Get predicted logits.
+        logits = model(input_ids)
+        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+
+        # Compute and reduce loss.
+        return F.cross_entropy_loss(logits, labels)
+
+    @jax.named_scope("compute_loss_and_grads")
+    def compute_loss_and_grads(
+        model: nn.Transformer, input_ids: Array, labels: Array
+    ) -> tuple[Array, nn.Transformer]:
+        # Cast model to lower precision compute dtype.
+        if compute_dtype != param_dtype:
+            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, compute_dtype)
+        else:
+            model_with_compute_dtype = model
+
+        # Do forward+backward passes.
+        loss, grads = eqx.filter_value_and_grad(compute_loss)(
+            model_with_compute_dtype, input_ids, labels
+        )
+        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
+
+        # Cast grads to param dtype.
+        if compute_dtype != param_dtype:
+            grads = olmax.jax_utils.cast_tree(grads, param_dtype)
+
+        return loss, grads
+
+    @jax.named_scope("step_optimizer")
+    def step_optimizer(params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState):
+        # Prepare updates.
+        updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
+
+        # Reinforce sharding constraints.
+        updates = jax.lax.with_sharding_constraint(updates, param_sharding)
+        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+
+        # Apply updates.
+        params = eqx.apply_updates(params, updates)
+
+        # Reinforce sharding constraints.
+        params = jax.lax.with_sharding_constraint(params, param_sharding)
+
+        return params, opt_state
+
+    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
+    @jax.named_scope("process_microbatch")
+    def process_microbatch(
+        params: nn.Transformer,
+        input_ids: Array,
+        labels: Array,
+        opt_state: optax.OptState,
+    ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        # Reconstruct full model object and enforce sharding constraints.
+        model = eqx.combine(params, static)
+        model = jax.lax.with_sharding_constraint(model, param_sharding)
+        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+
+        # Compute loss and gradients.
+        loss, grads = compute_loss_and_grads(model, input_ids, labels)
+
+        # Take optimizer step.
+        params, opt_state = step_optimizer(params, grads, opt_state)
+
+        return params, opt_state, loss
+
+    dist.barrier("pre-train-loop")
+    gc.disable()
+    gc.collect()
+    log.info("Starting training...")
+
     batches = olmax.data.utils.generate_batches_of_sequential_tokens(
         data_key,
         vocab_size=config.model.vocab_size,
@@ -211,7 +223,6 @@ def train(
         mesh_resource=config.mesh,
         num_microbatches=config.num_microbatches,
     )
-
     batch_start = time.perf_counter()
     while True:
         # Bookkeeping.
