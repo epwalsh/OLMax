@@ -266,10 +266,11 @@ def train(
 
         with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
             # Get batch.
-            try:
-                batch = next(batches)
-            except StopIteration:
-                break
+            with jax.profiler.TraceAnnotation("load_batch"):
+                try:
+                    batch = next(batches)
+                except StopIteration:
+                    break
 
             # Do a step, one micro-batch at a time.
             params, opt_state, step_metrics = train_step(params, opt_state, batch)
