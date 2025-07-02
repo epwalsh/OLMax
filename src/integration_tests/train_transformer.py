@@ -274,30 +274,27 @@ def train(
             # Do a step, one micro-batch at a time.
             params, opt_state, step_metrics = train_step(params, opt_state, batch)
 
+            # Record system metrics.
+            step_metrics["peak mem usage (MiB)"] = int(
+                olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+            )
+
             # Log metrics from previous steps.
             with jax.profiler.TraceAnnotation("log_metrics"):
                 log_metrics()
 
-            # Collect metrics from this step.
-            with jax.profiler.TraceAnnotation("collect_metrics"):
-                # Record memory statistics.
-                peak_mib_in_use = int(
-                    olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
-                )
-                step_metrics["peak mem usage (MiB)"] = peak_mib_in_use
-
-                # Record throughput.
-                batch_end = time.perf_counter()
-                tps = batch_size_per_device / (batch_end - batch_start)
-                step_metrics["TPS"] = int(tps)
-                if step > 6:
-                    running_avg_tps.append(tps)
-                    all_steps_tps.append(tps)
-                if len(running_avg_tps) > running_avg_tps_count:
-                    running_avg_tps.popleft()
-                if len(running_avg_tps) >= running_avg_tps_count:
-                    avg_tps = sum(running_avg_tps) / len(running_avg_tps)
-                    running_avg_tps_best = max(running_avg_tps_best, avg_tps)
+            # Lastly, record throughput.
+            batch_end = time.perf_counter()
+            tps = batch_size_per_device / (batch_end - batch_start)
+            step_metrics["TPS"] = int(tps)
+            if step > 6:
+                running_avg_tps.append(tps)
+                all_steps_tps.append(tps)
+            if len(running_avg_tps) > running_avg_tps_count:
+                running_avg_tps.popleft()
+            if len(running_avg_tps) >= running_avg_tps_count:
+                avg_tps = sum(running_avg_tps) / len(running_avg_tps)
+                running_avg_tps_best = max(running_avg_tps_best, avg_tps)
 
         # Maybe stop tracing.
         if step == 5 and config.trace_dir is not None:
