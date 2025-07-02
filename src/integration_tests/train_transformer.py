@@ -7,7 +7,7 @@ import sys
 import textwrap
 import time
 import typing
-from collections import OrderedDict, deque
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import equinox as eqx
@@ -57,7 +57,6 @@ class IntegrationTestConfig:
 def train(
     recipe_type: TransformerRecipeType,
     config: IntegrationTestConfig,
-    running_avg_tps_count: int = 10,
     show_model: bool = False,
 ) -> tuple[float, int, int]:
     recipe_name = recipe_type.name
@@ -118,8 +117,8 @@ def train(
     # Bookkeeping variables.
     step = 0
     all_steps_tps: list[float] = []
-    running_avg_tps: deque[float] = deque()
-    running_avg_tps_best: float = 0.0
+    tps_max: float | None = None
+    tps_min: float | None = None
     loss: float | None = None
     metrics_per_step: OrderedDict[int, dict[str, float | int | Array]] = OrderedDict()
 
@@ -289,13 +288,9 @@ def train(
             tps = batch_size_per_device / (batch_end - batch_start)
             step_metrics["TPS"] = int(tps)
             if step > 6:
-                running_avg_tps.append(tps)
                 all_steps_tps.append(tps)
-            if len(running_avg_tps) > running_avg_tps_count:
-                running_avg_tps.popleft()
-            if len(running_avg_tps) >= running_avg_tps_count:
-                avg_tps = sum(running_avg_tps) / len(running_avg_tps)
-                running_avg_tps_best = max(running_avg_tps_best, avg_tps)
+                tps_max = tps if tps_max is None else max(tps, tps_max)
+                tps_min = tps if tps_min is None else min(tps, tps_min)
 
         # Maybe stop tracing.
         if step == 5 and config.trace_dir is not None:
@@ -315,11 +310,16 @@ def train(
     tps_arr = jnp.array(all_steps_tps)
     tps_avg = int(tps_arr.mean().item())
     tps_std = int(tps_arr.std().item())
+    tps_ci_bound_low = tps_avg - 2 * tps_std
+    if tps_min is not None:
+        tps_ci_bound_low = max(tps_ci_bound_low, int(tps_min))
+    tps_ci_bound_high = tps_avg + 2 * tps_std
+    if tps_max is not None:
+        tps_ci_bound_high = min(tps_ci_bound_high, int(tps_max))
 
     log.info(
         f"Done.\n"
-        f"❯ Best running avg throughput: {int(running_avg_tps_best):,d} TPS\n"
-        f"❯ Actual avg throughput: {tps_avg:,d} += {2 * tps_std:,d} ({tps_avg - 2 * tps_std:,d}, {tps_avg + 2 * tps_std:,d}) TPS\n"
+        f"❯ Average throughput: {tps_avg:,d} += {2 * tps_std:,d} ({tps_ci_bound_low:,d}, {tps_ci_bound_high:,d}) TPS\n"
         f"❯ Peak mem usage: {peak_mib_in_use:,d} MiB\n"
         f"❯ Final loss: {loss:.4f}"
     )
@@ -328,7 +328,7 @@ def train(
         beaker_runtime.set_description(
             f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
             f"loss = {loss:.4f}, "
-            f"running best TPS = {int(running_avg_tps_best):,d}, "
+            f"TPS = {tps_avg:,d}, "
             f"peak mem usage (MiB) = {peak_mib_in_use:,d}"
         )
         if (
@@ -344,7 +344,7 @@ def train(
     gc.collect()
     gc.enable()
 
-    return loss, int(running_avg_tps_best), peak_mib_in_use
+    return loss, tps_avg, peak_mib_in_use
 
 
 def _parse_args():
