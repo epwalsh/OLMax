@@ -112,8 +112,11 @@ def train(
     params, static = eqx.partition(model, eqx.is_array)
 
     log.info("Initializing optimizer...")
-    optim, opt_state = config.optim.build(params, config.num_microbatches)
+    #  optim, opt_state = config.optim.build(params, config.num_microbatches)
+    optim, opt_state = config.optim.build(params)
     opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
+    grads_shape: nn.Transformer | None = None
+    grads_accum: nn.Transformer | None = None
 
     # Bookkeeping variables.
     step = 0
@@ -189,36 +192,82 @@ def train(
 
         return params, opt_state
 
-    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
+    @jax.named_scope("optimizer_pass_through")
+    def optimizer_pass_through(
+        params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState
+    ):
+        del grads
+        return params, opt_state
+
+    @jax.named_scope("step_optimizer")
+    def accumulate_grads(
+        grads: nn.Transformer, grads_accum: nn.Transformer, mb_idx: int
+    ) -> nn.Transformer:
+        # Use Welford algorithm for numerically stable aggregation of mean.
+        return jax.tree.map(lambda grad, acc: acc + (grad - acc) / (mb_idx + 1), grads, grads_accum)
+
+    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3, 4])
     @jax.named_scope("process_microbatch")
     def process_microbatch(
         params: nn.Transformer,
+        grads_accum: nn.Transformer,
+        opt_state: optax.OptState,
         input_ids: Array,
         labels: Array,
-        opt_state: optax.OptState,
-    ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        mb_idx: int,
+        is_final_mb: bool,
+    ) -> tuple[nn.Transformer, nn.Transformer, optax.OptState, Array]:
         # Reconstruct full model object and enforce sharding constraints.
         model = eqx.combine(params, static)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
+        grads_accum = jax.lax.with_sharding_constraint(grads_accum, param_sharding)
 
         # Compute loss and gradients.
         loss, grads = compute_loss_and_grads(model, input_ids, labels)
 
-        # Take optimizer step.
-        params, opt_state = step_optimizer(params, grads, opt_state)
+        # Accumulate gradients.
+        grads_accum = accumulate_grads(grads, grads_accum, mb_idx)
 
-        return params, opt_state, loss
+        # Take optimizer step.
+        params, opt_state = jax.lax.cond(
+            is_final_mb, step_optimizer, optimizer_pass_through, params, grads_accum, opt_state
+        )
+
+        # Reset accumulated gradients to zero on the final micro-batch.
+        grads_accum = jax.lax.cond(
+            is_final_mb, olmax.jax_utils.zeros_like_tree, lambda t: t, grads_accum
+        )
+
+        return params, grads_accum, opt_state, loss
 
     def train_step(
         params: nn.Transformer,
         opt_state: optax.OptState,
         batch: list[tuple[Array, Array]],
     ) -> tuple[nn.Transformer, optax.OptState, dict[str, float | int | Array]]:
+        nonlocal grads_shape, grads_accum
+
+        if grads_shape is None:
+            _, grads_shape = jax.eval_shape(
+                compute_loss_and_grads, batch[0][0], batch[0][1], opt_state
+            )
+        if grads_accum is None:
+            grads_accum = olmax.jax_utils.zeros_like_tree(grads_shape, config.param_dtype)
+
         # Process one micro-batch at a time.
         batch_losses: list[Array] = []
-        for input_ids, labels in batch:
-            params, opt_state, mb_loss = process_microbatch(params, input_ids, labels, opt_state)
+        for mb_idx, (input_ids, labels) in enumerate(batch):
+            is_final_mb = (mb_idx + 1) == len(batch)
+            params, grads_accum, opt_state, mb_loss = process_microbatch(
+                params,
+                grads_accum,
+                opt_state,
+                input_ids,
+                labels,
+                mb_idx,
+                is_final_mb,
+            )
             batch_losses.append(mb_loss)
 
         metrics: dict[str, float | int | Array] = {}
