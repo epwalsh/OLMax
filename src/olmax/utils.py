@@ -193,6 +193,7 @@ T = TypeVar("T", Array, float)
 
 class RunningAverage(Generic[T]):
     def __init__(self, zeros: T):
+        self.zeros = zeros
         self.value = zeros
         self.count = 0
 
@@ -200,6 +201,13 @@ class RunningAverage(Generic[T]):
         self.value = self.value + (value - self.value) / (self.count + 1)
         self.count += 1
         return self.value
+
+    def get(self) -> T:
+        return self.value
+
+    def reset(self):
+        self.value = self.zeros
+        self.count = 0
 
 
 class _RichHandler(logging.Handler):

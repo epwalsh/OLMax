@@ -151,6 +151,7 @@ class Trainer(Generic[M, B]):
         self._step = 0
         self._step_this_run = 0
         self._epoch = 1
+        self._bps_average.reset()
         self._canceled = jax.copy_to_host_async(jnp.array(False))
         self._cancel_reason = None
         self._canceling_rank = None
@@ -198,22 +199,12 @@ class Trainer(Generic[M, B]):
         train_start = time.perf_counter()
         try:
             while not self.training_complete:
-                epoch_start = time.perf_counter()
-
                 params, opt_state = self._fit_epoch(
                     train_batch=train_batch,
                     params=params,
                     opt_state=opt_state,
                     batches=batches,
                 )
-
-                epoch_end = time.perf_counter()
-                log.info(
-                    f"Epoch {self.epoch} completed.\n"
-                    f"❯ Epoch time: {utils.format_timedelta(epoch_end - epoch_start)}\n"
-                    f"❯ Total elapsed time: {utils.format_timedelta(epoch_end - train_start)}"
-                )
-
                 batches = iter(data_loader)
         except BaseException as exc:
             log.error(f"Training failed due to:\n{exc}")
@@ -232,7 +223,10 @@ class Trainer(Generic[M, B]):
         model = eqx.combine(params, static)
 
         self._shutdown()
-        log.info("Training complete.")
+        train_end = time.perf_counter()
+        log.info(
+            f"Training complete. Elapsed time: {utils.format_timedelta(train_end - train_start)}"
+        )
 
         return model, optim, opt_state
 
@@ -244,6 +238,7 @@ class Trainer(Generic[M, B]):
         batches: Iterator[Sequence[B]],
     ) -> tuple[M, OptState]:
         log.info(f"Starting epoch {self.epoch}...")
+        epoch_start = time.perf_counter()
 
         for callback in self._iter_callbacks():
             callback.pre_epoch()
@@ -288,20 +283,25 @@ class Trainer(Generic[M, B]):
                 with jax.profiler.TraceAnnotation("train_batch"):
                     params, opt_state = train_batch(params, opt_state, batch)
 
+                # More bookkeeping.
                 if global_train_tokens_this_batch is not None:
                     if self._global_train_tokens_seen is None:
                         self._global_train_tokens_seen = 0
                     self._global_train_tokens_seen += global_train_tokens_this_batch
+                self.record_metric(
+                    "system/peak device mem usage (MiB)",
+                    utils.bytes_to_mib(jax_utils.get_peak_local_device_memory_usage()),
+                )
 
                 for callback in self._iter_callbacks():
                     callback.post_train_batch()
 
+                for callback in self._iter_callbacks():
+                    callback.post_step()
+
                 # Log metrics from previous step(s).
                 with jax.profiler.TraceAnnotation("log_metrics"):
                     self._log_metrics(exclude={self.step})
-
-                for callback in self._iter_callbacks():
-                    callback.post_step()
 
                 # Lastly, record throughput.
                 # NOTE: this should always be called after `self._log_metrics()`, which is a host-device
@@ -328,6 +328,11 @@ class Trainer(Generic[M, B]):
 
         for callback in self._iter_callbacks():
             callback.post_epoch()
+
+        epoch_end = time.perf_counter()
+        log.info(
+            f"Epoch {self.epoch} completed in {utils.format_timedelta(epoch_end - epoch_start)}"
+        )
 
         self._epoch += 1
         return params, opt_state
