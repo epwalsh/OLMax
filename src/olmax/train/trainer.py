@@ -247,7 +247,7 @@ class Trainer(Generic[M, B]):
 
         log.info("Callback order:")
         for i, callback_name in enumerate(self.callbacks.keys()):
-            log.info(f"  - Callback {i+1}: {callback_name}")
+            log.info(f" - Callback {i+1}: {callback_name}")
 
         for callback in self._iter_callbacks():
             callback.pre_train()
@@ -373,8 +373,6 @@ class Trainer(Generic[M, B]):
                 callback.post_step()
 
             # Lastly, record throughput.
-            # NOTE: this should always be called after `self._log_metrics()`, which is a host-device
-            # synchronization point.
             batch_end = time.perf_counter()
             bps = 1 / (batch_end - batch_start)
             bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
