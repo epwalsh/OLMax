@@ -46,17 +46,17 @@ class Callback(Registrable):
     def step(self) -> int:
         return self.trainer.step
 
-    def state_dict(self) -> dict[str, Any]:
+    def get_state(self) -> Any:
         """
-        Get the state dict to save.
+        Get the state to save for checkpointing.
         """
         return {}
 
-    def load_state_dict(self, state_dict: dict[str, Any]):
+    def load_state(self, state: Any):
         """
-        Load a state dict.
+        Load state from :meth:`get_state()`.
         """
-        del state_dict
+        del state
 
     def post_attach(self):
         """

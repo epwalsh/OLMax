@@ -20,3 +20,19 @@ def is_url(path: PathOrStr) -> bool:
     """
     path = normalize_path(path)
     return re.match(r"[a-z0-9]+://.*", str(path)) is not None
+
+
+def copy_file(source: PathOrStr, target: PathOrStr):
+    """
+    Copy a file from ``source`` to ``target``.
+    """
+    del source, target
+    raise NotImplementedError
+
+
+def copy_dir(source: PathOrStr, target: PathOrStr):
+    """
+    Copy a directory from ``source`` to ``target``.
+    """
+    del source, target
+    raise NotImplementedError

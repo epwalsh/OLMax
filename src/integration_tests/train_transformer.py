@@ -3,7 +3,6 @@ import dataclasses
 import logging
 import sys
 import textwrap
-from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +42,53 @@ class IntegrationTestConfig:
     )
 
     dir: str | None = None
+
+
+class DataLoader(olmax.data.DataLoader):
+    def __init__(
+        self,
+        data_key: PRNGKeyArray,
+        *,
+        vocab_size: int,
+        sequence_length: int,
+        global_batch_size_instances: int,
+        total_batches: int,
+        mesh_resource: dist.MeshResource,
+        num_microbatches: int,
+    ):
+        self.data_key = data_key
+        self.vocab_size = vocab_size
+        self.sequence_length = sequence_length
+        self.global_batch_size_instances = global_batch_size_instances
+        self.total_batches = total_batches
+        self.mesh_resource = mesh_resource
+        self.num_microbatches = num_microbatches
+        self.batches_processed = 0
+
+    def __len__(self):
+        return self.total_batches
+
+    def __iter__(self):
+        for batch in olmax.data.utils.generate_batches_of_sequential_tokens(
+            self.data_key,
+            vocab_size=self.vocab_size,
+            sequence_length=self.sequence_length,
+            global_batch_size_instances=self.global_batch_size_instances,
+            total_batches=self.total_batches,
+            mesh_resource=self.mesh_resource,
+            num_microbatches=self.num_microbatches,
+            start_batch=self.batches_processed,
+        ):
+            self.batches_processed += 1
+            yield batch
+
+    def get_state(self) -> tuple[PRNGKeyArray, int]:
+        return (self.data_key, self.batches_processed)
+
+    def load_state(self, state: tuple[PRNGKeyArray, int]):
+        data_key, batches_processed = state
+        self.data_key = data_key
+        self.batches_processed = batches_processed
 
 
 def train(
@@ -129,18 +175,6 @@ def train(
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
 
-    class DataLoader(Iterable):
-        def __iter__(self):
-            return olmax.data.utils.generate_batches_of_sequential_tokens(
-                data_key,
-                vocab_size=config.model.vocab_size,
-                sequence_length=config.sequence_length,
-                global_batch_size_instances=global_batch_size_instances,
-                total_batches=config.steps,
-                mesh_resource=config.mesh,
-                num_microbatches=config.num_microbatches,
-            )
-
     trainer = Trainer(
         work_dir=dir,
         save_folder=dir,
@@ -151,10 +185,19 @@ def train(
         compute_dtype=config.compute_dtype,
         max_duration=Duration.steps(config.steps),
         global_tokens_per_batch=global_batch_size,
-    )
-    trainer.add_callback("profiler", olmax.train.callbacks.ProfilerCallback())
+    ).add_callback("profiler", olmax.train.callbacks.ProfilerCallback())
 
-    trainer.fit(model, DataLoader())
+    data_loader = DataLoader(
+        data_key,
+        vocab_size=config.model.vocab_size,
+        sequence_length=config.sequence_length,
+        global_batch_size_instances=global_batch_size_instances,
+        total_batches=config.steps,
+        mesh_resource=config.mesh,
+        num_microbatches=config.num_microbatches,
+    )
+
+    trainer.fit(model, data_loader)
 
     if trace_download_command is not None:
         log.info(f"To download the profiler trace, run:\n❯ {trace_download_command}")

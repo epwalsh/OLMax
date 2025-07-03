@@ -16,6 +16,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
+from .. import data
 from .. import distributed as dist
 from .. import fs, jax_utils, nn, utils
 from ..exceptions import *
@@ -64,12 +65,31 @@ class Trainer(Generic[M, B]):
     """
     The data type to run the forward/backward pass in.
     """
-
     callbacks: OrderedDict[str, Callback] = dataclasses.field(default_factory=OrderedDict)
+    """
+    Callbacks to use.
+    """
+    save_interval: int | None = None
+    """
+    The interval in steps to save checkpoints.
+    """
     cancel_check_interval: int = 5
+    """
+    The interval in steps to synchronize cancellation conditions.
+    """
     gc_interval: int = 1000
+    """
+    The interval in steps to run garbage collection.
+    """
     max_duration: Duration = dataclasses.field(default_factory=lambda: Duration.epochs(1))
+    """
+    The duration to train for.
+    """
     global_tokens_per_batch: int | Callable[[Sequence[B]], int] | None = None
+    """
+    When training on tokens, you should set this to the number of global tokens per batch, or
+    a callback that takes a batch and returns the number of global tokens in the batch.
+    """
     log_to_console: Sequence[str] = (
         "train/loss",
         "optim/lr",
@@ -119,13 +139,17 @@ class Trainer(Generic[M, B]):
         for callback in self._iter_callbacks():
             callback.post_attach()
 
-    def add_callback(self, name: str, callback: Callback):
+    def add_callback(self, name: str, callback: Callback) -> "Trainer":
+        """
+        Add a callback.
+        """
         if name in self.callbacks:
             raise CallbackExistsError(f"A callback with name '{name}' already exists!")
         callback.trainer = self
         self.callbacks[name] = callback
         self._sort_callbacks()
         callback.post_attach()
+        return self
 
     def has_callback(self, cb_class: Type[Callback]) -> bool:
         """
@@ -138,20 +162,29 @@ class Trainer(Generic[M, B]):
 
     @property
     def step(self) -> int:
+        """
+        The current training step.
+        """
         return self._step
 
     @property
     def epoch(self) -> int:
+        """
+        The current training epoch.
+        """
         return self._epoch
 
     @property
     def global_train_tokens_seen(self) -> int | None:
+        """
+        The number of training tokens seen globally so far.
+        """
         return self._global_train_tokens_seen
 
     @property
     def is_canceled(self) -> bool:
         """
-        Check if the run is canceled.
+        If the run has been canceled.
 
         .. warning::
             This triggers a host-device sync.
@@ -162,6 +195,9 @@ class Trainer(Generic[M, B]):
 
     @property
     def training_complete(self) -> bool:
+        """
+        If training is complete.
+        """
         if self._error is not None:
             raise RuntimeError("An error occurred") from self._error
 
@@ -184,9 +220,17 @@ class Trainer(Generic[M, B]):
         log.warning(f"Run canceled. Reason: {reason}")
 
     def record_metric(self, name: str, value: Scalar):
+        """
+        Record a metric for logging.
+        """
         self._metrics_per_step[self.step][name] = jax.copy_to_host_async(value)
 
-    def fit(self, model: M, data_loader: Iterable[Sequence[B]]) -> tuple[M, Optim, OptState]:
+    def fit(self, model: M, data_loader: data.DataLoader) -> tuple[M, Optim, OptState]:
+        """
+        Fit a model to a dataset.
+
+        :returns: The trained model, its optimizer, and the optimizer state.
+        """
         dist.barrier("pre-train-setup")
 
         self._step = 0
