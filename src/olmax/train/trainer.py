@@ -4,6 +4,7 @@ import functools as ft
 import gc
 import itertools
 import logging
+import math
 import signal
 import time
 from collections import OrderedDict
@@ -365,9 +366,16 @@ class Trainer(Generic[M, B]):
             batch_end = time.perf_counter()
             bps = 1 / (batch_end - batch_start)
             bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
+            bps_std = (
+                None
+                if self._bps_average.count < 5
+                else math.sqrt(self._bps_average.get_sample_variance())
+            )
             self.record_metric("throughput/BPS", bps)
             if bps_avg is not None:
                 self.record_metric("throughput/BPS average", bps_avg)
+            if bps_std is not None:
+                self.record_metric("throughput/BPS stddev", bps_std)
             if global_train_tokens_this_batch is not None:
                 tps = bps * global_train_tokens_this_batch
                 self.record_metric("throughput/TPS", tps)
@@ -378,6 +386,11 @@ class Trainer(Generic[M, B]):
                     self.record_metric("throughput/TPS average", tps_avg)
                     device_tps_avg = tps_avg / dist.get_global_device_count()
                     self.record_metric("throughput/TPS device average", device_tps_avg)
+                if bps_std is not None:
+                    tps_std = bps_std * global_train_tokens_this_batch
+                    self.record_metric("throughput/TPS stddev", tps_std)
+                    device_tps_std = tps_std / dist.get_global_device_count()
+                    self.record_metric("throughput/TPS device stddev", device_tps_std)
             batch_start = batch_end
 
         # Log left-over metrics.

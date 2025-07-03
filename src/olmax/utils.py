@@ -192,21 +192,42 @@ T = TypeVar("T", Array, float)
 
 
 class RunningAverage(Generic[T]):
+    """
+    Computes an online running average (and variance) using Welford's algorithm.
+    """
+
     def __init__(self, zeros: T):
         self.zeros: T = zeros
-        self.value: T = zeros
+        self.mean: T = zeros
+        self.m2: T = zeros
         self.count = 0
 
     def update(self, value: T) -> T:
-        self.value = self.value + (value - self.value) / (self.count + 1)
+        delta = value - self.mean
+        self.mean += delta / (self.count + 1)
+        delta2 = value - self.mean
+        self.m2 += delta * delta2
         self.count += 1
-        return self.value
+        return self.mean
 
     def get(self) -> T:
-        return self.value
+        if self.count == 0:
+            raise ZeroDivisionError
+        return self.mean
+
+    def get_variance(self) -> T:
+        if self.count < 2:
+            raise ZeroDivisionError
+        return self.m2 / self.count
+
+    def get_sample_variance(self) -> T:
+        if self.count < 2:
+            raise ZeroDivisionError
+        return self.m2 / (self.count - 1)
 
     def reset(self):
-        self.value = self.zeros
+        self.mean = self.zeros
+        self.m2 = self.zeros
         self.count = 0
 
 

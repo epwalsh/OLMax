@@ -42,11 +42,7 @@ class IntegrationTestConfig:
         default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
     )
 
-    dir: str = dataclasses.field(
-        default_factory=lambda: "/tmp/olmax/train"
-        if beaker_runtime is None
-        else (beaker_runtime.workload.result_dataset_path or "/tmp/olmax/train")
-    )
+    dir: str | None = None
 
 
 def train(
@@ -54,6 +50,18 @@ def train(
     config: IntegrationTestConfig,
     show_model: bool = False,
 ):
+    dir: Path
+    if config.dir is not None:
+        dir = Path(config.dir)
+    elif (
+        beaker_runtime is not None
+        and (result_path := beaker_runtime.workload.result_dataset_path) is not None
+    ):
+        dir = Path(result_path)
+    else:
+        dir = Path("/tmp/olmax/train")
+    log.info(f"Saving results to '{dir}'")
+
     recipe_name = recipe_type.name
     batch_size_per_device = config.device_microbatch_size * config.num_microbatches
     instances_per_device = batch_size_per_device // config.sequence_length
@@ -104,7 +112,7 @@ def train(
     data_sharding = config.mesh.get_data_sharding()
 
     @jax.named_scope("compute_loss")
-    def compute_loss(model: nn.Transformer, batch: tuple[Array, Array]):
+    def loss_fun(model: nn.Transformer, batch: tuple[Array, Array]):
         input_ids, labels = batch
 
         # Enforce sharding constraints.
@@ -132,10 +140,10 @@ def train(
             )
 
     trainer = Trainer(
-        work_dir=Path(config.dir),
-        save_folder=config.dir,
+        work_dir=dir,
+        save_folder=dir,
         optim=config.optim,
-        loss_fun=compute_loss,
+        loss_fun=loss_fun,
         mesh=config.mesh,
         param_dtype=config.param_dtype,
         compute_dtype=config.compute_dtype,
