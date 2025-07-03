@@ -145,7 +145,7 @@ def train(
         optim=config.optim,
         loss_fun=loss_fun,
         mesh=config.mesh,
-        param_dtype=config.param_dtype,
+        grad_dtype=config.param_dtype,
         compute_dtype=config.compute_dtype,
         max_duration=Duration.steps(config.steps),
         global_tokens_per_batch=global_batch_size,

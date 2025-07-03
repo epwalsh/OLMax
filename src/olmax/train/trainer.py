@@ -44,14 +44,26 @@ class Trainer(Generic[M, B]):
     """
     Local or remote save folder to persist checkpoints and other artifacts.
     """
-
     optim: OptimConfig
+    """
+    Config for the optimizer to use.
+    """
     loss_fun: Callable[[M, B], Array]
-
+    """
+    The loss function to use. Should take a model and a micro-batch and return a scalar array.
+    """
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
-
-    param_dtype: DTypeLike = "float32"
+    """
+    The global mesh resource.
+    """
+    grad_dtype: DTypeLike = "float32"
+    """
+    The data type for gradients.
+    """
     compute_dtype: DTypeLike = "bfloat16"
+    """
+    The data type to run the forward/backward pass in.
+    """
 
     callbacks: OrderedDict[str, Callback] = dataclasses.field(default_factory=OrderedDict)
     cancel_check_interval: int = 5
@@ -475,19 +487,15 @@ class Trainer(Generic[M, B]):
     ):
         @jax.named_scope("compute_loss_and_grads")
         def compute_loss_and_grads(model: M, batch: B) -> tuple[Array, M]:
-            # Cast model to lower precision compute dtype.
-            if self.compute_dtype != self.param_dtype:
-                model_with_compute_dtype = jax_utils.cast_tree(model, self.compute_dtype)
-            else:
-                model_with_compute_dtype = model
+            # Cast model to the compute dtype.
+            model_with_compute_dtype = jax_utils.cast_tree(model, self.compute_dtype)
 
             # Do forward+backward passes.
             loss, grads = eqx.filter_value_and_grad(self.loss_fun)(model_with_compute_dtype, batch)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
-            # Cast grads to param dtype.
-            if self.compute_dtype != self.param_dtype:
-                grads = jax_utils.cast_tree(grads, self.param_dtype)
+            # Cast grads to the right dtype.
+            grads = jax_utils.cast_tree(grads, self.grad_dtype)
 
             return loss, grads
 
