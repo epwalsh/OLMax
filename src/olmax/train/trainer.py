@@ -361,12 +361,13 @@ class Trainer(Generic[M, B]):
                 tps = bps * global_train_tokens_this_batch
                 self.record_metric("throughput/TPS", tps)
                 device_tps = tps / dist.get_global_device_count()
-                self.record_metric("throughput/device TPS", device_tps)
+                self.record_metric("throughput/TPS device", device_tps)
                 if bps_avg is not None:
                     tps_avg = bps_avg * global_train_tokens_this_batch
                     self.record_metric("throughput/TPS average", tps_avg)
                     device_tps_avg = tps_avg / dist.get_global_device_count()
-                    self.record_metric("throughput/device TPS average", device_tps_avg)
+                    self.record_metric("throughput/TPS device average", device_tps_avg)
+            batch_start = batch_end
 
         # Log left-over metrics.
         self._log_metrics()
