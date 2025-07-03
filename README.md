@@ -11,18 +11,19 @@ Run `python -m olmax.launch.beaker --help` to see the module's usage.
 ### Profiling
 
 Benchmarks launched on Beaker will automatically run a few steps with a profiler enabled, and the resulting trace files will be saved to the workload's result dataset (see [beaker.org/ds/01JZ18BCKD63WFGQYAMN0S9TEZ](https://beaker.org/ds/01JZ18BCKD63WFGQYAMN0S9TEZ), for example).
-You can view these profiles with tensorboard (recommended) or [ui.perfetto.dev](http://ui.perfetto.dev/) by following these steps:
+You can view these profiles with tensorboard or [ui.perfetto.dev](http://ui.perfetto.dev/) by following these steps:
 
 1. First download all trace files:
    ```fish
    beaker dataset fetch 01JZ18BCKD63WFGQYAMN0S9TEZ --output=traces/ --prefix=plugins
    ```
    Note that its important to maintain the paths of these files relative to the dataset root (e.g. `plugins/profile/...`) otherwise tensorboard won't load them.
-2. Launch tensorboard:
+2. Then either launch tensorboard:
    ```fish
    tensorboard --logdir=traces/
    ```
-3. Visit [http://localhost:6006/](http://localhost:6006/) through Chrome (this won't work with Safari).
+   And visit [http://localhost:6006/](http://localhost:6006/) through Chrome (this won't work with Safari).
+   Or visit [ui.perfetto.dev](http://ui.perfetto.dev/) and load the `perfetto_trace.json.gz` file you just downloaded from Beaker.
 
 ### Known performance issues
 

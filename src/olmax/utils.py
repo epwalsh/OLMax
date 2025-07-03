@@ -2,8 +2,8 @@ import functools as ft
 import logging
 import os
 import sys
-from datetime import datetime
-from typing import Any, Type
+from datetime import datetime, timedelta
+from typing import Any, Generic, Type, TypeVar
 
 import rich
 from rich.console import Console, ConsoleRenderable
@@ -12,7 +12,7 @@ from rich.text import Text
 from rich.traceback import Traceback
 
 from .exceptions import OLMaxError
-from .types import Array, Scalar
+from .types import *
 
 log = logging.getLogger(__name__)
 
@@ -160,6 +160,46 @@ def format_float(value: float) -> str:
         return f"{value:.3f}"
     else:
         return f"{value:.4f}"
+
+
+def format_timedelta(td: timedelta | int | float) -> str:
+    if not isinstance(td, timedelta):
+        td = timedelta(seconds=td)
+
+    breakdown = []
+    if td.days > 0:
+        breakdown.append(f"{td.days}d")
+
+    hours = td.seconds // 3600
+    if hours > 0:
+        breakdown.append(f"{hours}h")
+
+    minutes = (td.seconds % 3600) // 60
+    if minutes > 0:
+        breakdown.append(f"{minutes}m")
+
+    seconds = td.seconds % 60
+    if seconds > 0:
+        breakdown.append(f"{seconds}s")
+
+    if breakdown:
+        return ", ".join(breakdown)
+    else:
+        return "0s"
+
+
+T = TypeVar("T", Array, float)
+
+
+class RunningAverage(Generic[T]):
+    def __init__(self, zeros: T):
+        self.value = zeros
+        self.count = 0
+
+    def update(self, value: T) -> T:
+        self.value = self.value + (value - self.value) / (self.count + 1)
+        self.count += 1
+        return self.value
 
 
 class _RichHandler(logging.Handler):

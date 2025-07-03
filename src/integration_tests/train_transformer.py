@@ -13,7 +13,6 @@ from dataclasses import dataclass
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import optax
 
 import olmax
 import olmax.distributed as dist
@@ -136,7 +135,9 @@ def train(
         metrics_per_step.clear()
 
     @jax.named_scope("compute_loss")
-    def compute_loss(model: nn.Transformer, input_ids: Array, labels: Array):
+    def compute_loss(model: nn.Transformer, batch: tuple[Array, Array]):
+        input_ids, labels = batch
+
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
@@ -151,7 +152,7 @@ def train(
 
     @jax.named_scope("compute_loss_and_grads")
     def compute_loss_and_grads(
-        model: nn.Transformer, input_ids: Array, labels: Array
+        model: nn.Transformer, batch: tuple[Array, Array]
     ) -> tuple[Array, nn.Transformer]:
         # Cast model to lower precision compute dtype.
         if config.compute_dtype != config.param_dtype:
@@ -160,9 +161,7 @@ def train(
             model_with_compute_dtype = model
 
         # Do forward+backward passes.
-        loss, grads = eqx.filter_value_and_grad(compute_loss)(
-            model_with_compute_dtype, input_ids, labels
-        )
+        loss, grads = eqx.filter_value_and_grad(compute_loss)(model_with_compute_dtype, batch)
         grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
         # Cast grads to param dtype.
@@ -172,7 +171,7 @@ def train(
         return loss, grads
 
     @jax.named_scope("step_optimizer")
-    def step_optimizer(params: nn.Transformer, grads: nn.Transformer, opt_state: optax.OptState):
+    def step_optimizer(params: nn.Transformer, grads: nn.Transformer, opt_state: OptState):
         # Prepare updates.
         updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
 
@@ -188,21 +187,20 @@ def train(
 
         return params, opt_state
 
-    @ft.partial(jax.jit, donate_argnums=[0, 1, 2, 3])
+    @ft.partial(jax.jit, donate_argnums=[0, 1, 2])
     @jax.named_scope("process_microbatch")
     def process_microbatch(
         params: nn.Transformer,
-        input_ids: Array,
-        labels: Array,
-        opt_state: optax.OptState,
-    ) -> tuple[nn.Transformer, optax.OptState, Array]:
+        microbatch: tuple[Array, Array],
+        opt_state: OptState,
+    ) -> tuple[nn.Transformer, OptState, Array]:
         # Reconstruct full model object and enforce sharding constraints.
         model = eqx.combine(params, static)
         model = jax.lax.with_sharding_constraint(model, param_sharding)
         opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
         # Compute loss and gradients.
-        loss, grads = compute_loss_and_grads(model, input_ids, labels)
+        loss, grads = compute_loss_and_grads(model, microbatch)
 
         # Take optimizer step.
         params, opt_state = step_optimizer(params, grads, opt_state)
@@ -211,13 +209,13 @@ def train(
 
     def train_step(
         params: nn.Transformer,
-        opt_state: optax.OptState,
+        opt_state: OptState,
         batch: list[tuple[Array, Array]],
-    ) -> tuple[nn.Transformer, optax.OptState, dict[str, float | int | Array]]:
+    ) -> tuple[nn.Transformer, OptState, dict[str, float | int | Array]]:
         # Process one micro-batch at a time.
         batch_losses: list[Array] = []
-        for input_ids, labels in batch:
-            params, opt_state, mb_loss = process_microbatch(params, input_ids, labels, opt_state)
+        for microbatch in batch:
+            params, opt_state, mb_loss = process_microbatch(params, microbatch, opt_state)
             batch_losses.append(mb_loss)
 
         metrics: dict[str, float | int | Array] = {}
