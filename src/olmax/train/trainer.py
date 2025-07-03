@@ -29,6 +29,7 @@ from ..optim import (
 )
 from ..types import *
 from .callbacks import Callback
+from .checkpointer import Checkpointer, SimpleCheckpointer
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class TrainState(Generic[M]):
     static: M
     optim: Optim
     opt_state: OptState
+    data_loader: data.DataLoader
 
     @property
     def model(self) -> M:
@@ -91,6 +93,14 @@ class Trainer(Generic[M, B]):
     """
     Callbacks to use.
     """
+    checkpointer: Checkpointer = dataclasses.field(default_factory=SimpleCheckpointer)
+    """
+    The checkpointer to use for saving/restoring checkpoints.
+    """
+    checkpoint_interval: int | None = None
+    """
+    The interval in steps to save checkpoints.
+    """
     cancel_check_interval: int = 5
     """
     The interval in steps to synchronize cancellation conditions.
@@ -118,6 +128,10 @@ class Trainer(Generic[M, B]):
     """
     Names or glob patterns of metrics to log to the console.
     """
+    save_overwrite: bool = False
+    """
+    If the trainer should overwrite existing checkpoints and other files.
+    """
 
     # Internal bookkeeping.
     _state: TrainState | None = dataclasses.field(default=None, repr=False)
@@ -136,6 +150,7 @@ class Trainer(Generic[M, B]):
     _bps_average: utils.RunningAverage = dataclasses.field(
         default_factory=lambda: utils.RunningAverage(0.0), repr=False
     )
+    _last_checkpoint: int = dataclasses.field(default=0, repr=False)
 
     def __post_init__(self):
         # Ensure working directory and save folder exist.
@@ -253,7 +268,9 @@ class Trainer(Generic[M, B]):
         """
         self._metrics_per_step[self.step][name] = jax.copy_to_host_async(value)
 
-    def persist_working_file(self, name: PathOrStr, save_overwrite: bool = False) -> PathOrStr:
+    def persist_working_file(
+        self, name: PathOrStr, save_overwrite: bool | None = None
+    ) -> PathOrStr:
         """
         Persist a file in the :data:`work_dir` by saving/uploading it to the :data:`save_folder`.
 
@@ -266,6 +283,8 @@ class Trainer(Generic[M, B]):
         :raises FileExistsError: If the file already exists in the save folder and :data:`save_overwrite`
             is ``False``.
         """
+        if save_overwrite is None:
+            save_overwrite = self.save_overwrite
         if Path(name).is_relative_to(self.work_dir):
             name = Path(name).relative_to(self.work_dir)
         source = fs.join_path(self.work_dir, name)
@@ -276,7 +295,9 @@ class Trainer(Generic[M, B]):
             raise FileNotFoundError(source)
         return target
 
-    def persist_working_subdir(self, name: PathOrStr, save_overwrite: bool = False) -> PathOrStr:
+    def persist_working_subdir(
+        self, name: PathOrStr, save_overwrite: bool | None = None
+    ) -> PathOrStr:
         """
         Persist a subdirectory in the :data:`work_dir` by saving/uploading it to the :data:`save_folder`.
 
@@ -289,6 +310,8 @@ class Trainer(Generic[M, B]):
         :raises FileExistsError: If the any of the files already exists in the save folder and :data:`save_overwrite`
             is ``False``.
         """
+        if save_overwrite is None:
+            save_overwrite = self.save_overwrite
         if Path(name).is_relative_to(self.work_dir):
             name = Path(name).relative_to(self.work_dir)
         source = fs.join_path(self.work_dir, name)
@@ -298,7 +321,7 @@ class Trainer(Generic[M, B]):
         return target
 
     def write_file(
-        self, fname: str, contents: str | bytes, save_overwrite: bool = False
+        self, fname: str, contents: str | bytes, save_overwrite: bool | None = None
     ) -> PathOrStr:
         """
         Write a file to the :data:`save_folder`.
@@ -309,6 +332,8 @@ class Trainer(Generic[M, B]):
 
         :returns: The full path/URL of the file.
         """
+        if save_overwrite is None:
+            save_overwrite = self.save_overwrite
         target = fs.join_path(self.save_folder, fname)
         mode = "wb" if isinstance(contents, bytes) else "wt"
         tmp_file = tempfile.NamedTemporaryFile(mode=mode, delete=False, dir=self.work_dir)
@@ -321,7 +346,22 @@ class Trainer(Generic[M, B]):
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    def fit(self, model: M, data_loader: data.DataLoader) -> tuple[M, Optim, OptState]:
+    def save_checkpoint(self, save_overwrite: bool | None = None):
+        """
+        Save a checkpoint.
+        """
+        if save_overwrite is None:
+            save_overwrite = self.save_overwrite
+        checkpoint_path = fs.join_path(self.save_folder, f"step{self.step}")
+        self.checkpointer.save(checkpoint_path, self.state, save_overwrite=save_overwrite)
+        self._last_checkpoint = self.step
+        gc.collect()
+        for callback in self._iter_callbacks():
+            callback.post_checkpoint_saved(checkpoint_path)
+
+    def fit(
+        self, model: M, data_loader: data.DataLoader, *, load_path: PathOrStr | None = None
+    ) -> tuple[M, Optim, OptState]:
         """
         Fit a model to a dataset.
 
@@ -334,6 +374,7 @@ class Trainer(Generic[M, B]):
         self._canceled = jax.copy_to_host_async(jnp.array(False))
         self._cancel_reason = None
         self._error = None
+        self._last_checkpoint = 0
 
         # Disable automatic garbage collection.
         gc.disable()
@@ -375,7 +416,15 @@ class Trainer(Generic[M, B]):
         optim, opt_state = self.optim.build(params, num_microbatches)
         opt_state_sharding = self.mesh.get_opt_state_sharding(opt_state)
 
-        self._init_state(params=params, static=static, optim=optim, opt_state=opt_state)
+        self._init_state(
+            params=params, static=static, optim=optim, opt_state=opt_state, data_loader=data_loader
+        )
+        if load_path is not None:
+            params, static, opt_state = self._load_checkpoint(load_path)
+        # TODO: maybe load from save folder
+        elif self.checkpoint_interval is not None:
+            # Save pre-train checkpoint.
+            self.save_checkpoint()
 
         train_batch = self._make_train_batch(
             static=static,
@@ -422,6 +471,10 @@ class Trainer(Generic[M, B]):
 
         for callback in self._iter_callbacks():
             callback.post_train()
+
+        # Maybe save a final checkpoint.
+        if self.checkpoint_interval is not None and self.step != self._last_checkpoint:
+            self.save_checkpoint()
 
         # Re-combine params and state into model object.
         model = eqx.combine(params, static)
@@ -510,6 +563,13 @@ class Trainer(Generic[M, B]):
 
                 for callback in self._iter_callbacks():
                     callback.post_train_batch()
+
+                # Maybe save a checkpoint.
+                if (
+                    self.checkpoint_interval is not None
+                    and self.step % self.checkpoint_interval == 0
+                ):
+                    self.save_checkpoint()
 
                 # Log metrics from previous step(s).
                 with jax.profiler.TraceAnnotation("log_metrics"):
@@ -710,7 +770,15 @@ class Trainer(Generic[M, B]):
     def _duration_due(self, duration: Duration) -> bool:
         return duration.due(step=self.step, tokens=self.global_train_tokens_seen, epoch=self.epoch)
 
-    def _init_state(self, *, params: M, static: M, optim: Optim, opt_state: OptState):
+    def _init_state(
+        self,
+        *,
+        params: M,
+        static: M,
+        optim: Optim,
+        opt_state: OptState,
+        data_loader: data.DataLoader,
+    ):
         self._state = TrainState(
             step=self.step,
             epoch=self.epoch,
@@ -719,6 +787,7 @@ class Trainer(Generic[M, B]):
             static=static,
             optim=optim,
             opt_state=opt_state,
+            data_loader=data_loader,
         )
 
     def _update_state(self, **kwargs):
@@ -729,3 +798,12 @@ class Trainer(Generic[M, B]):
             global_train_tokens_seen=self.global_train_tokens_seen,
             **kwargs,
         )
+
+    def _load_checkpoint(self, dir: PathOrStr) -> tuple[M, M, OptState]:
+        state = self.checkpointer.load(dir, self.state)
+        self._step = state.step
+        self._epoch = state.epoch
+        self._global_train_tokens_seen = state.global_train_tokens_seen
+        for callback in self._iter_callbacks():
+            callback.post_checkpoint_loaded(dir)
+        return state.params, state.static, state.opt_state

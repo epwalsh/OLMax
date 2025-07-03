@@ -35,6 +35,9 @@ class Callback(Registrable):
 
     @property
     def trainer(self) -> "Trainer":
+        """
+        The trainer that the callback is attached to.
+        """
         assert self._trainer is not None
         return self._trainer
 
@@ -44,10 +47,17 @@ class Callback(Registrable):
 
     @property
     def train_state(self) -> "TrainState":
+        """
+        The current train state. This can only be called during :meth:`Trainer.fit()`, otherwise
+        a runtime error is raised.
+        """
         return self.trainer.state
 
     @property
     def step(self) -> int:
+        """
+        The current training step.
+        """
         return self.trainer.step
 
     def get_state(self) -> Any:
@@ -67,14 +77,6 @@ class Callback(Registrable):
         Called right after the callback is attached to the :class:`~olmo_core.train.Trainer`.
         """
         pass
-
-    def post_checkpoint_loaded(self, path: PathOrStr):
-        """
-        Called when a checkpoint is successfully loaded.
-
-        :param path: The path/URL to the checkpoint.
-        """
-        del path
 
     def pre_train(self):
         """
@@ -121,6 +123,14 @@ class Callback(Registrable):
     def post_checkpoint_saved(self, path: PathOrStr):
         """
         Called when a checkpoint is successfully saved.
+
+        :param path: The path/URL to the checkpoint.
+        """
+        del path
+
+    def post_checkpoint_loaded(self, path: PathOrStr):
+        """
+        Called when a checkpoint is successfully loaded.
 
         :param path: The path/URL to the checkpoint.
         """
