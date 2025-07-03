@@ -6,6 +6,7 @@ import itertools
 import logging
 import math
 import signal
+import tempfile
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -283,6 +284,30 @@ class Trainer(Generic[M, B]):
         if source != target:
             fs.copy_dir(source, target, save_overwrite=save_overwrite)
         return target
+
+    def write_file(
+        self, fname: str, contents: str | bytes, save_overwrite: bool = False
+    ) -> PathOrStr:
+        """
+        Write a file to the :data:`save_folder`.
+
+        :param fname: The name of the file to write, relative to the :data:`save_folder`.
+        :param contents: The contents of the file to write.
+        :param save_overwrite: Overwrite an existing file.
+
+        :returns: The full path/URL of the file.
+        """
+        target = fs.join_path(self.save_folder, fname)
+        mode = "wb" if isinstance(contents, bytes) else "wt"
+        tmp_file = tempfile.NamedTemporaryFile(mode=mode, delete=False, dir=self.work_dir)
+        tmp_path = Path(tmp_file.name)
+        try:
+            tmp_file.write(contents)
+            tmp_file.flush()
+            fs.copy_file(tmp_path, target, save_overwrite=save_overwrite)
+            return target
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     def fit(self, model: M, data_loader: data.DataLoader) -> tuple[M, Optim, OptState]:
         """
