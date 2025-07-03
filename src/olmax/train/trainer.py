@@ -302,9 +302,16 @@ class Trainer(Generic[M, B]):
             num_microbatches=num_microbatches,
         )
 
-        log.info("Callback order:")
-        for i, callback_name in enumerate(self.callbacks.keys()):
-            log.info(f" - Callback {i+1}: {callback_name}")
+        if self.callbacks:
+            log.info(
+                "Callback order:\n"
+                + "\n".join(
+                    [
+                        f"❯ Callback {i+1}: {callback_name}"
+                        for i, callback_name in enumerate(self.callbacks.keys())
+                    ]
+                )
+            )
 
         for callback in self._iter_callbacks():
             callback.pre_train()
