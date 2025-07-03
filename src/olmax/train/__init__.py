@@ -6,13 +6,14 @@ from ..env import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
 from ..jax_utils import get_cudnn_version
 from ..types import *
 from . import callbacks
-from .trainer import Trainer
+from .trainer import Trainer, TrainState
 
 __all__ = [
     # Submodules.
     "callbacks",
     # Classes.
     "Trainer",
+    "TrainState",
     # Functions.
     "prepare_training_environment",
 ]

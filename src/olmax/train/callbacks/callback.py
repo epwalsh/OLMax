@@ -7,7 +7,7 @@ from dataclass_extensions import Registrable
 from ...types import *
 
 if TYPE_CHECKING:
-    from ..trainer import Trainer
+    from ..trainer import Trainer, TrainState
 
 
 @dataclass
@@ -41,6 +41,10 @@ class Callback(Registrable):
     @trainer.setter
     def trainer(self, trainer: "Trainer"):
         self._trainer = trainer
+
+    @property
+    def train_state(self) -> "TrainState":
+        return self.trainer.state
 
     @property
     def step(self) -> int:

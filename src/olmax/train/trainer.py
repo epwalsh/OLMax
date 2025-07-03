@@ -37,10 +37,24 @@ B = TypeVar("B")
 
 
 @dataclass
-class TrainerState:
+class TrainState(Generic[M]):
     step: int
     epoch: int
     global_train_tokens_seen: int | None
+    params: M
+    static: M
+    optim: Optim
+    opt_state: OptState
+
+    @property
+    def model(self) -> M:
+        return eqx.combine(self.params, self.static)
+
+    @model.setter
+    def model(self, model: M):
+        params, static = eqx.partition(model, eqx.is_array)
+        self.params = params
+        self.static = static
 
 
 @dataclass
@@ -106,6 +120,7 @@ class Trainer(Generic[M, B]):
     """
 
     # Internal bookkeeping.
+    _state: TrainState | None = dataclasses.field(default=None, repr=False)
     _step: int = dataclasses.field(default=0, repr=False)
     _step_this_run: int = dataclasses.field(default=0, repr=False)
     _epoch: int = dataclasses.field(default=1, repr=False)
@@ -163,6 +178,15 @@ class Trainer(Generic[M, B]):
             if isinstance(cb, cb_class):
                 return True
         return False
+
+    @property
+    def state(self) -> TrainState:
+        """
+        The current trainer state.
+        """
+        if self._state is None:
+            raise RuntimeError("trainer state can only be accessed during `trainer.fit()`.")
+        return self._state
 
     @property
     def step(self) -> int:
@@ -228,18 +252,6 @@ class Trainer(Generic[M, B]):
         Record a metric for logging.
         """
         self._metrics_per_step[self.step][name] = jax.copy_to_host_async(value)
-
-    def get_state(self) -> TrainerState:
-        return TrainerState(
-            step=self.step,
-            epoch=self.epoch,
-            global_train_tokens_seen=self._global_train_tokens_seen,
-        )
-
-    def load_state(self, state: TrainerState):
-        self._step = state.step
-        self._epoch = state.epoch
-        self._global_train_tokens_seen = state.global_train_tokens_seen
 
     def persist_working_file(self, name: PathOrStr, save_overwrite: bool = False) -> PathOrStr:
         """
@@ -363,6 +375,8 @@ class Trainer(Generic[M, B]):
         optim, opt_state = self.optim.build(params, num_microbatches)
         opt_state_sharding = self.mesh.get_opt_state_sharding(opt_state)
 
+        self._init_state(params=params, static=static, optim=optim, opt_state=opt_state)
+
         train_batch = self._make_train_batch(
             static=static,
             optim=optim,
@@ -397,6 +411,7 @@ class Trainer(Generic[M, B]):
                     opt_state=opt_state,
                     batches=batches,
                 )
+                self._update_state(params=params, opt_state=opt_state)
                 batches = iter(data_loader)
         except BaseException as exc:
             log.error(f"Training failed due to:\n{exc}")
@@ -444,6 +459,7 @@ class Trainer(Generic[M, B]):
             self._step += 1
             self._step_this_run += 1
             self._metrics_per_step[self.step] = {}
+            self._update_state()
 
             # Maybe synchronize cancellation.
             if self.step % self.cancel_check_interval == 0:
@@ -480,6 +496,7 @@ class Trainer(Generic[M, B]):
                 # Train on batch.
                 with jax.profiler.TraceAnnotation("train_batch"):
                     params, opt_state = train_batch(params, opt_state, batch)
+                    self._update_state(params=params, opt_state=opt_state)
 
                 # More bookkeeping.
                 if global_train_tokens_this_batch is not None:
@@ -692,3 +709,23 @@ class Trainer(Generic[M, B]):
 
     def _duration_due(self, duration: Duration) -> bool:
         return duration.due(step=self.step, tokens=self.global_train_tokens_seen, epoch=self.epoch)
+
+    def _init_state(self, *, params: M, static: M, optim: Optim, opt_state: OptState):
+        self._state = TrainState(
+            step=self.step,
+            epoch=self.epoch,
+            global_train_tokens_seen=self.global_train_tokens_seen,
+            params=params,
+            static=static,
+            optim=optim,
+            opt_state=opt_state,
+        )
+
+    def _update_state(self, **kwargs):
+        self._state = dataclasses.replace(
+            self.state,
+            step=self.step,
+            epoch=self.epoch,
+            global_train_tokens_seen=self.global_train_tokens_seen,
+            **kwargs,
+        )
