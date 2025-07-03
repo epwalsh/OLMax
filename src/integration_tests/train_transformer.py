@@ -1,18 +1,13 @@
 import argparse
 import dataclasses
-import functools as ft
-import gc
 import logging
 import sys
 import textwrap
-import time
-import typing
-from collections import OrderedDict
+from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
-import equinox as eqx
 import jax
-import jax.numpy as jnp
 
 import olmax
 import olmax.distributed as dist
@@ -21,6 +16,7 @@ import olmax.nn.functional as F
 from olmax.config import parse_config_from_args
 from olmax.launch.beaker import BeakerRuntime
 from olmax.nn.transformer import TransformerConfig, TransformerRecipeType
+from olmax.train import Trainer
 from olmax.types import *
 
 log = logging.getLogger("main")
@@ -46,10 +42,10 @@ class IntegrationTestConfig:
         default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
     )
 
-    trace_dir: str | None = dataclasses.field(
-        default_factory=lambda: None
+    dir: str = dataclasses.field(
+        default_factory=lambda: "/tmp/olmax/train"
         if beaker_runtime is None
-        else beaker_runtime.workload.result_dataset_path
+        else (beaker_runtime.workload.result_dataset_path or "/tmp/olmax/train")
     )
 
 
@@ -57,7 +53,7 @@ def train(
     recipe_type: TransformerRecipeType,
     config: IntegrationTestConfig,
     show_model: bool = False,
-) -> tuple[float, int, int]:
+):
     recipe_name = recipe_type.name
     batch_size_per_device = config.device_microbatch_size * config.num_microbatches
     instances_per_device = batch_size_per_device // config.sequence_length
@@ -107,33 +103,6 @@ def train(
     param_sharding = model.get_param_shardings()
     data_sharding = config.mesh.get_data_sharding()
 
-    params, static = eqx.partition(model, eqx.is_array)
-
-    log.info("Initializing optimizer...")
-    optim, opt_state = config.optim.build(params, config.num_microbatches)
-    opt_state_sharding = config.mesh.get_opt_state_sharding(opt_state)
-
-    # Bookkeeping variables.
-    step = 0
-    all_steps_tps: list[float] = []
-    tps_max: float | None = None
-    tps_min: float | None = None
-    loss: float | None = None
-    metrics_per_step: OrderedDict[int, dict[str, float | int | Array]] = OrderedDict()
-
-    def log_metrics():
-        nonlocal loss
-        for step_to_log, metrics_to_log in metrics_per_step.items():
-            log.info(
-                f"[step {step_to_log:03d}] "
-                + ", ".join(
-                    f"{name} = {olmax.utils.format_scalar(value)}"
-                    for name, value in metrics_to_log.items()
-                ),
-            )
-            loss = typing.cast(Array, metrics_to_log["loss"]).item()
-        metrics_per_step.clear()
-
     @jax.named_scope("compute_loss")
     def compute_loss(model: nn.Transformer, batch: tuple[Array, Array]):
         input_ids, labels = batch
@@ -150,199 +119,32 @@ def train(
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
 
-    @jax.named_scope("compute_loss_and_grads")
-    def compute_loss_and_grads(
-        model: nn.Transformer, batch: tuple[Array, Array]
-    ) -> tuple[Array, nn.Transformer]:
-        # Cast model to lower precision compute dtype.
-        if config.compute_dtype != config.param_dtype:
-            model_with_compute_dtype = olmax.jax_utils.cast_tree(model, config.compute_dtype)
-        else:
-            model_with_compute_dtype = model
-
-        # Do forward+backward passes.
-        loss, grads = eqx.filter_value_and_grad(compute_loss)(model_with_compute_dtype, batch)
-        grads = jax.lax.with_sharding_constraint(grads, param_sharding)
-
-        # Cast grads to param dtype.
-        if config.compute_dtype != config.param_dtype:
-            grads = olmax.jax_utils.cast_tree(grads, config.param_dtype)
-
-        return loss, grads
-
-    @jax.named_scope("step_optimizer")
-    def step_optimizer(params: nn.Transformer, grads: nn.Transformer, opt_state: OptState):
-        # Prepare updates.
-        updates, opt_state = optim.update(grads, opt_state, params)  # pyright: ignore
-
-        # Reinforce sharding constraints.
-        updates = jax.lax.with_sharding_constraint(updates, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-        # Apply updates.
-        params = eqx.apply_updates(params, updates)
-
-        # Reinforce sharding constraints.
-        params = jax.lax.with_sharding_constraint(params, param_sharding)
-
-        return params, opt_state
-
-    @ft.partial(jax.jit, donate_argnums=[0, 1, 2])
-    @jax.named_scope("process_microbatch")
-    def process_microbatch(
-        params: nn.Transformer,
-        microbatch: tuple[Array, Array],
-        opt_state: OptState,
-    ) -> tuple[nn.Transformer, OptState, Array]:
-        # Reconstruct full model object and enforce sharding constraints.
-        model = eqx.combine(params, static)
-        model = jax.lax.with_sharding_constraint(model, param_sharding)
-        opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
-
-        # Compute loss and gradients.
-        loss, grads = compute_loss_and_grads(model, microbatch)
-
-        # Take optimizer step.
-        params, opt_state = step_optimizer(params, grads, opt_state)
-
-        return params, opt_state, loss
-
-    def train_step(
-        params: nn.Transformer,
-        opt_state: OptState,
-        batch: list[tuple[Array, Array]],
-    ) -> tuple[nn.Transformer, OptState, dict[str, float | int | Array]]:
-        # Process one micro-batch at a time.
-        batch_losses: list[Array] = []
-        for microbatch in batch:
-            params, opt_state, mb_loss = process_microbatch(params, microbatch, opt_state)
-            batch_losses.append(mb_loss)
-
-        metrics: dict[str, float | int | Array] = {}
-
-        # Reduced loss over micro-batches.
-        metrics["loss"] = jax.copy_to_host_async(jnp.stack(batch_losses).mean())
-
-        # Collect learning rate.
-        metrics["lr"] = jax.copy_to_host_async(
-            olmax.optim.extract_hyperparameter(opt_state, "learning_rate").copy()
-        )
-
-        # If using gradient clipping, collect the global gradient norm.
-        if (
-            clipping_state := olmax.optim.extract_state(
-                opt_state, olmax.optim.ClipByGlobalNormState
-            )
-        ) is not None:
-            metrics["g_norm"] = jax.copy_to_host_async(clipping_state.global_norm.copy())
-
-        return params, opt_state, metrics
-
-    dist.barrier("pre-train-loop")
-    gc.disable()
-    gc.collect()
-    log.info("Starting training...")
-
-    batches = olmax.data.utils.generate_batches_of_sequential_tokens(
-        data_key,
-        vocab_size=config.model.vocab_size,
-        sequence_length=config.sequence_length,
-        global_batch_size_instances=global_batch_size_instances,
-        total_batches=config.steps,
-        mesh_resource=config.mesh,
-        num_microbatches=config.num_microbatches,
-    )
-    batch_start = time.perf_counter()
-    while True:
-        # Bookkeeping.
-        step += 1
-
-        # Maybe start tracing.
-        if step == 3 and config.trace_dir is not None:
-            jax.profiler.start_trace(config.trace_dir, create_perfetto_trace=True)
-
-        with jax.profiler.StepTraceAnnotation("train_step", step_num=step):
-            # Get batch.
-            with jax.profiler.TraceAnnotation("load_batch"):
-                try:
-                    batch = next(batches)
-                except StopIteration:
-                    break
-
-            # Do a step, one micro-batch at a time.
-            params, opt_state, step_metrics = train_step(params, opt_state, batch)
-
-            # Record system metrics.
-            step_metrics["peak mem usage (MiB)"] = int(
-                olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+    class DataLoader(Iterable):
+        def __iter__(self):
+            return olmax.data.utils.generate_batches_of_sequential_tokens(
+                data_key,
+                vocab_size=config.model.vocab_size,
+                sequence_length=config.sequence_length,
+                global_batch_size_instances=global_batch_size_instances,
+                total_batches=config.steps,
+                mesh_resource=config.mesh,
+                num_microbatches=config.num_microbatches,
             )
 
-            # Log metrics from previous steps.
-            with jax.profiler.TraceAnnotation("log_metrics"):
-                log_metrics()
-
-            # Lastly, record throughput.
-            batch_end = time.perf_counter()
-            tps = batch_size_per_device / (batch_end - batch_start)
-            step_metrics["TPS"] = int(tps)
-            if step > 6:
-                all_steps_tps.append(tps)
-                tps_max = tps if tps_max is None else max(tps, tps_max)
-                tps_min = tps if tps_min is None else min(tps, tps_min)
-
-        # Maybe stop tracing.
-        if step == 5 and config.trace_dir is not None:
-            jax.profiler.stop_trace()
-
-        metrics_per_step[step] = step_metrics
-        batch_start = batch_end
-
-    # Log left-over metrics.
-    log_metrics()
-
-    # Collect final metrics.
-    assert loss is not None
-    peak_mib_in_use = int(
-        olmax.utils.bytes_to_mib(olmax.jax_utils.get_peak_local_device_memory_usage())
+    trainer = Trainer(
+        work_dir=Path(config.dir),
+        save_folder=config.dir,
+        optim=config.optim,
+        loss_fun=compute_loss,
+        mesh=config.mesh,
+        param_dtype=config.param_dtype,
+        compute_dtype=config.compute_dtype,
+        max_duration=Duration.steps(config.steps),
+        global_tokens_per_batch=global_batch_size,
     )
-    tps_arr = jnp.array(all_steps_tps)
-    tps_avg = int(tps_arr.mean().item())
-    tps_std = int(tps_arr.std().item())
-    tps_ci_bound_low = tps_avg - 2 * tps_std
-    if tps_min is not None:
-        tps_ci_bound_low = max(tps_ci_bound_low, int(tps_min))
-    tps_ci_bound_high = tps_avg + 2 * tps_std
-    if tps_max is not None:
-        tps_ci_bound_high = min(tps_ci_bound_high, int(tps_max))
+    trainer.add_callback("profiler", olmax.train.callbacks.ProfilerCallback())
 
-    log.info(
-        f"Done.\n"
-        f"❯ Average throughput: {tps_avg:,d} += {2 * tps_std:,d} ({tps_ci_bound_low:,d}, {tps_ci_bound_high:,d}) TPS\n"
-        f"❯ Peak mem usage: {peak_mib_in_use:,d} MiB\n"
-        f"❯ Final loss: {loss:.4f}"
-    )
-
-    if beaker_runtime is not None and beaker_runtime.is_experiment:
-        beaker_runtime.set_description(
-            f"OLMax {recipe_name} on {beaker_runtime.cluster_nickname}: "
-            f"loss = {loss:.4f}, "
-            f"TPS = {tps_avg:,d}, "
-            f"peak mem usage (MiB) = {peak_mib_in_use:,d}"
-        )
-        if (
-            config.trace_dir is not None
-            and (result_dataset_id := beaker_runtime.workload.result_dataset_id) is not None
-        ):
-            log.info(
-                "You can download the profiler results by running:\n"
-                f"'beaker dataset fetch {result_dataset_id} --output=traces/ --prefix=plugins'"
-            )
-
-    # Reset garbage collection (good practice).
-    gc.collect()
-    gc.enable()
-
-    return loss, tps_avg, peak_mib_in_use
+    trainer.fit(model, DataLoader())
 
 
 def _parse_args():

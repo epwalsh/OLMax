@@ -7,6 +7,7 @@ import signal
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Generic, Iterable, Iterator, Sequence, Type, TypeVar
 
 import equinox as eqx
@@ -14,7 +15,7 @@ import jax
 import jax.numpy as jnp
 
 from .. import distributed as dist
-from .. import jax_utils, nn, utils
+from .. import fs, jax_utils, nn, utils
 from ..exceptions import *
 from ..optim import (
     ClipByGlobalNormState,
@@ -33,6 +34,15 @@ B = TypeVar("B")
 
 @dataclass
 class Trainer(Generic[M, B]):
+    work_dir: Path
+    """
+    Local temporary working directory.
+    """
+    save_folder: PathOrStr
+    """
+    Local or remote save folder to persist checkpoints and other artifacts.
+    """
+
     optim: OptimConfig
     loss_fun: Callable[[M, B], Array]
 
@@ -65,6 +75,13 @@ class Trainer(Generic[M, B]):
     )
 
     def __post_init__(self):
+        # Ensure working directory and save folder exist.
+        self.work_dir = Path(self.work_dir)
+        self.work_dir.mkdir(exist_ok=True, parents=True)
+        if not fs.is_url(self.save_folder):
+            self.save_folder = Path(fs.normalize_path(self.save_folder))
+            self.save_folder.mkdir(exist_ok=True, parents=True)
+
         # Set pointer to self in all callbacks.
         for callback in self.callbacks.values():
             callback.trainer = self
@@ -75,7 +92,7 @@ class Trainer(Generic[M, B]):
         # synchronization/communication calls.
         self._sort_callbacks()
 
-        for callback in self.callbacks.values():
+        for callback in self._iter_callbacks():
             callback.post_attach()
 
     def add_callback(self, name: str, callback: Callback):
@@ -156,6 +173,31 @@ class Trainer(Generic[M, B]):
         self._cancel_reason = None
         self._canceling_rank = None
 
+        # Disable automatic garbage collection.
+        gc.disable()
+        gc.collect()
+
+        # Install SIGTERM + SIGINT handlers.
+        og_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_os_signal)
+        og_sigint_handler = signal.signal(signal.SIGINT, self._handle_os_signal)
+
+        def _shutdown(wait: bool = True):
+            self._log_metrics()
+
+            for callback in self._iter_callbacks():
+                callback.close()
+
+            # Reset garbage collection.
+            gc.collect()
+            gc.enable()
+
+            # Restore original signal handlers.
+            signal.signal(signal.SIGTERM, og_sigterm_handler)
+            signal.signal(signal.SIGINT, og_sigint_handler)
+
+            if wait:
+                dist.barrier("post-train-loop")
+
         log.info("Loading first batch...")
         batches = iter(data_loader)
         first_batch = next(batches)
@@ -173,14 +215,11 @@ class Trainer(Generic[M, B]):
 
         train_batch = self._make_train_batch(
             static=static,
+            optim=optim,
             param_sharding=param_sharding,
             opt_state_sharding=opt_state_sharding,
             num_microbatches=num_microbatches,
         )
-
-        # Disable automatic garbage collection.
-        gc.disable()
-        gc.collect()
 
         log.info("Callback order:")
         for i, callback_name in enumerate(self.callbacks.keys()):
@@ -188,10 +227,6 @@ class Trainer(Generic[M, B]):
 
         for callback in self._iter_callbacks():
             callback.pre_train()
-
-        # Install SIGTERM + SIGINT handlers.
-        og_sigterm_handler = signal.signal(signal.SIGTERM, self._handle_os_signal)
-        og_sigint_handler = signal.signal(signal.SIGINT, self._handle_os_signal)
 
         dist.barrier("pre-train-loop")
 
@@ -210,11 +245,8 @@ class Trainer(Generic[M, B]):
             log.error(f"Training failed due to:\n{exc}")
             for callback in self._iter_callbacks():
                 callback.on_error(exc)
+            _shutdown(wait=False)
             raise
-        finally:
-            # Restore original signal handlers.
-            signal.signal(signal.SIGTERM, og_sigterm_handler)
-            signal.signal(signal.SIGINT, og_sigint_handler)
 
         for callback in self._iter_callbacks():
             callback.post_train()
@@ -222,7 +254,7 @@ class Trainer(Generic[M, B]):
         # Re-combine params and state into model object.
         model = eqx.combine(params, static)
 
-        self._shutdown()
+        _shutdown()
         train_end = time.perf_counter()
         log.info(
             f"Training complete. Elapsed time: {utils.format_timedelta(train_end - train_start)}"
@@ -256,8 +288,12 @@ class Trainer(Generic[M, B]):
             self._step_this_run += 1
             self._metrics_per_step[self.step] = {}
 
+            # Maybe synchronize cancellation.
             if self.step % self.cancel_check_interval == 0:
-                self._synchronize_cancelation()
+                self._synchronize_cancellation()
+
+            for callback in self._iter_callbacks():
+                callback.pre_step()
 
             with jax.profiler.StepTraceAnnotation("train_step", step_num=self.step):
                 # Load next batch.
@@ -265,10 +301,15 @@ class Trainer(Generic[M, B]):
                     for callback in self._iter_callbacks():
                         callback.pre_load_batch()
 
+                    batch_load_start = time.perf_counter()
                     try:
                         batch = next(batches)
                     except StopIteration:
                         break
+                    batch_load_end = time.perf_counter()
+                    self.record_metric(
+                        "throughput/data loading time", batch_load_end - batch_load_start
+                    )
 
                     global_train_tokens_this_batch: int | None = None
                     if isinstance(self.global_tokens_per_batch, int):
@@ -296,32 +337,36 @@ class Trainer(Generic[M, B]):
                 for callback in self._iter_callbacks():
                     callback.post_train_batch()
 
-                for callback in self._iter_callbacks():
-                    callback.post_step()
-
                 # Log metrics from previous step(s).
                 with jax.profiler.TraceAnnotation("log_metrics"):
                     self._log_metrics(exclude={self.step})
 
-                # Lastly, record throughput.
-                # NOTE: this should always be called after `self._log_metrics()`, which is a host-device
-                # synchronization point.
-                batch_end = time.perf_counter()
-                bps = 1 / (batch_end - batch_start)
-                bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
-                self.record_metric("throughput/BPS", bps)
+                # Maybe run garbage collection.
+                if self.step % self.gc_interval == 0:
+                    gc.collect()
+
+            for callback in self._iter_callbacks():
+                callback.post_step()
+
+            # Lastly, record throughput.
+            # NOTE: this should always be called after `self._log_metrics()`, which is a host-device
+            # synchronization point.
+            batch_end = time.perf_counter()
+            bps = 1 / (batch_end - batch_start)
+            bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
+            self.record_metric("throughput/BPS", bps)
+            if bps_avg is not None:
+                self.record_metric("throughput/BPS average", bps_avg)
+            if global_train_tokens_this_batch is not None:
+                tps = bps * global_train_tokens_this_batch
+                self.record_metric("throughput/TPS", tps)
+                device_tps = tps / dist.get_global_device_count()
+                self.record_metric("throughput/device TPS", device_tps)
                 if bps_avg is not None:
-                    self.record_metric("throughput/BPS average", bps_avg)
-                if global_train_tokens_this_batch is not None:
-                    tps = bps * global_train_tokens_this_batch
-                    self.record_metric("throughput/TPS", tps)
-                    device_tps = tps / dist.get_global_device_count()
-                    self.record_metric("throughput/device TPS", device_tps)
-                    if bps_avg is not None:
-                        tps_avg = bps_avg * global_train_tokens_this_batch
-                        self.record_metric("throughput/TPS average", tps_avg)
-                        device_tps_avg = tps_avg / dist.get_global_device_count()
-                        self.record_metric("throughput/device TPS average", device_tps_avg)
+                    tps_avg = bps_avg * global_train_tokens_this_batch
+                    self.record_metric("throughput/TPS average", tps_avg)
+                    device_tps_avg = tps_avg / dist.get_global_device_count()
+                    self.record_metric("throughput/device TPS average", device_tps_avg)
 
         # Log left-over metrics.
         self._log_metrics()
@@ -336,15 +381,6 @@ class Trainer(Generic[M, B]):
 
         self._epoch += 1
         return params, opt_state
-
-    def _shutdown(self):
-        self._log_metrics()
-
-        # Reset garbage collection.
-        gc.collect()
-        gc.enable()
-
-        dist.barrier("post-train-loop")
 
     def _handle_os_signal(self, signalnum, stack_frame):
         del stack_frame
@@ -377,7 +413,9 @@ class Trainer(Generic[M, B]):
         )
 
     def _iter_callbacks(self) -> Iterable[Callback]:
-        return self.callbacks.values()
+        for callback in self.callbacks.values():
+            if callback.enabled:
+                yield callback
 
     def _log_metrics(self, exclude: set[int] | None = None):
         for step_to_log in list(self._metrics_per_step.keys()):
@@ -395,13 +433,14 @@ class Trainer(Generic[M, B]):
             for callback in self._iter_callbacks():
                 callback.log_metrics(step_to_log, metrics_to_log)
 
-    def _synchronize_cancelation(self):
+    def _synchronize_cancellation(self):
         self._canceled = jax.copy_to_host_async(dist.synchronize_array(self._canceled))
 
     def _make_train_batch(
         self,
         *,
         static: M,
+        optim: Optim,
         param_sharding: M,
         opt_state_sharding: OptState,
         num_microbatches: int,

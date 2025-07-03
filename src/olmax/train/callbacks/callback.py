@@ -26,6 +26,11 @@ class Callback(Registrable):
     The higher the priority, the earlier a callback runs.
     """
 
+    enabled: bool = True
+    """
+    Set to false to disable the callback.
+    """
+
     _trainer: Any = dataclasses.field(repr=False, default=None)
 
     @property
@@ -76,6 +81,12 @@ class Callback(Registrable):
     def pre_epoch(self):
         """
         Runs before the start of a new epoch.
+        """
+        pass
+
+    def pre_step(self):
+        """
+        Runs before anything else in a train step.
         """
         pass
 
@@ -134,3 +145,8 @@ class Callback(Registrable):
         Called when the training loop exits with an error.
         """
         del exc
+
+    def close(self):
+        """
+        The callback method called. The trainer will always attempt to call this.
+        """

@@ -5,8 +5,17 @@ from typing import Literal
 from ..env import CUDAConfig, JAXConfig, NCCLConfig, XLAConfig
 from ..jax_utils import get_cudnn_version
 from ..types import *
+from . import callbacks
+from .trainer import Trainer
 
-__all__ = ["prepare_training_environment"]
+__all__ = [
+    # Submodules.
+    "callbacks",
+    # Classes.
+    "Trainer",
+    # Functions.
+    "prepare_training_environment",
+]
 
 log = logging.getLogger(__name__)
 
