@@ -65,7 +65,7 @@ class Trainer(Generic[M, B]):
         default_factory=OrderedDict, repr=False
     )
     _canceled: Array = dataclasses.field(
-        default=jax.copy_to_host_async(jnp.array(False)), repr=False
+        default_factory=lambda: jax.copy_to_host_async(jnp.array(False)), repr=False
     )
     _cancel_reason: str | None = dataclasses.field(default=None, repr=False)
     _error: BaseException | None = dataclasses.field(default=None, repr=False)
