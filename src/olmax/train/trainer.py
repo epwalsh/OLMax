@@ -308,11 +308,11 @@ class Trainer(Generic[M, B]):
                 callback.pre_step()
 
             with jax.profiler.StepTraceAnnotation("train_step", step_num=self.step):
+                for callback in self._iter_callbacks():
+                    callback.pre_load_batch()
+
                 # Load next batch.
                 with jax.profiler.TraceAnnotation("load_batch"):
-                    for callback in self._iter_callbacks():
-                        callback.pre_load_batch()
-
                     batch_load_start = time.perf_counter()
                     try:
                         batch = next(batches)
