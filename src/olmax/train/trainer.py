@@ -1,4 +1,5 @@
 import dataclasses
+import fnmatch
 import functools as ft
 import gc
 import itertools
@@ -56,6 +57,16 @@ class Trainer(Generic[M, B]):
     gc_interval: int = 1000
     max_duration: Duration = dataclasses.field(default_factory=lambda: Duration.epochs(1))
     global_tokens_per_batch: int | Callable[[Sequence[B]], int] | None = None
+    log_to_console: Sequence[str] = (
+        "train/loss",
+        "optim/lr",
+        "system/*",
+        "throughput/data loading*",
+        "throughput/TPS device*",
+    )
+    """
+    Names or glob patterns of metrics to log to the console.
+    """
 
     # Internal bookkeeping.
     _step: int = dataclasses.field(default=0, repr=False)
@@ -427,9 +438,12 @@ class Trainer(Generic[M, B]):
             log.info(
                 f"[step {step_to_log:03d}]\n"
                 + "\n".join(
-                    f"{name} = {utils.format_scalar(value)}"
-                    for name, value in metrics_to_log.items()
-                ),
+                    [
+                        f"    {name}={utils.format_scalar(metrics_to_log[name])}"
+                        for name in sorted(metrics_to_log.keys())
+                        if any(fnmatch.fnmatch(name, pat) for pat in self.log_to_console)
+                    ]
+                )
             )
             for callback in self._iter_callbacks():
                 callback.log_metrics(step_to_log, metrics_to_log)
