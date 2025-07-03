@@ -32,7 +32,7 @@ class ProfilerCallback(Callback):
             self._is_active = True
 
     def post_step(self):
-        if self._step_count == (self.skip_first + 1 + self.active):
+        if self._step_count == (self.skip_first + self.active):
             jax.profiler.stop_trace()
             self._is_active = False
 

@@ -51,6 +51,7 @@ def train(
     show_model: bool = False,
 ):
     dir: Path
+    trace_download_command: str | None = None
     if config.dir is not None:
         dir = Path(config.dir)
     elif (
@@ -58,6 +59,7 @@ def train(
         and (result_path := beaker_runtime.workload.result_dataset_path) is not None
     ):
         dir = Path(result_path)
+        trace_download_command = f"beaker dataset fetch {beaker_runtime.workload.result_dataset_id} --output=traces/ --prefix=plugins"
     else:
         dir = Path("/tmp/olmax/train")
     log.info(f"Saving results to '{dir}'")
@@ -153,6 +155,9 @@ def train(
     trainer.add_callback("profiler", olmax.train.callbacks.ProfilerCallback())
 
     trainer.fit(model, DataLoader())
+
+    if trace_download_command is not None:
+        log.info(f"To download the profiler trace, run:\n❯ {trace_download_command}")
 
 
 def _parse_args():
