@@ -424,8 +424,8 @@ class Trainer(Generic[M, B]):
 
             metrics_to_log = self._metrics_per_step.pop(step_to_log)
             log.info(
-                f"[step {step_to_log:03d}] "
-                + ", ".join(
+                f"[step {step_to_log:03d}]\n"
+                + "\n".join(
                     f"{name} = {utils.format_scalar(value)}"
                     for name, value in metrics_to_log.items()
                 ),
