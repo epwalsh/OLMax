@@ -1,3 +1,4 @@
+import functools as ft
 import io
 import logging
 import os
@@ -6,7 +7,6 @@ import shutil
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import cache, wraps
 from pathlib import Path
 from typing import Callable, Generator, Type
 
@@ -421,7 +421,7 @@ def retriable(
     retry_condition: Callable[[Exception], bool] | None = None,
 ):
     def decorator(func):
-        @wraps(func)
+        @ft.wraps(func)
         def new_func(*args, **kwargs):
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -499,7 +499,7 @@ def _http_file_exists(url: str) -> bool:
 ####################
 
 
-@cache
+@ft.cache
 def _get_gcs_client():
     from google.cloud import storage as gcs
 
@@ -658,7 +658,7 @@ def _gcs_list_directory(
 ###################
 
 
-@cache
+@ft.cache
 def _get_s3_client(scheme: str):
     import boto3
     from botocore import UNSIGNED

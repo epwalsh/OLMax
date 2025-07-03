@@ -103,8 +103,11 @@ def install_excepthook():
 
 
 def prepare_cli_environment():
+    from .fs import add_cached_path_clients
+
     install_excepthook()
     setup_logging()
+    add_cached_path_clients()
 
 
 def set_env_var(name: str, value: str, override: bool = False, secret: bool = False):
