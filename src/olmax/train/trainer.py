@@ -240,6 +240,50 @@ class Trainer(Generic[M, B]):
         self._epoch = state.epoch
         self._global_train_tokens_seen = state.global_train_tokens_seen
 
+    def persist_working_file(self, name: PathOrStr, save_overwrite: bool = False) -> PathOrStr:
+        """
+        Persist a file in the :data:`work_dir` by saving/uploading it to the :data:`save_folder`.
+
+        :param name: The name/path of the file *relative* to the :data:`work_dir`.
+        :param save_overwrite: Overwrite an existing file.
+
+        :returns: The full path/URL to the saved file.
+
+        :raises FileNotFoundError: If the file can't be found.
+        :raises FileExistsError: If the file already exists in the save folder and :data:`save_overwrite`
+            is ``False``.
+        """
+        if Path(name).is_relative_to(self.work_dir):
+            name = Path(name).relative_to(self.work_dir)
+        source = fs.join_path(self.work_dir, name)
+        target = fs.join_path(self.save_folder, name)
+        if source != target:
+            fs.copy_file(source, target, save_overwrite=save_overwrite)
+        elif not fs.file_exists(source):
+            raise FileNotFoundError(source)
+        return target
+
+    def persist_working_subdir(self, name: PathOrStr, save_overwrite: bool = False) -> PathOrStr:
+        """
+        Persist a subdirectory in the :data:`work_dir` by saving/uploading it to the :data:`save_folder`.
+
+        :param name: The name/path of the subdirectory *relative* to the :data:`work_dir`.
+        :param save_overwrite: Overwrite an existing file.
+
+        :returns: The full path/URL to the saved file.
+
+        :raises FileNotFoundError: If the subdirectory doesn't exist.
+        :raises FileExistsError: If the any of the files already exists in the save folder and :data:`save_overwrite`
+            is ``False``.
+        """
+        if Path(name).is_relative_to(self.work_dir):
+            name = Path(name).relative_to(self.work_dir)
+        source = fs.join_path(self.work_dir, name)
+        target = fs.join_path(self.save_folder, name)
+        if source != target:
+            fs.copy_dir(source, target, save_overwrite=save_overwrite)
+        return target
+
     def fit(self, model: M, data_loader: data.DataLoader) -> tuple[M, Optim, OptState]:
         """
         Fit a model to a dataset.

@@ -15,12 +15,12 @@ You can view these profiles with tensorboard or [ui.perfetto.dev](http://ui.perf
 
 1. First download all trace files:
    ```fish
-   beaker dataset fetch 01JZ18BCKD63WFGQYAMN0S9TEZ --output=traces/ --prefix=plugins
+   beaker dataset fetch 01JZ18BCKD63WFGQYAMN0S9TEZ --output=results/ --prefix=profiler
    ```
-   Note that its important to maintain the paths of these files relative to the dataset root (e.g. `plugins/profile/...`) otherwise tensorboard won't load them.
+   Note that its important to maintain the paths of these files starting with `plugins` (e.g. `plugins/profile/...`) otherwise tensorboard won't load them.
 2. Then either launch tensorboard:
    ```fish
-   tensorboard --logdir=traces/
+   tensorboard --logdir=results/profiler
    ```
    And visit [http://localhost:6006/](http://localhost:6006/) through Chrome (this won't work with Safari).
    Or visit [ui.perfetto.dev](http://ui.perfetto.dev/) and load the `perfetto_trace.json.gz` file you just downloaded from Beaker.

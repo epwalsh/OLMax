@@ -110,7 +110,7 @@ def train(
         and (result_path := beaker_runtime.workload.result_dataset_path) is not None
     ):
         dir = Path(result_path)
-        trace_download_command = f"beaker dataset fetch {beaker_runtime.workload.result_dataset_id} --output=traces/ --prefix=plugins"
+        trace_download_command = f"beaker dataset fetch {beaker_runtime.workload.result_dataset_id} --output=results/ --prefix=profiler"
     else:
         dir = Path("/tmp/olmax/train")
     log.info(f"Saving results to '{dir}'")
