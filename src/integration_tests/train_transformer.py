@@ -64,13 +64,14 @@ class DataLoader(olmax.data.DataLoader):
         self.mesh_resource = mesh_resource
         self.num_microbatches = num_microbatches
         self.batches_processed = 0
+        self.epoch = 0
 
     def __len__(self):
         return self.total_batches
 
     def __iter__(self):
         for batch in olmax.data.utils.generate_batches_of_sequential_tokens(
-            self.data_key,
+            jax.random.fold_in(self.data_key, self.epoch),
             vocab_size=self.vocab_size,
             sequence_length=self.sequence_length,
             global_batch_size_instances=self.global_batch_size_instances,
@@ -82,13 +83,17 @@ class DataLoader(olmax.data.DataLoader):
             self.batches_processed += 1
             yield batch
 
-    def get_state(self) -> tuple[PRNGKeyArray, int]:
-        return (self.data_key, self.batches_processed)
+        self.batches_processed = 0
+        self.epoch += 1
 
-    def load_state(self, state: tuple[PRNGKeyArray, int]):
-        data_key, batches_processed = state
+    def get_state(self) -> tuple[PRNGKeyArray, int, int]:
+        return (self.data_key, self.batches_processed, self.epoch)
+
+    def load_state(self, state: tuple[PRNGKeyArray, int, int]):
+        data_key, batches_processed, epoch = state
         self.data_key = data_key
         self.batches_processed = batches_processed
+        self.epoch = epoch
 
 
 def train(

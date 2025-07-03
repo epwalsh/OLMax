@@ -36,6 +36,13 @@ B = TypeVar("B")
 
 
 @dataclass
+class TrainerState:
+    step: int
+    epoch: int
+    global_train_tokens_seen: int | None
+
+
+@dataclass
 class Trainer(Generic[M, B]):
     work_dir: Path
     """
@@ -68,10 +75,6 @@ class Trainer(Generic[M, B]):
     callbacks: OrderedDict[str, Callback] = dataclasses.field(default_factory=OrderedDict)
     """
     Callbacks to use.
-    """
-    save_interval: int | None = None
-    """
-    The interval in steps to save checkpoints.
     """
     cancel_check_interval: int = 5
     """
@@ -225,6 +228,18 @@ class Trainer(Generic[M, B]):
         """
         self._metrics_per_step[self.step][name] = jax.copy_to_host_async(value)
 
+    def get_state(self) -> TrainerState:
+        return TrainerState(
+            step=self.step,
+            epoch=self.epoch,
+            global_train_tokens_seen=self._global_train_tokens_seen,
+        )
+
+    def load_state(self, state: TrainerState):
+        self._step = state.step
+        self._epoch = state.epoch
+        self._global_train_tokens_seen = state.global_train_tokens_seen
+
     def fit(self, model: M, data_loader: data.DataLoader) -> tuple[M, Optim, OptState]:
         """
         Fit a model to a dataset.
@@ -233,13 +248,11 @@ class Trainer(Generic[M, B]):
         """
         dist.barrier("pre-train-setup")
 
-        self._step = 0
         self._step_this_run = 0
-        self._epoch = 1
         self._bps_average.reset()
         self._canceled = jax.copy_to_host_async(jnp.array(False))
         self._cancel_reason = None
-        self._canceling_rank = None
+        self._error = None
 
         # Disable automatic garbage collection.
         gc.disable()
