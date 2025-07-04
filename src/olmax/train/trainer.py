@@ -583,16 +583,16 @@ class Trainer(Generic[M, B]):
                 for callback in self._iter_callbacks():
                     callback.post_train_batch()
 
+                # Log metrics from previous step(s).
+                with jax.profiler.TraceAnnotation("log_metrics"):
+                    self._log_metrics(exclude={self.step})
+
                 # Maybe save a checkpoint.
                 if (
                     self.checkpoint_interval is not None
                     and self.step % self.checkpoint_interval == 0
                 ):
                     self.save_checkpoint()
-
-                # Log metrics from previous step(s).
-                with jax.profiler.TraceAnnotation("log_metrics"):
-                    self._log_metrics(exclude={self.step})
 
                 # Maybe run garbage collection.
                 if self.step % self.gc_interval == 0:
