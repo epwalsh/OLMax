@@ -702,7 +702,7 @@ class Trainer(Generic[M, B]):
                 callback.log_metrics(step_to_log, metrics_to_log)
 
             # Check for nan loss.
-            if (loss := metrics_to_log[TrainMetrics.loss]) is not None and not math.isfinite(
+            if (loss := metrics_to_log.get(TrainMetrics.loss)) is not None and not math.isfinite(
                 loss.item()  # type: ignore
             ):
                 raise RuntimeError(f"NaN loss encountered on step {step_to_log}!")
