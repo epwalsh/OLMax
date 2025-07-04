@@ -73,7 +73,6 @@ class SimpleCheckpointer(Checkpointer):
             "step": state.step,
             "epoch": state.epoch,
             "global_train_tokens_seen": state.global_train_tokens_seen,
-            "model": state.model,
             "params": state.params,
             "static": state.static,
             "opt_state": state.opt_state,
