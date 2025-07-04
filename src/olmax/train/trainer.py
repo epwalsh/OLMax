@@ -357,18 +357,23 @@ class Trainer(Generic[M, B]):
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    def save_checkpoint(self, save_overwrite: bool | None = None):
+    def save_checkpoint(self, save_overwrite: bool | None = None) -> PathOrStr:
         """
         Save a checkpoint.
         """
         if save_overwrite is None:
             save_overwrite = self.save_overwrite
         checkpoint_path = fs.join_path(self.save_folder, f"step{self.step}")
+        log.info(f"Saving checkpoint for step {self.step} to '{checkpoint_path}'...")
+        start_time = time.perf_counter()
         self.checkpointer.save(checkpoint_path, self.state, save_overwrite=save_overwrite)
         self._last_checkpoint = self.step
         gc.collect()
         for callback in self._iter_callbacks():
             callback.post_checkpoint_saved(checkpoint_path)
+        end_time = time.perf_counter()
+        log.info(f"Saved checkpoint in {utils.format_timedelta(end_time - start_time)}")
+        return checkpoint_path
 
     def fit(
         self, model: M, data_loader: data.DataLoader, *, load_path: PathOrStr | None = None
