@@ -828,14 +828,20 @@ class Trainer(Generic[M, B]):
     def _load_checkpoint(self, dir: PathOrStr) -> tuple[M, OptState]:
         log.info(f"Loading checkpoint from '{dir}'...")
         start_time = time.perf_counter()
+
         state = self.checkpointer.load(dir, self.state)
+
         self._step = state.step
         self._epoch = state.epoch
         self._global_train_tokens_seen = state.global_train_tokens_seen
+        self._update_state(params=state.params, opt_state=state.opt_state)
+
         end_time = time.perf_counter()
         log.info(f"Loaded checkpoint in {utils.format_timedelta(end_time - start_time)}")
+
         for callback in self._iter_callbacks():
             callback.post_checkpoint_loaded(dir)
+
         return state.params, state.opt_state
 
     def _find_latest_checkpoint(self) -> PathOrStr | None:
