@@ -690,9 +690,9 @@ class Trainer(Generic[M, B]):
                 callback.log_metrics(step_to_log, metrics_to_log)
 
             # Check for nan loss.
-            if (loss := metrics_to_log[TrainMetrics.loss]) is not None and not jnp.isfinite(
-                loss
-            ).item():
+            if (loss := metrics_to_log[TrainMetrics.loss]) is not None and math.isfinite(
+                float(loss)
+            ):
                 raise RuntimeError(f"NaN loss encountered on step {step_to_log}!")
 
     def _synchronize_cancellation(self):
