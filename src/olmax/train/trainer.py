@@ -830,7 +830,6 @@ class Trainer(Generic[M, B]):
         start_time = time.perf_counter()
 
         # debug.
-        print(self.state.opt_state)
         state = self.checkpointer.load(dir, self.state)
         self._step = state.step
         self._epoch = state.epoch
