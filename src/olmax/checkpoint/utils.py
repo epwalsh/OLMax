@@ -143,7 +143,7 @@ def _make_restore_args(
         return None
 
     if not enable_single_replica_restoring:
-        return ocp.type_handlers.ArrayRestoreArgs(sharding=data.sharding)
+        return ocp.type_handlers.ArrayRestoreArgs(sharding=data.sharding, global_shape=data.shape)
 
     if not isinstance(data.sharding, jax.sharding.NamedSharding):
         raise RuntimeError(
