@@ -441,7 +441,6 @@ class Trainer(Generic[M, B]):
 
         if load_path is not None:
             params, opt_state = self._load_checkpoint(load_path)
-            opt_state_sharding = self.mesh.get_opt_state_sharding(opt_state)
         elif self.checkpoint_interval is not None:
             # Save pre-train checkpoint.
             self.save_checkpoint()
