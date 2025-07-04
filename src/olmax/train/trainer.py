@@ -5,6 +5,8 @@ import gc
 import itertools
 import logging
 import math
+import os
+import re
 import signal
 import tempfile
 import time
@@ -426,9 +428,12 @@ class Trainer(Generic[M, B]):
         self._init_state(
             params=params, static=static, optim=optim, opt_state=opt_state, data_loader=data_loader
         )
+
+        if load_path is None:
+            load_path = self._find_latest_checkpoint()
+
         if load_path is not None:
             params, static, opt_state = self._load_checkpoint(load_path)
-        # TODO: maybe load from save folder
         elif self.checkpoint_interval is not None:
             # Save pre-train checkpoint.
             self.save_checkpoint()
@@ -821,3 +826,15 @@ class Trainer(Generic[M, B]):
         for callback in self._iter_callbacks():
             callback.post_checkpoint_loaded(dir)
         return state.params, state.static, state.opt_state
+
+    def _find_latest_checkpoint(self) -> PathOrStr | None:
+        latest_step: int | None = None
+        latest_path: PathOrStr | None = None
+        for path in fs.list_directory(self.save_folder):
+            name = os.path.basename(path)
+            if (m := re.match(r"^step(\d+)$", name)) is not None:
+                step = int(m.group(1))
+                if latest_step is None or step > latest_step:
+                    latest_step = step
+                    latest_path = path
+        return latest_path
