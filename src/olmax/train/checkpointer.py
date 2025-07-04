@@ -45,7 +45,7 @@ class Checkpointer(ABC):
 class SimpleCheckpointer(Checkpointer):
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
-            checkpoint.save(wd, self._get_state_dict(state), block=True, force=save_overwrite)
+            checkpoint.save(wd, self._get_state_dict(state), block=True, force=True)
 
     def load(self, dir: PathOrStr, state: "TrainState") -> "TrainState":
         local_dir: Path
