@@ -440,7 +440,7 @@ class Trainer(Generic[M, B]):
             load_path = self._find_latest_checkpoint()
 
         if load_path is not None:
-            params, static, opt_state = self._load_checkpoint(load_path)
+            params, opt_state = self._load_checkpoint(load_path)
         elif self.checkpoint_interval is not None:
             # Save pre-train checkpoint.
             self.save_checkpoint()
@@ -825,7 +825,7 @@ class Trainer(Generic[M, B]):
             **kwargs,
         )
 
-    def _load_checkpoint(self, dir: PathOrStr) -> tuple[M, M, OptState]:
+    def _load_checkpoint(self, dir: PathOrStr) -> tuple[M, OptState]:
         log.info(f"Loading checkpoint from '{dir}'...")
         start_time = time.perf_counter()
         state = self.checkpointer.load(dir, self.state)
@@ -836,7 +836,7 @@ class Trainer(Generic[M, B]):
         log.info(f"Loaded checkpoint in {utils.format_timedelta(end_time - start_time)}")
         for callback in self._iter_callbacks():
             callback.post_checkpoint_loaded(dir)
-        return state.params, state.static, state.opt_state
+        return state.params, state.opt_state
 
     def _find_latest_checkpoint(self) -> PathOrStr | None:
         latest_step: int | None = None
