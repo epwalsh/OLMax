@@ -10,6 +10,7 @@ import tempfile
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Callable, Generic, Iterable, Iterator, Sequence, Type, TypeVar
 
@@ -57,6 +58,12 @@ class TrainState(Generic[M]):
         params, static = eqx.partition(model, eqx.is_array)
         self.params = params
         self.static = static
+
+
+class TrainMetrics(StrEnum):
+    loss = "train/loss"
+    lr = "optim/lr"
+    grad_norm = "optim/g_norm"
 
 
 @dataclass
@@ -678,8 +685,15 @@ class Trainer(Generic[M, B]):
                     ]
                 )
             )
+
             for callback in self._iter_callbacks():
                 callback.log_metrics(step_to_log, metrics_to_log)
+
+            # Check for nan loss.
+            if (loss := metrics_to_log[TrainMetrics.loss]) is not None and not jnp.isfinite(
+                loss
+            ).item():
+                raise RuntimeError(f"NaN loss encountered on step {step_to_log}!")
 
     def _synchronize_cancellation(self):
         self._canceled = jax.copy_to_host_async(dist.synchronize_array(self._canceled))
@@ -752,16 +766,16 @@ class Trainer(Generic[M, B]):
                 batch_losses.append(mb_loss)
 
             # Reduced loss over micro-batches.
-            self.record_metric("train/loss", jnp.stack(batch_losses).mean())
+            self.record_metric(TrainMetrics.loss, jnp.stack(batch_losses).mean())
 
             # Collect learning rate.
             self.record_metric(
-                "optim/lr", extract_hyperparameter(opt_state, "learning_rate").copy()
+                TrainMetrics.lr, extract_hyperparameter(opt_state, "learning_rate").copy()
             )
 
             # If using gradient clipping, collect the global gradient norm.
             if (clipping_state := extract_state(opt_state, ClipByGlobalNormState)) is not None:
-                self.record_metric("optim/g_norm", clipping_state.global_norm.copy())
+                self.record_metric(TrainMetrics.grad_norm, clipping_state.global_norm.copy())
 
             return params, opt_state
 
