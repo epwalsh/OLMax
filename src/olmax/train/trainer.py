@@ -691,7 +691,7 @@ class Trainer(Generic[M, B]):
 
             # Check for nan loss.
             if (loss := metrics_to_log[TrainMetrics.loss]) is not None and not math.isfinite(
-                float(loss)
+                loss.item()  # type: ignore
             ):
                 raise RuntimeError(f"NaN loss encountered on step {step_to_log}!")
 
