@@ -63,10 +63,7 @@ class SimpleCheckpointer(Checkpointer):
         try:
             state_dict = checkpoint.restore(local_dir, self._get_state_dict(state))
             state.data_loader.load_state(state_dict.pop("data_loader"))
-            model = state_dict.pop("model")
-            state = dataclasses.replace(state, **state_dict)
-            state.model = model
-            return state
+            return dataclasses.replace(state, **state_dict)
         finally:
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
                 fs.clear_directory(local_dir)
@@ -77,6 +74,8 @@ class SimpleCheckpointer(Checkpointer):
             "epoch": state.epoch,
             "global_train_tokens_seen": state.global_train_tokens_seen,
             "model": state.model,
+            "params": state.params,
+            "static": state.static,
             "opt_state": state.opt_state,
             "data_loader": state.data_loader.get_state(),
         }
