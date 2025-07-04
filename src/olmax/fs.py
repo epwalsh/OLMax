@@ -4,9 +4,11 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Generator, Type
 
@@ -17,6 +19,7 @@ from rich.progress import track
 
 from .exceptions import *
 from .types import *
+from .utils import wait_for
 
 log = logging.getLogger(__name__)
 
@@ -380,6 +383,72 @@ def list_directory(
             raise NotImplementedError(
                 f"list_directory size not implemented for '{parsed.scheme}' URLs"
             )
+
+
+@contextmanager
+def get_tempdir_for(
+    permanent_dir: PathOrStr,
+    work_dir: PathOrStr | None = None,
+    save_overwrite: bool = False,
+) -> Generator[Path, None, None]:
+    from .distributed.utils import barrier, get_process_filesystem_rank
+
+    # No need to mkdir here since we'll directly replace the temporary directory with
+    # this directory below.
+    if not dir_is_empty(permanent_dir):
+        if save_overwrite:
+            if get_process_filesystem_rank(permanent_dir) == 0:
+                clear_directory(permanent_dir)
+        else:
+            raise FileExistsError(permanent_dir)
+
+    # Prepare temporary directory.
+    tmp_dir: Path
+    if is_url(permanent_dir):
+        tmp_dir = Path(tempfile.mkdtemp(dir=str(work_dir or "./")))
+    else:
+        tmp_dir = Path(permanent_dir).with_name(Path(permanent_dir).name + "-tmp")
+        if get_process_filesystem_rank(tmp_dir) == 0:
+            clear_directory(tmp_dir)
+            tmp_dir.mkdir(exist_ok=True, parents=True)
+
+    # In the cases where we're using a shared NFS drive between ranks to save files,
+    # creating the temp directory from process 0 might not be immediately
+    # realized in the file systems of the other ranks.
+    # So we wait here across all processes until that temp directory is visible.
+    wait_for(lambda: tmp_dir.exists(), f"waiting for temp directory {tmp_dir}", timeout=10.0)
+    barrier("tmp-dir-created")
+
+    try:
+        yield tmp_dir
+
+        barrier("start-teardown-tmp-dir")
+
+        if not is_url(permanent_dir):
+            # Replace the temporary directory with the permanent directory.
+            if get_process_filesystem_rank(permanent_dir) == 0:
+                try:
+                    tmp_dir.replace(str(permanent_dir))
+                except FileNotFoundError:
+                    # Caught when another (file-system) local rank 0 has already replaced the directory.
+                    # This can happen when `get_process_filesystem_rank()` isn't configured properly.
+                    if not Path(permanent_dir).exists():
+                        raise
+
+            # Wait here across all processes until the permanent directory is visible.
+            wait_for(
+                lambda: Path(permanent_dir).exists(),
+                f"waiting for permanent directory {permanent_dir}",
+                timeout=10.0,
+            )
+        else:
+            if get_process_filesystem_rank(tmp_dir) == 0:
+                copy_dir(tmp_dir, permanent_dir, save_overwrite=True)
+    finally:
+        # Then remove the temp dir.
+        clear_directory(tmp_dir)
+
+    barrier("end-teardown-tmp-dir")
 
 
 def init_client(remote_path: str):

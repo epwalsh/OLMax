@@ -2,8 +2,9 @@ import functools as ft
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta
-from typing import Any, Generic, Type, TypeVar
+from typing import Any, Callable, Generic, Type, TypeVar
 
 import rich
 from rich.console import Console, ConsoleRenderable
@@ -189,6 +190,17 @@ def format_timedelta(td: timedelta | int | float) -> str:
         return ", ".join(breakdown)
     else:
         return "0s"
+
+
+def wait_for(predicate: Callable[[], bool], description: str, timeout: float = 10.0):
+    """
+    Wait for the predicate function to resolve to true.
+    """
+    start_time = time.monotonic()
+    while not predicate():
+        time.sleep(0.5)
+        if time.monotonic() - start_time > timeout:
+            raise TimeoutError(f"timed out {description}")
 
 
 T = TypeVar("T", Array, float)

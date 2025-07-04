@@ -169,6 +169,8 @@ class Trainer(Generic[M, B]):
             self.save_folder = Path(fs.normalize_path(self.save_folder))
             self.save_folder.mkdir(exist_ok=True, parents=True)
 
+        self.checkpointer.work_dir = self.work_dir
+
         # Set pointer to self in all callbacks.
         for callback in self.callbacks.values():
             callback.trainer = self
