@@ -36,6 +36,8 @@ class IntegrationTestConfig:
     param_dtype: DTypeLike = "float32"
     compute_dtype: DTypeLike = "bfloat16"
 
+    checkpoint_interval: int | None = None
+
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
         default_factory=lambda: None if beaker_runtime is None else beaker_runtime.get_dist_config()
@@ -183,6 +185,7 @@ def train(
     trainer = Trainer(
         work_dir=dir,
         save_folder=dir,
+        checkpoint_interval=config.checkpoint_interval,
         optim=config.optim,
         loss_fun=loss_fun,
         mesh=config.mesh,
