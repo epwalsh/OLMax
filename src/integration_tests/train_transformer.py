@@ -37,6 +37,7 @@ class IntegrationTestConfig:
     compute_dtype: DTypeLike = "bfloat16"
 
     checkpoint_interval: int | None = None
+    load_path: PathOrStr | None = None
 
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     distributed: dist.DistConfig | None = dataclasses.field(
@@ -205,7 +206,7 @@ def train(
         num_microbatches=config.num_microbatches,
     )
 
-    trainer.fit(model, data_loader)
+    trainer.fit(model, data_loader, load_path=config.load_path)
 
     if trace_download_command is not None:
         log.info(f"To download the profiler trace, run:\n❯ {trace_download_command}")
