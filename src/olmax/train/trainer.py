@@ -828,6 +828,9 @@ class Trainer(Generic[M, B]):
     def _load_checkpoint(self, dir: PathOrStr) -> tuple[M, M, OptState]:
         log.info(f"Loading checkpoint from '{dir}'...")
         start_time = time.perf_counter()
+
+        # debug.
+        print(self.state.opt_state)
         state = self.checkpointer.load(dir, self.state)
         self._step = state.step
         self._epoch = state.epoch
