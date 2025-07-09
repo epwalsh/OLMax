@@ -164,7 +164,7 @@ class Trainer(Generic[M, B]):
     _bps_average: utils.RunningAverage = dataclasses.field(
         default_factory=lambda: utils.RunningAverage(0.0), repr=False
     )
-    _last_checkpoint: int = dataclasses.field(default=0, repr=False)
+    _last_checkpoint: int = dataclasses.field(default=-1, repr=False)
     _checkpoint_save_handle: AsyncSaveHandle | None = dataclasses.field(default=None, repr=False)
     _checkpoint_done_callback: Callable[[], None] | None = dataclasses.field(
         default=None, repr=False
