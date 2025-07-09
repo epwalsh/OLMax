@@ -146,7 +146,5 @@ class SimpleCheckpointer(Checkpointer):
 def _make_array_restore_args(data) -> ocp.ArrayRestoreArgs | None:
     if not isinstance(data, Array):
         return None
-    elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
-        return ocp.ArrayRestoreArgs(sharding=None)
     else:
         return ocp.ArrayRestoreArgs(sharding=data.sharding)
