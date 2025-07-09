@@ -135,7 +135,13 @@ class SimpleCheckpointer(Checkpointer):
             ),
             #  params=ocp.args.PyTreeRestore(state.params),  # pyright: ignore
             #  static=ocp.args.PyTreeRestore(state.static),  # pyright: ignore
-            opt_state=ocp.args.PyTreeRestore(state.opt_state),  # pyright: ignore
+            opt_state=ocp.args.PyTreeRestore(  # pyright: ignore
+                item=state.opt_state,  # pyright: ignore
+                restore_args=jax.tree.map(  # pyright: ignore
+                    _make_array_restore_args,
+                    state.opt_state,
+                ),
+            ),
         )
 
 
