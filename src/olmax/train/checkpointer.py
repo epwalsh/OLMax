@@ -86,7 +86,7 @@ class SimpleCheckpointer(Checkpointer):
                     "global_train_tokens_seen": state.global_train_tokens_seen,
                 }
             ),
-            data_loader=ocp.args.JsonSave(state.data_loader.get_state()),  # pyright: ignore
+            data_loader=ocp.args.StandardSave(state.data_loader.get_state()),  # pyright: ignore
             params=ocp.args.StandardSave(state.params),  # pyright: ignore
             static=ocp.args.StandardSave(state.static),  # pyright: ignore
             opt_state=ocp.args.StandardSave(state.opt_state),  # pyright: ignore
