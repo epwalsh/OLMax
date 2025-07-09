@@ -45,8 +45,7 @@ class Checkpointer(ABC):
 
 class SimpleCheckpointer(Checkpointer):
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
-        ocp.StandardCheckpointHandler
-        checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
+        checkpointer = self._get_checkpointer()
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
             checkpointer.save(
                 wd,
@@ -67,7 +66,7 @@ class SimpleCheckpointer(Checkpointer):
         else:
             local_dir = Path(dir)
 
-        checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
+        checkpointer = self._get_checkpointer()
         try:
             result = checkpointer.restore(local_dir, self._get_checkpoint_restore_args(state))
             state.data_loader.load_state(result["data_loader"])
@@ -77,6 +76,19 @@ class SimpleCheckpointer(Checkpointer):
         finally:
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
                 fs.clear_directory(local_dir)
+
+    def _get_checkpointer(self) -> ocp.Checkpointer:
+        handler_registry = ocp.DefaultCheckpointHandlerRegistry()
+        handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True, use_zarr3=True)
+        handler_registry.add("trainer", ocp.args.JsonSave, handler)
+        handler_registry.add("data_loader", ocp.args.StandardSave, handler)
+        handler_registry.add("params", ocp.args.StandardSave, handler)
+        handler_registry.add("static", ocp.args.StandardSave, handler)
+        handler_registry.add("opt_state", ocp.args.StandardSave, handler)
+        checkpointer = ocp.Checkpointer(
+            ocp.CompositeCheckpointHandler(handler_registry=handler_registry)
+        )
+        return checkpointer
 
     def _get_checkpoint_save_args(self, state: "TrainState") -> ocp.args.Composite:
         return ocp.args.Composite(
