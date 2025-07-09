@@ -28,11 +28,22 @@ class Checkpointer(ABC):
         dir: PathOrStr,
         state: "TrainState",
         save_overwrite: bool = False,
-        block: bool = True,
-        done_callback: Callable[[], None] | None = None,
     ):
         """
         Save train state to the ``dir`` synchronously.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def save_async(
+        self,
+        dir: PathOrStr,
+        state: "TrainState",
+        save_overwrite: bool = False,
+        done_callback: Callable[[], None] | None = None,
+    ) -> checkpoint_utils.AsyncSaveHandle:
+        """
+        Save train state to the ``dir`` asynchronously.
         """
         raise NotImplementedError
 

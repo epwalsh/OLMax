@@ -398,13 +398,16 @@ class Trainer(Generic[M, B]):
             if done_callback is not None:
                 done_callback(checkpoint_path)
 
-        self._checkpoint_save_handle = self.checkpointer.save(
-            checkpoint_path,
-            self.state,
-            save_overwrite=save_overwrite,
-            block=block,
-            done_callback=final_done_callback,
-        )
+        if block:
+            self.checkpointer.save(checkpoint_path, self.state, save_overwrite=self.save_overwrite)
+            final_done_callback()
+        else:
+            self._checkpoint_save_handle = self.checkpointer.save_async(
+                checkpoint_path,
+                self.state,
+                save_overwrite=save_overwrite,
+                done_callback=final_done_callback,
+            )
 
         return checkpoint_path
 
