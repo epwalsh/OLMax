@@ -102,10 +102,7 @@ class SimpleCheckpointer(Checkpointer):
         with fs.get_temp_dir_for_target_dir(
             dir, work_dir=self.work_dir, save_overwrite=save_overwrite
         ) as wd:
-            checkpointer.save(
-                wd,
-                args=self._get_checkpoint_save_args(state),
-            )
+            checkpointer.save(wd, args=self._get_checkpoint_save_args(state), force=True)
 
     def save_async(
         self,
@@ -129,7 +126,7 @@ class SimpleCheckpointer(Checkpointer):
             done_event.set()
 
         checkpointer = self._get_async_checkpointer(final_done_callback)
-        checkpointer.save(wd, args=self._get_checkpoint_save_args(state))
+        checkpointer.save(wd, args=self._get_checkpoint_save_args(state), force=True)
         return checkpoint_utils.OrbaxAsyncSaveHandle(
             checkpointer=checkpointer, done_event=done_event
         )
