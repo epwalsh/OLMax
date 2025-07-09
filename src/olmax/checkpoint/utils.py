@@ -1,7 +1,6 @@
-import functools as ft
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 import jax
 import numpy as np
@@ -12,6 +11,7 @@ from .. import distributed as dist
 from ..types import PathOrStr, PyTree
 
 CheckpointMetadata = Any
+T = TypeVar("T")
 
 
 @dataclass
@@ -70,9 +70,9 @@ def save(
 
 def restore(
     dir: PathOrStr,
-    state: PyTree | CheckpointMetadata,
+    state: T | CheckpointMetadata,
     enable_single_replica_restoring: bool | None = None,
-) -> PyTree:
+) -> T:
     """
     Restore a checkpoint saved via :func:`save()`.
 
@@ -96,12 +96,8 @@ def restore(
     if _is_checkpoint_metadata(state):
         state = jax.tree.map(ocp.utils.to_shape_dtype_struct, state)
 
-    restore_args = jax.tree.map(
-        ft.partial(
-            _make_restore_args,
-            enable_single_replica_restoring=enable_single_replica_restoring,
-        ),
-        state,
+    restore_args = make_restore_args(
+        state, enable_single_replica_restoring=enable_single_replica_restoring
     )
 
     with _get_checkpointer() as checkpointer:
@@ -136,34 +132,35 @@ def _is_checkpoint_metadata(state: PyTree | CheckpointMetadata) -> bool:
     return False
 
 
-def _make_restore_args(
-    data: Any, enable_single_replica_restoring: bool = False
-) -> ocp.RestoreArgs | None:
-    if not isinstance(data, Array):
-        return None
+def make_restore_args(data: T, enable_single_replica_restoring: bool = False) -> T:
+    def _make_restore_args(x: Any) -> ocp.RestoreArgs | None:
+        if not isinstance(x, Array):
+            return None
 
-    if not enable_single_replica_restoring:
-        return ocp.type_handlers.ArrayRestoreArgs(sharding=data.sharding, global_shape=data.shape)
+        if not enable_single_replica_restoring:
+            return ocp.type_handlers.ArrayRestoreArgs(sharding=x.sharding)
 
-    if not isinstance(data.sharding, jax.sharding.NamedSharding):
-        raise RuntimeError(
-            "Restoring a checkpoint with 'enable_single_replica_restoring=True' requires all arrays to use NamedSharding"
+        if not isinstance(x.sharding, jax.sharding.NamedSharding):
+            raise RuntimeError(
+                "Restoring a checkpoint with 'enable_single_replica_restoring=True' requires all arrays to use NamedSharding"
+            )
+
+        pspec = x.sharding.spec
+        mesh = x.sharding.mesh
+        assert mesh.devices is not None
+        replica_axis_index = 0
+        replica_devices = _replica_devices(mesh.devices, replica_axis_index)
+        replica_mesh = jax.sharding.Mesh(replica_devices, mesh.axis_names)
+        single_replica_sharding = jax.sharding.NamedSharding(replica_mesh, pspec)
+
+        return ocp.type_handlers.SingleReplicaArrayRestoreArgs(
+            sharding=jax.sharding.NamedSharding(mesh, pspec),
+            single_replica_sharding=single_replica_sharding,
+            global_shape=x.shape,
+            dtype=x.dtype,
         )
 
-    pspec = data.sharding.spec
-    mesh = data.sharding.mesh
-    assert mesh.devices is not None
-    replica_axis_index = 0
-    replica_devices = _replica_devices(mesh.devices, replica_axis_index)
-    replica_mesh = jax.sharding.Mesh(replica_devices, mesh.axis_names)
-    single_replica_sharding = jax.sharding.NamedSharding(replica_mesh, pspec)
-
-    return ocp.type_handlers.SingleReplicaArrayRestoreArgs(
-        sharding=jax.sharding.NamedSharding(mesh, pspec),
-        single_replica_sharding=single_replica_sharding,
-        global_shape=data.shape,
-        dtype=data.dtype,
-    )
+    return jax.tree.map(_make_restore_args, data)
 
 
 def _replica_devices(device_array: np.ndarray, replica_axis_idx: int):

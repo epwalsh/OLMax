@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import jax
-import numpy as np
 import orbax.checkpoint as ocp
 
 from .. import distributed as dist
 from .. import fs, jax_utils
+from ..checkpoint import utils as checkpoint_utils
 from ..types import *
 
 if TYPE_CHECKING:
@@ -155,43 +155,5 @@ class SimpleCheckpointer(Checkpointer):
     def _make_pytree_restore_args(self, data) -> ocp.args.PyTreeRestore:
         return ocp.args.PyTreeRestore(
             item=data,  # pyright: ignore
-            restore_args=jax.tree.map(self._make_array_restore_args, data),  # pyright: ignore
+            restore_args=checkpoint_utils.make_restore_args(data),  # pyright: ignore
         )
-
-    def _make_array_restore_args(self, data) -> ocp.ArrayRestoreArgs | None:
-        if not isinstance(data, Array):
-            return None
-        elif self.enable_single_replica_array_restore:
-            #  return ocp.type_handlers.SingleReplicaArrayRestoreArgs(sharding=data.sharding)
-            assert isinstance(data.sharding, jax.sharding.NamedSharding)
-            pspec = data.sharding.spec
-            mesh = data.sharding.mesh
-            replica_axis_index = 0
-            assert mesh.devices is not None
-            replica_devices = _replica_devices(mesh.devices, replica_axis_index)
-            replica_mesh = jax.sharding.Mesh(replica_devices, mesh.axis_names)
-            single_replica_sharding = jax.sharding.NamedSharding(replica_mesh, pspec)
-            return ocp.type_handlers.SingleReplicaArrayRestoreArgs(
-                sharding=jax.sharding.NamedSharding(mesh, pspec),
-                single_replica_sharding=single_replica_sharding,
-                global_shape=data.shape,
-                dtype=data.dtype,
-            )
-        else:
-            return ocp.ArrayRestoreArgs(sharding=data.sharding)
-
-
-def _replica_devices(device_array: np.ndarray, replica_axis_idx: int):
-    """Returns the devices from the replica that current host belongs to."""
-    idx = _find_idx(device_array, replica_axis_idx)
-    replica_result = np.take(device_array, idx, axis=replica_axis_idx)
-    return np.expand_dims(replica_result, axis=replica_axis_idx)
-
-
-def _find_idx(array: np.ndarray, replica_axis_idx: int):
-    """Returns the index along given dimension that the current host belongs to."""
-    idx = None
-    for idx, val in np.ndenumerate(array):
-        if val.process_index == jax.process_index():
-            break
-    return idx[replica_axis_idx]  # type: ignore
