@@ -79,12 +79,12 @@ class SimpleCheckpointer(Checkpointer):
 
     def _get_checkpointer(self) -> ocp.Checkpointer:
         handler_registry = ocp.DefaultCheckpointHandlerRegistry()
-        handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True, use_zarr3=True)
-        handler_registry.add("trainer", ocp.args.JsonSave, handler)
-        handler_registry.add("data_loader", ocp.args.StandardSave, handler)
-        handler_registry.add("params", ocp.args.StandardSave, handler)
-        handler_registry.add("static", ocp.args.StandardSave, handler)
-        handler_registry.add("opt_state", ocp.args.StandardSave, handler)
+        pytree_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True, use_zarr3=True)
+        handler_registry.add("trainer", ocp.args.JsonSave, ocp.JsonCheckpointHandler())
+        handler_registry.add("data_loader", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("params", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("static", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("opt_state", ocp.args.PyTreeSave, pytree_handler)
         checkpointer = ocp.Checkpointer(
             ocp.CompositeCheckpointHandler(handler_registry=handler_registry)
         )
@@ -99,10 +99,10 @@ class SimpleCheckpointer(Checkpointer):
                     "global_train_tokens_seen": state.global_train_tokens_seen,
                 }
             ),
-            data_loader=ocp.args.StandardSave(state.data_loader.get_state()),  # pyright: ignore
-            params=ocp.args.StandardSave(state.params),  # pyright: ignore
-            static=ocp.args.StandardSave(state.static),  # pyright: ignore
-            opt_state=ocp.args.StandardSave(state.opt_state),  # pyright: ignore
+            data_loader=ocp.args.PyTreeSave(state.data_loader.get_state()),  # pyright: ignore
+            params=ocp.args.PyTreeSave(state.params),  # pyright: ignore
+            static=ocp.args.PyTreeSave(state.static),  # pyright: ignore
+            opt_state=ocp.args.PyTreeSave(state.opt_state),  # pyright: ignore
         )
 
     def _get_checkpoint_restore_args(self, state: "TrainState") -> ocp.args.Composite:
@@ -114,8 +114,8 @@ class SimpleCheckpointer(Checkpointer):
                     "global_train_tokens_seen": state.global_train_tokens_seen,
                 }
             ),
-            data_loader=ocp.args.StandardRestore(state.data_loader.get_state()),  # pyright: ignore
-            params=ocp.args.StandardRestore(state.params),  # pyright: ignore
-            static=ocp.args.StandardRestore(state.static),  # pyright: ignore
-            opt_state=ocp.args.StandardRestore(state.opt_state),  # pyright: ignore
+            data_loader=ocp.args.PyTreeRestore(state.data_loader.get_state()),  # pyright: ignore
+            params=ocp.args.PyTreeRestore(state.params),  # pyright: ignore
+            static=ocp.args.PyTreeRestore(state.static),  # pyright: ignore
+            opt_state=ocp.args.PyTreeRestore(state.opt_state),  # pyright: ignore
         )
