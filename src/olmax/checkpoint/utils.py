@@ -1,5 +1,4 @@
 import threading
-from dataclasses import dataclass
 from typing import Any, Callable, Protocol, TypeVar
 
 import jax
@@ -15,13 +14,7 @@ T = TypeVar("T")
 
 
 class AsyncSaveHandle(Protocol):
-    def done(self) -> bool:
-        """
-        Check if the checkpoint has finished saving.
-        """
-        raise NotImplementedError
-
-    def wait(self):
+    def wait_until_finished(self):
         """
         Blocks until the checkpoint is finished saving.
         """
@@ -32,34 +25,6 @@ class AsyncSaveHandle(Protocol):
         Close any resources.
         """
         raise NotImplementedError
-
-
-@dataclass
-class OrbaxAsyncSaveHandle:
-    """
-    Async save handle.
-    """
-
-    checkpointer: ocp.AsyncCheckpointer
-    done_event: threading.Event
-
-    def done(self) -> bool:
-        """
-        Check if the checkpoint has finished saving.
-        """
-        return self.done_event.is_set()
-
-    def wait(self):
-        """
-        Blocks until the checkpoint is finished saving.
-        """
-        self.checkpointer.wait_until_finished()
-
-    def close(self):
-        """
-        Close any resources.
-        """
-        self.checkpointer.close()
 
 
 def save(
@@ -75,14 +40,13 @@ def save(
 
     checkpointer = _get_checkpointer(post_save_callback=done_callback)
     checkpointer.save(dir, state, force=force)
-    save_handle = OrbaxAsyncSaveHandle(checkpointer=checkpointer, done_event=done_event)
 
     if block:
-        save_handle.wait()
-        save_handle.close()
+        checkpointer.wait_until_finished()
+        checkpointer.close()
         return None
     else:
-        return save_handle
+        return checkpointer
 
 
 def restore(

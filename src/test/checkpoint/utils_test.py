@@ -18,7 +18,7 @@ def test_save_and_restore(tmp_path, block: bool):
     handle = checkpoint_utils.save(checkpoint_dir, model, block=block)
     if not block:
         assert handle is not None
-        handle.wait()
+        handle.wait_until_finished()
         handle.close()
         assert handle.done()
 

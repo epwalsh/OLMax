@@ -166,6 +166,9 @@ class Trainer(Generic[M, B]):
     )
     _last_checkpoint: int = dataclasses.field(default=0, repr=False)
     _checkpoint_save_handle: AsyncSaveHandle | None = dataclasses.field(default=None, repr=False)
+    _checkpoint_done_callback: Callable[[], None] | None = dataclasses.field(
+        default=None, repr=False
+    )
 
     def __post_init__(self):
         # Ensure working directory and save folder exist.
@@ -367,7 +370,6 @@ class Trainer(Generic[M, B]):
         self,
         save_overwrite: bool | None = None,
         block: bool | None = None,
-        done_callback: Callable[[PathOrStr], None] | None = None,
     ) -> PathOrStr:
         """
         Save a checkpoint.
@@ -379,35 +381,47 @@ class Trainer(Generic[M, B]):
         if block is None:
             block = not self.async_checkpointing
 
-        start_time = time.perf_counter()
         step = self.step
+        tmp_checkpoint_path = self.work_dir / f"step{step}"
         checkpoint_path = fs.join_path(self.save_folder, f"step{step}")
-        log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
 
-        def final_done_callback():
+        if not save_overwrite and not fs.dir_is_empty(checkpoint_path):
+            raise FileExistsError(
+                f"Checkpoint dir '{checkpoint_path}' is non-empty. Use 'save_overwrite=True' to force overwriting the dir."
+            )
+
+        def done_callback():
             gc.collect()
+            if tmp_checkpoint_path != checkpoint_path:
+                log.info(
+                    f"Copying checkpoint for step {step} from '{tmp_checkpoint_path}' to '{checkpoint_path}'..."
+                )
+                start_time = time.perf_counter()
+                fs.copy_dir(tmp_checkpoint_path, checkpoint_path, save_overwrite=save_overwrite)
+                end_time = time.perf_counter()
+                log.info(
+                    f"Copied checkpoint for step {step} from '{tmp_checkpoint_path}' to '{checkpoint_path}' "
+                    f"in {utils.format_timedelta(end_time - start_time)}."
+                )
             self._last_checkpoint = (
                 step if self._last_checkpoint is None else max(step, self._last_checkpoint)
             )
             for callback in self._iter_callbacks():
                 callback.post_checkpoint_saved(checkpoint_path)
-            end_time = time.perf_counter()
-            log.info(
-                f"Saved checkpoint for step {step} to '{checkpoint_path}' in {utils.format_timedelta(end_time - start_time)}"
-            )
-            if done_callback is not None:
-                done_callback(checkpoint_path)
 
+        log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
         if block:
-            self.checkpointer.save(checkpoint_path, self.state, save_overwrite=self.save_overwrite)
-            final_done_callback()
+            self.checkpointer.save(
+                tmp_checkpoint_path, self.state, save_overwrite=self.save_overwrite
+            )
+            done_callback()
         else:
             self._checkpoint_save_handle = self.checkpointer.save_async(
-                checkpoint_path,
+                tmp_checkpoint_path,
                 self.state,
                 save_overwrite=save_overwrite,
-                done_callback=final_done_callback,
             )
+            self._checkpoint_done_callback = done_callback
 
         return checkpoint_path
 
@@ -895,6 +909,9 @@ class Trainer(Generic[M, B]):
 
     def _maybe_wait_for_checkpoint(self):
         if self._checkpoint_save_handle is not None:
-            self._checkpoint_save_handle.wait()
+            self._checkpoint_save_handle.wait_until_finished()
             self._checkpoint_save_handle.close()
             self._checkpoint_save_handle = None
+        if self._checkpoint_done_callback is not None:
+            self._checkpoint_done_callback()
+            self._checkpoint_done_callback = None
