@@ -63,6 +63,12 @@ class SimpleCheckpointer(Checkpointer):
         handler_registry.add("opt_state", ocp.args.PyTreeRestore, pytree_handler)
         self.handler_registry = handler_registry
 
+        array_handler = ocp.type_handlers.SingleReplicaArrayHandler(
+            replica_axis_index=0,
+            broadcast_memory_limit_bytes=1024 * 1024 * 1000,  # 1000 MB limit
+        )
+        ocp.type_handlers.register_type_handler(jax.Array, array_handler, override=True)
+
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
         checkpointer = self._get_checkpointer()
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
@@ -146,5 +152,8 @@ class SimpleCheckpointer(Checkpointer):
 def _make_array_restore_args(data) -> ocp.ArrayRestoreArgs | None:
     if not isinstance(data, Array):
         return None
+    #  elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
+    #      return ocp.ArrayRestoreArgs(sharding=jax.experimental.layout.Layout())
     else:
-        return ocp.ArrayRestoreArgs(sharding=data.sharding)
+        #  return ocp.ArrayRestoreArgs(sharding=data.sharding)
+        return ocp.type_handlers.SingleReplicaArrayRestoreArgs(sharding=data.sharding)
