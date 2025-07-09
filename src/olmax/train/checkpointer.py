@@ -45,6 +45,7 @@ class Checkpointer(ABC):
 
 class SimpleCheckpointer(Checkpointer):
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
+        ocp.StandardCheckpointHandler
         checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
             checkpointer.save(
@@ -68,7 +69,7 @@ class SimpleCheckpointer(Checkpointer):
 
         checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
         try:
-            result = checkpointer.restore(local_dir, self._get_checkpoint_args(state))
+            result = checkpointer.restore(local_dir, restore_args=self._get_checkpoint_args(state))
             state.data_loader.load_state(result.pop("data_loader"))
             return dataclasses.replace(
                 state, params=result["params"], opt_state=result["opt_state"], **result["trainer"]
