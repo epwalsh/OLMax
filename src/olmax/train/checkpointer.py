@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import jax
+import numpy as np
 import orbax.checkpoint as ocp
 
 from .. import distributed as dist
@@ -45,8 +46,9 @@ class Checkpointer(ABC):
 
 
 class SimpleCheckpointer(Checkpointer):
-    def __init__(self):
+    def __init__(self, enable_single_replica_array_restore: bool = False):
         super().__init__()
+        self.enable_single_replica_array_restore = enable_single_replica_array_restore
 
         handler_registry = ocp.DefaultCheckpointHandlerRegistry()
         json_handler = ocp.JsonCheckpointHandler()
@@ -63,11 +65,12 @@ class SimpleCheckpointer(Checkpointer):
         handler_registry.add("opt_state", ocp.args.PyTreeRestore, pytree_handler)
         self.handler_registry = handler_registry
 
-        array_handler = ocp.type_handlers.SingleReplicaArrayHandler(
-            replica_axis_index=0,
-            broadcast_memory_limit_bytes=1024 * 1024 * 1000,  # 1000 MB limit
-        )
-        ocp.type_handlers.register_type_handler(jax.Array, array_handler, override=True)
+        if self.enable_single_replica_array_restore:
+            array_handler = ocp.type_handlers.SingleReplicaArrayHandler(
+                replica_axis_index=0,
+                broadcast_memory_limit_bytes=1024 * 1024 * 1000,  # 1000 MB limit
+            )
+            ocp.type_handlers.register_type_handler(jax.Array, array_handler, override=True)
 
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
         checkpointer = self._get_checkpointer()
@@ -136,24 +139,54 @@ class SimpleCheckpointer(Checkpointer):
             params=ocp.args.PyTreeRestore(  # pyright: ignore
                 item=state.params,  # pyright: ignore
                 restore_args=jax.tree.map(  # pyright: ignore
-                    _make_array_restore_args, state.params
+                    self._make_array_restore_args, state.params
                 ),
             ),
             opt_state=ocp.args.PyTreeRestore(  # pyright: ignore
                 item=state.opt_state,  # pyright: ignore
                 restore_args=jax.tree.map(  # pyright: ignore
-                    _make_array_restore_args,
-                    state.opt_state,
+                    self._make_array_restore_args, state.opt_state
                 ),
             ),
         )
 
+    def _make_array_restore_args(self, data) -> ocp.ArrayRestoreArgs | None:
+        if not isinstance(data, Array):
+            return None
+        #  elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
+        #      return ocp.ArrayRestoreArgs(sharding=jax.experimental.layout.Layout())
+        elif self.enable_single_replica_array_restore:
+            #  return ocp.ArrayRestoreArgs(sharding=data.sharding)
+            #  return ocp.type_handlers.SingleReplicaArrayRestoreArgs(sharding=data.sharding)
+            assert isinstance(data.sharding, jax.sharding.NamedSharding)
+            pspec = data.sharding.spec
+            mesh = data.sharding.mesh
+            replica_axis_index = 0
+            assert mesh.devices is not None
+            replica_devices = _replica_devices(mesh.devices, replica_axis_index)
+            replica_mesh = jax.sharding.Mesh(replica_devices, mesh.axis_names)
+            single_replica_sharding = jax.sharding.NamedSharding(replica_mesh, pspec)
+            return ocp.type_handlers.SingleReplicaArrayRestoreArgs(
+                sharding=jax.sharding.NamedSharding(mesh, pspec),
+                single_replica_sharding=single_replica_sharding,
+                global_shape=data.shape,
+                dtype=data.dtype,
+            )
+        else:
+            return ocp.ArrayRestoreArgs(sharding=data.sharding)
 
-def _make_array_restore_args(data) -> ocp.ArrayRestoreArgs | None:
-    if not isinstance(data, Array):
-        return None
-    #  elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
-    #      return ocp.ArrayRestoreArgs(sharding=jax.experimental.layout.Layout())
-    else:
-        #  return ocp.ArrayRestoreArgs(sharding=data.sharding)
-        return ocp.type_handlers.SingleReplicaArrayRestoreArgs(sharding=data.sharding)
+
+def _replica_devices(device_array: np.ndarray, replica_axis_idx: int):
+    """Returns the devices from the replica that current host belongs to."""
+    idx = _find_idx(device_array, replica_axis_idx)
+    replica_result = np.take(device_array, idx, axis=replica_axis_idx)
+    return np.expand_dims(replica_result, axis=replica_axis_idx)
+
+
+def _find_idx(array: np.ndarray, replica_axis_idx: int):
+    """Returns the index along given dimension that the current host belongs to."""
+    idx = None
+    for idx, val in np.ndenumerate(array):
+        if val.process_index == jax.process_index():
+            break
+    return idx[replica_axis_idx]  # type: ignore
