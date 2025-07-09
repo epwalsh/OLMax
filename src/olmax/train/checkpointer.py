@@ -112,7 +112,7 @@ class SimpleCheckpointer(Checkpointer):
                 }
             ),
             data_loader=ocp.args.PyTreeSave(state.data_loader.get_state()),  # pyright: ignore
-            params=ocp.args.ArraySave(state.params),  # pyright: ignore
+            params=ocp.args.PyTreeSave(state.params),  # pyright: ignore
             static=ocp.args.PyTreeSave(state.static),  # pyright: ignore
             opt_state=ocp.args.PyTreeSave(state.opt_state),  # pyright: ignore
         )
@@ -129,23 +129,23 @@ class SimpleCheckpointer(Checkpointer):
             data_loader=ocp.args.PyTreeRestore(state.data_loader.get_state()),  # pyright: ignore
             params=ocp.args.PyTreeRestore(  # pyright: ignore
                 item=state.params,  # pyright: ignore
-                restore_args=ocp.checkpoint_utils.construct_restore_args(state.params),  # type: ignore
-                #  restore_args=jax.tree.map(  # pyright: ignore
-                #      _make_array_restore_args, state.params
-                #  ),
+                #  restore_args=ocp.checkpoint_utils.construct_restore_args(state.params),  # type: ignore
+                restore_args=jax.tree.map(  # pyright: ignore
+                    _make_array_restore_args, state.params
+                ),
             ),
             opt_state=ocp.args.PyTreeRestore(  # pyright: ignore
                 item=state.opt_state,  # pyright: ignore
-                restore_args=ocp.checkpoint_utils.construct_restore_args(state.opt_state),  # type: ignore
-                #  restore_args=jax.tree.map(  # pyright: ignore
-                #      _make_array_restore_args,
-                #      state.opt_state,
-                #  ),
+                #  restore_args=ocp.checkpoint_utils.construct_restore_args(state.opt_state),  # type: ignore
+                restore_args=jax.tree.map(  # pyright: ignore
+                    _make_array_restore_args,
+                    state.opt_state,
+                ),
             ),
         )
 
 
 def _make_array_restore_args(data) -> ocp.ArrayRestoreArgs | None:
-    if not isinstance(data, Array):
+    if not isinstance(data, Array) or isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
         return None
     return ocp.ArrayRestoreArgs(sharding=data.sharding)
