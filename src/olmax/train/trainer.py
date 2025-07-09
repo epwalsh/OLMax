@@ -23,6 +23,7 @@ import jax.numpy as jnp
 from .. import data
 from .. import distributed as dist
 from .. import fs, jax_utils, nn, utils
+from ..checkpoint.utils import AsyncSaveHandle
 from ..exceptions import *
 from ..optim import (
     ClipByGlobalNormState,
@@ -164,6 +165,7 @@ class Trainer(Generic[M, B]):
         default_factory=lambda: utils.RunningAverage(0.0), repr=False
     )
     _last_checkpoint: int = dataclasses.field(default=0, repr=False)
+    _checkpoint_save_handle: AsyncSaveHandle | None = dataclasses.field(default=None, repr=False)
 
     def __post_init__(self):
         # Ensure working directory and save folder exist.
@@ -370,6 +372,8 @@ class Trainer(Generic[M, B]):
         """
         Save a checkpoint.
         """
+        self._maybe_wait_for_checkpoint()
+
         if save_overwrite is None:
             save_overwrite = self.save_overwrite
         if block is None:
@@ -394,7 +398,7 @@ class Trainer(Generic[M, B]):
             if done_callback is not None:
                 done_callback(checkpoint_path)
 
-        self.checkpointer.save(
+        self._checkpoint_save_handle = self.checkpointer.save(
             checkpoint_path,
             self.state,
             save_overwrite=save_overwrite,
@@ -431,6 +435,7 @@ class Trainer(Generic[M, B]):
 
         def _shutdown(wait: bool = True):
             self._log_metrics()
+            self._maybe_wait_for_checkpoint()
 
             for callback in self._iter_callbacks():
                 callback.close()
@@ -469,7 +474,7 @@ class Trainer(Generic[M, B]):
             load_path = self._find_latest_checkpoint()
 
         if load_path is not None:
-            params, opt_state = self._load_checkpoint(load_path)
+            params, opt_state = self._restore_checkpoint(load_path)
         elif self.checkpoint_interval is not None:
             # Save pre-train checkpoint.
             self.save_checkpoint()
@@ -854,8 +859,8 @@ class Trainer(Generic[M, B]):
             **kwargs,
         )
 
-    def _load_checkpoint(self, dir: PathOrStr) -> tuple[M, OptState]:
-        log.info(f"Loading checkpoint from '{dir}'...")
+    def _restore_checkpoint(self, dir: PathOrStr) -> tuple[M, OptState]:
+        log.info(f"Restoring checkpoint from '{dir}'...")
         start_time = time.perf_counter()
 
         state = self.checkpointer.load(dir, self.state)
@@ -866,7 +871,7 @@ class Trainer(Generic[M, B]):
         self._update_state(params=state.params, opt_state=state.opt_state)
 
         end_time = time.perf_counter()
-        log.info(f"Loaded checkpoint in {utils.format_timedelta(end_time - start_time)}")
+        log.info(f"Checkpoint restored in {utils.format_timedelta(end_time - start_time)}")
 
         for callback in self._iter_callbacks():
             callback.post_checkpoint_loaded(dir)
@@ -884,3 +889,9 @@ class Trainer(Generic[M, B]):
                     latest_step = step
                     latest_path = path
         return latest_path
+
+    def _maybe_wait_for_checkpoint(self):
+        if self._checkpoint_save_handle is not None:
+            self._checkpoint_save_handle.wait()
+            self._checkpoint_save_handle.close()
+            self._checkpoint_save_handle = None

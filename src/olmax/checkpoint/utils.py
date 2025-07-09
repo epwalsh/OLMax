@@ -1,6 +1,6 @@
 import threading
 from dataclasses import dataclass
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Protocol, TypeVar
 
 import jax
 import numpy as np
@@ -14,32 +14,52 @@ CheckpointMetadata = Any
 T = TypeVar("T")
 
 
-@dataclass
-class AsyncSaveHandle:
-    """
-    Async save handle.
-    """
-
-    _checkpointer: ocp.AsyncCheckpointer
-    _done_event: threading.Event
-
+class AsyncSaveHandle(Protocol):
     def done(self) -> bool:
         """
         Check if the checkpoint has finished saving.
         """
-        return self._done_event.is_set()
+        raise NotImplementedError
 
     def wait(self):
         """
         Blocks until the checkpoint is finished saving.
         """
-        self._checkpointer.wait_until_finished()
+        raise NotImplementedError
 
     def close(self):
         """
         Close any resources.
         """
-        self._checkpointer.close()
+        raise NotImplementedError
+
+
+@dataclass
+class OrbaxAsyncSaveHandle:
+    """
+    Async save handle.
+    """
+
+    checkpointer: ocp.AsyncCheckpointer
+    done_event: threading.Event
+
+    def done(self) -> bool:
+        """
+        Check if the checkpoint has finished saving.
+        """
+        return self.done_event.is_set()
+
+    def wait(self):
+        """
+        Blocks until the checkpoint is finished saving.
+        """
+        self.checkpointer.wait_until_finished()
+
+    def close(self):
+        """
+        Close any resources.
+        """
+        self.checkpointer.close()
 
     def __del__(self):
         self.close()
@@ -58,7 +78,7 @@ def save(
 
     checkpointer = _get_checkpointer(post_save_callback=done_callback)
     checkpointer.save(dir, state, force=force)
-    save_handle = AsyncSaveHandle(_checkpointer=checkpointer, _done_event=done_event)
+    save_handle = OrbaxAsyncSaveHandle(checkpointer=checkpointer, done_event=done_event)
 
     if block:
         save_handle.wait()

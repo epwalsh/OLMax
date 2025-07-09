@@ -1,5 +1,6 @@
 import dataclasses
 import hashlib
+import threading
 from abc import ABC, abstractmethod
 from contextlib import ExitStack
 from pathlib import Path
@@ -85,37 +86,43 @@ class SimpleCheckpointer(Checkpointer):
         dir: PathOrStr,
         state: "TrainState",
         save_overwrite: bool = False,
-        block: bool = True,
-        done_callback: Callable[[], None] | None = None,
     ):
-        if block:
-            checkpointer = self._get_checkpointer()
-            with fs.get_temp_dir_for_target_dir(
-                dir, work_dir=self.work_dir, save_overwrite=save_overwrite
-            ) as wd:
-                checkpointer.save(
-                    wd,
-                    args=self._get_checkpoint_save_args(state),
-                    force=True,
-                )
-            if done_callback is not None:
-                done_callback()
-            return
-        else:
-            stack = ExitStack()
-            wd = stack.enter_context(
-                fs.get_temp_dir_for_target_dir(
-                    dir, work_dir=self.work_dir, save_overwrite=save_overwrite
-                )
+        checkpointer = self._get_checkpointer()
+        with fs.get_temp_dir_for_target_dir(
+            dir, work_dir=self.work_dir, save_overwrite=save_overwrite
+        ) as wd:
+            checkpointer.save(
+                wd,
+                args=self._get_checkpoint_save_args(state),
+                force=True,
             )
 
-            def final_done_callback():
-                stack.close()
-                if done_callback is not None:
-                    done_callback()
+    def save_async(
+        self,
+        dir: PathOrStr,
+        state: "TrainState",
+        save_overwrite: bool = False,
+        done_callback: Callable[[], None] | None = None,
+    ) -> checkpoint_utils.AsyncSaveHandle:
+        stack = ExitStack()
+        wd = stack.enter_context(
+            fs.get_temp_dir_for_target_dir(
+                dir, work_dir=self.work_dir, save_overwrite=save_overwrite
+            )
+        )
+        done_event = threading.Event()
 
-            checkpointer = self._get_async_checkpointer(final_done_callback)
-            checkpointer.save(wd, args=self._get_checkpoint_save_args(state), force=True)
+        def final_done_callback():
+            stack.close()
+            if done_callback is not None:
+                done_callback()
+            done_event.set()
+
+        checkpointer = self._get_async_checkpointer(final_done_callback)
+        checkpointer.save(wd, args=self._get_checkpoint_save_args(state), force=True)
+        return checkpoint_utils.OrbaxAsyncSaveHandle(
+            checkpointer=checkpointer, done_event=done_event
+        )
 
     def load(self, dir: PathOrStr, state: "TrainState") -> "TrainState":
         local_dir: Path
