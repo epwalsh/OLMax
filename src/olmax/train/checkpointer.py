@@ -144,11 +144,9 @@ class SimpleCheckpointer(Checkpointer):
         )
 
     def _make_pytree_restore_args(self, data) -> ocp.args.PyTreeRestore:
-        return (
-            ocp.args.PyTreeRestore(
-                item=data,  # pyright: ignore
-                restore_args=jax.tree.map(self._make_array_restore_args, data),  # pyright: ignore
-            ),
+        return ocp.args.PyTreeRestore(
+            item=data,  # pyright: ignore
+            restore_args=jax.tree.map(self._make_array_restore_args, data),  # pyright: ignore
         )
 
     def _make_array_restore_args(self, data) -> ocp.ArrayRestoreArgs | None:
