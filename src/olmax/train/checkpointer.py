@@ -136,18 +136,18 @@ class SimpleCheckpointer(Checkpointer):
                     "global_train_tokens_seen": state.global_train_tokens_seen,
                 }
             ),
-            data_loader=ocp.args.PyTreeRestore(state.data_loader.get_state()),  # pyright: ignore
-            params=ocp.args.PyTreeRestore(  # pyright: ignore
-                item=state.params,  # pyright: ignore
-                restore_args=jax.tree.map(  # pyright: ignore
-                    self._make_array_restore_args, state.params
-                ),
+            data_loader=self._make_pytree_restore_args(  # pyright: ignore
+                state.data_loader.get_state()
             ),
-            opt_state=ocp.args.PyTreeRestore(  # pyright: ignore
-                item=state.opt_state,  # pyright: ignore
-                restore_args=jax.tree.map(  # pyright: ignore
-                    self._make_array_restore_args, state.opt_state
-                ),
+            params=self._make_pytree_restore_args(state.params),  # pyright: ignore
+            opt_state=self._make_pytree_restore_args(state.opt_state),  # pyright: ignore
+        )
+
+    def _make_pytree_restore_args(self, data) -> ocp.args.PyTreeRestore:
+        return (
+            ocp.args.PyTreeRestore(
+                item=data,  # pyright: ignore
+                restore_args=jax.tree.map(self._make_array_restore_args, data),  # pyright: ignore
             ),
         )
 
