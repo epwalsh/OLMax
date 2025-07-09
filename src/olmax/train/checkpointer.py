@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING
 import jax
 import numpy as np
 import orbax.checkpoint as ocp
-from jax.experimental.layout import Layout
 
 from .. import distributed as dist
-from .. import fs
+from .. import fs, jax_utils
 from ..types import *
 
 if TYPE_CHECKING:
@@ -98,9 +97,10 @@ class SimpleCheckpointer(Checkpointer):
         checkpointer = self._get_checkpointer()
         try:
             result = checkpointer.restore(local_dir, self._get_checkpoint_restore_args(state))
+            opt_state = jax_utils.uncommit_tree(result["opt_state"])
             state.data_loader.load_state(result["data_loader"])
             return dataclasses.replace(
-                state, params=result["params"], opt_state=result["opt_state"], **result["trainer"]
+                state, params=result["params"], opt_state=opt_state, **result["trainer"]
             )
         finally:
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
@@ -154,12 +154,6 @@ class SimpleCheckpointer(Checkpointer):
     def _make_array_restore_args(self, data) -> ocp.ArrayRestoreArgs | None:
         if not isinstance(data, Array):
             return None
-        elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
-            return ocp.ArrayRestoreArgs(
-                sharding=jax.sharding.SingleDeviceSharding(
-                    device=jax.devices()[0], memory_kind=data.sharding.memory_kind
-                )
-            )
         elif self.enable_single_replica_array_restore:
             #  return ocp.type_handlers.SingleReplicaArrayRestoreArgs(sharding=data.sharding)
             assert isinstance(data.sharding, jax.sharding.NamedSharding)

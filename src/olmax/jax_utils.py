@@ -29,6 +29,16 @@ def zeros_like_tree(tree: T, dtype: DTypeLike | None = None) -> T:
     return jax.tree.map(lambda x: jnp.zeros_like(x, dtype=dtype), tree)
 
 
+def uncommit_tree(tree: T) -> T:
+    def uncommit(x: Array):
+        if isinstance(x.sharding, jax.sharding.SingleDeviceSharding) and x.committed:
+            return jax.numpy.array(np.array(x))
+        else:
+            return x
+
+    return jax.tree.map(uncommit, tree)
+
+
 @eqx.filter_jit(donate="all")
 def count_params(tree: PyTree) -> int:
     return jax.tree.reduce(lambda c, p: c + p.size, tree, 0)
