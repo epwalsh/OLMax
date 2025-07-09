@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import jax
 import numpy as np
 import orbax.checkpoint as ocp
+from jax.experimental.layout import Layout
 
 from .. import distributed as dist
 from .. import fs
@@ -153,10 +154,9 @@ class SimpleCheckpointer(Checkpointer):
     def _make_array_restore_args(self, data) -> ocp.ArrayRestoreArgs | None:
         if not isinstance(data, Array):
             return None
-        #  elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
-        #      return ocp.ArrayRestoreArgs(sharding=jax.experimental.layout.Layout())
+        elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
+            return ocp.ArrayRestoreArgs(sharding=Layout())
         elif self.enable_single_replica_array_restore:
-            #  return ocp.ArrayRestoreArgs(sharding=data.sharding)
             #  return ocp.type_handlers.SingleReplicaArrayRestoreArgs(sharding=data.sharding)
             assert isinstance(data.sharding, jax.sharding.NamedSharding)
             pspec = data.sharding.spec
