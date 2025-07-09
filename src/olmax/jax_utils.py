@@ -30,8 +30,12 @@ def zeros_like_tree(tree: T, dtype: DTypeLike | None = None) -> T:
 
 
 def uncommit_single_device_arrays(tree: T) -> T:
-    def uncommit(x: Array):
-        if isinstance(x.sharding, jax.sharding.SingleDeviceSharding) and x.committed:
+    def uncommit(x):
+        if (
+            isinstance(x, Array)
+            and isinstance(x.sharding, jax.sharding.SingleDeviceSharding)
+            and x.committed
+        ):
             return jax.numpy.array(np.array(x))
         else:
             return x
