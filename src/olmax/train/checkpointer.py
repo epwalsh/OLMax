@@ -127,6 +127,6 @@ class SimpleCheckpointer(Checkpointer):
             ),
             data_loader=ocp.args.PyTreeRestore(state.data_loader.get_state()),  # pyright: ignore
             params=ocp.args.PyTreeRestore(state.params),  # pyright: ignore
-            static=ocp.args.PyTreeRestore(state.static),  # pyright: ignore
+            #  static=ocp.args.PyTreeRestore(state.static),  # pyright: ignore
             opt_state=ocp.args.PyTreeRestore(state.opt_state),  # pyright: ignore
         )
