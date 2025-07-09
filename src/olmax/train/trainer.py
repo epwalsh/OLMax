@@ -405,9 +405,7 @@ class Trainer(Generic[M, B]):
                     f"Copied checkpoint for step {step} from '{tmp_checkpoint_path}' to '{checkpoint_path}' "
                     f"in {utils.format_timedelta(end_time - start_time)}."
                 )
-            self._last_checkpoint = (
-                step if self._last_checkpoint is None else max(step, self._last_checkpoint)
-            )
+            self._last_checkpoint = max(step, self._last_checkpoint)
             for callback in self._iter_callbacks():
                 callback.post_checkpoint_saved(checkpoint_path)
 
