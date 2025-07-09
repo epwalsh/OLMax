@@ -105,7 +105,6 @@ class SimpleCheckpointer(Checkpointer):
             checkpointer.save(
                 wd,
                 args=self._get_checkpoint_save_args(state),
-                force=True,
             )
 
     def save_async(
@@ -130,7 +129,7 @@ class SimpleCheckpointer(Checkpointer):
             done_event.set()
 
         checkpointer = self._get_async_checkpointer(final_done_callback)
-        checkpointer.save(wd, args=self._get_checkpoint_save_args(state), force=True)
+        checkpointer.save(wd, args=self._get_checkpoint_save_args(state))
         return checkpoint_utils.OrbaxAsyncSaveHandle(
             checkpointer=checkpointer, done_event=done_event
         )

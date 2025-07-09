@@ -26,7 +26,7 @@ def test_save_and_restore(tmp_path, block: bool):
     metadata = checkpoint_utils.get_metadata(checkpoint_dir)
 
     # Restore from metadata.
-    checkpoint_utils.restore(checkpoint_dir, metadata)
+    checkpoint_utils.restore_from_metadata(checkpoint_dir, metadata)
 
     # Restore from model.
     model2 = nn.Linear(2, 3, key=jax.random.PRNGKey(1))

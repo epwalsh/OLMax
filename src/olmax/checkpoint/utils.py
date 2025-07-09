@@ -61,9 +61,6 @@ class OrbaxAsyncSaveHandle:
         """
         self.checkpointer.close()
 
-    def __del__(self):
-        self.close()
-
 
 def save(
     dir: PathOrStr, state: PyTree, *, block: bool = True, force: bool = False
@@ -90,7 +87,7 @@ def save(
 
 def restore(
     dir: PathOrStr,
-    state: T | CheckpointMetadata,
+    state: T,
     enable_single_replica_restoring: bool | None = None,
 ) -> T:
     """
@@ -113,9 +110,6 @@ def restore(
             "'enable_single_replica_restoring=True' is only valid in a distributed environment"
         )
 
-    if _is_checkpoint_metadata(state):
-        state = jax.tree.map(ocp.utils.to_shape_dtype_struct, state)
-
     restore_args = make_restore_args(
         state, enable_single_replica_restoring=enable_single_replica_restoring
     )
@@ -126,14 +120,45 @@ def restore(
     return result
 
 
+def restore_from_metadata(
+    dir: PathOrStr,
+    metadata: CheckpointMetadata | None = None,
+    enable_single_replica_restoring: bool | None = None,
+) -> Any:
+    """
+    Restore a checkpoint saved via :func:`save()` from metadata only.
+
+    :param dir: The checkpoint directory to restore from.
+    :param metadata: The metadata to restore from.
+    :param enable_single_replica_restoring: If ``True``, read the checkpoint only
+        on a single replica's hosts and do broadcasting. This should significantly
+        improve the loading time at scale. Only valid in a distributed environment.
+    """
+    if enable_single_replica_restoring is None:
+        enable_single_replica_restoring = dist.is_distributed()
+    elif enable_single_replica_restoring and not dist.is_distributed():
+        raise ValueError(
+            "'enable_single_replica_restoring=True' is only valid in a distributed environment"
+        )
+
+    with _get_checkpointer() as checkpointer:
+        if metadata is None:
+            metadata = checkpointer.metadata(dir)
+        state = jax.tree.map(ocp.utils.to_shape_dtype_struct, metadata)
+        restore_args = make_restore_args(
+            state, enable_single_replica_restoring=enable_single_replica_restoring
+        )
+        result = checkpointer.restore(dir, item=state, restore_args=restore_args)
+
+    return result
+
+
 def get_metadata(dir: PathOrStr) -> CheckpointMetadata:
     """
     Get metadata about a checkpoint saved via :func:`save()`.
     """
-    checkpointer = _get_checkpointer()
-    result = checkpointer.metadata(dir)
-    checkpointer.close()
-    return result
+    with _get_checkpointer() as checkpointer:
+        return checkpointer.metadata(dir)
 
 
 def _get_checkpointer(
@@ -145,7 +170,7 @@ def _get_checkpointer(
     )
 
 
-def _is_checkpoint_metadata(state: PyTree | CheckpointMetadata) -> bool:
+def is_checkpoint_metadata(state: PyTree | CheckpointMetadata) -> bool:
     for leaf in jax.tree.leaves(state):
         if isinstance(leaf, ocp.metadata.Metadata):
             return True
