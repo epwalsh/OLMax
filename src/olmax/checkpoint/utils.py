@@ -139,7 +139,7 @@ def _is_checkpoint_metadata(state: PyTree | CheckpointMetadata) -> bool:
 def _make_restore_args(
     data: Any, enable_single_replica_restoring: bool = False
 ) -> ocp.RestoreArgs | None:
-    if not isinstance(data, Array):
+    if not isinstance(data, Array) or isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
         return None
 
     if not enable_single_replica_restoring:
