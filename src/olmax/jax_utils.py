@@ -29,7 +29,7 @@ def zeros_like_tree(tree: T, dtype: DTypeLike | None = None) -> T:
     return jax.tree.map(lambda x: jnp.zeros_like(x, dtype=dtype), tree)
 
 
-def uncommit_tree(tree: T) -> T:
+def uncommit_single_device_arrays(tree: T) -> T:
     def uncommit(x: Array):
         if isinstance(x.sharding, jax.sharding.SingleDeviceSharding) and x.committed:
             return jax.numpy.array(np.array(x))
