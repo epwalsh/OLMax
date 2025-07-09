@@ -2,9 +2,10 @@ import dataclasses
 import hashlib
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from .. import checkpoint
+import orbax.checkpoint as ocp
+
 from .. import distributed as dist
 from .. import fs
 from ..types import *
@@ -44,8 +45,13 @@ class Checkpointer(ABC):
 
 class SimpleCheckpointer(Checkpointer):
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
+        checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
-            checkpoint.save(wd, self._get_state_dict(state), block=True, force=True)
+            checkpointer.save(
+                wd,
+                args=self._get_checkpoint_args(state),
+                force=True,
+            )
 
     def load(self, dir: PathOrStr, state: "TrainState") -> "TrainState":
         local_dir: Path
@@ -60,21 +66,28 @@ class SimpleCheckpointer(Checkpointer):
         else:
             local_dir = Path(dir)
 
+        checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
         try:
-            state_dict = checkpoint.restore(local_dir, self._get_state_dict(state))
-            state.data_loader.load_state(state_dict.pop("data_loader"))
-            return dataclasses.replace(state, **state_dict)
+            result = checkpointer.restore(local_dir, self._get_checkpoint_args(state))
+            state.data_loader.load_state(result.pop("data_loader"))
+            return dataclasses.replace(
+                state, params=result["params"], opt_state=result["opt_state"], **result["trainer"]
+            )
         finally:
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
                 fs.clear_directory(local_dir)
 
-    def _get_state_dict(self, state: "TrainState") -> dict[str, Any]:
-        return {
-            "step": state.step,
-            "epoch": state.epoch,
-            "global_train_tokens_seen": state.global_train_tokens_seen,
-            "params": state.params,
-            "static": state.static,
-            "opt_state": state.opt_state,
-            "data_loader": state.data_loader.get_state(),
-        }
+    def _get_checkpoint_args(self, state: "TrainState") -> ocp.args.Composite:
+        return ocp.args.Composite(
+            trainer=ocp.args.JsonSave(  # pyright: ignore
+                {  # pyright: ignore
+                    "step": state.step,
+                    "epoch": state.epoch,
+                    "global_train_tokens_seen": state.global_train_tokens_seen,
+                }
+            ),
+            data_loader=ocs.args.JsonSave(state.data_loader.get_state()),  # pyright: ignore
+            params=ocp.args.StandardSave(state.params),  # pyright: ignore
+            static=ocp.args.StandardSave(state.static),  # pyright: ignore
+            opt_state=ocp.args.StandardSave(state.opt_state),  # pyright: ignore
+        )
