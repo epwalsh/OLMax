@@ -106,6 +106,10 @@ class Trainer(Generic[M, B]):
     """
     The checkpointer to use for saving/restoring checkpoints.
     """
+    async_checkpointing: bool = True
+    """
+    Whether or not to save checkpoints asynchronously.
+    """
     checkpoint_interval: int | None = None
     """
     The interval in steps to save checkpoints.
@@ -357,22 +361,47 @@ class Trainer(Generic[M, B]):
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    def save_checkpoint(self, save_overwrite: bool | None = None) -> PathOrStr:
+    def save_checkpoint(
+        self,
+        save_overwrite: bool | None = None,
+        block: bool | None = None,
+        done_callback: Callable[[PathOrStr], None] | None = None,
+    ) -> PathOrStr:
         """
         Save a checkpoint.
         """
         if save_overwrite is None:
             save_overwrite = self.save_overwrite
-        checkpoint_path = fs.join_path(self.save_folder, f"step{self.step}")
-        log.info(f"Saving checkpoint for step {self.step} to '{checkpoint_path}'...")
+        if block is None:
+            block = not self.async_checkpointing
+
         start_time = time.perf_counter()
-        self.checkpointer.save(checkpoint_path, self.state, save_overwrite=save_overwrite)
-        self._last_checkpoint = self.step
-        gc.collect()
-        for callback in self._iter_callbacks():
-            callback.post_checkpoint_saved(checkpoint_path)
-        end_time = time.perf_counter()
-        log.info(f"Saved checkpoint in {utils.format_timedelta(end_time - start_time)}")
+        step = self.step
+        checkpoint_path = fs.join_path(self.save_folder, f"step{step}")
+        log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
+
+        def final_done_callback():
+            gc.collect()
+            self._last_checkpoint = (
+                step if self._last_checkpoint is None else max(step, self._last_checkpoint)
+            )
+            for callback in self._iter_callbacks():
+                callback.post_checkpoint_saved(checkpoint_path)
+            end_time = time.perf_counter()
+            log.info(
+                f"Saved checkpoint for step {step} to '{checkpoint_path}' in {utils.format_timedelta(end_time - start_time)}"
+            )
+            if done_callback is not None:
+                done_callback(checkpoint_path)
+
+        self.checkpointer.save(
+            checkpoint_path,
+            self.state,
+            save_overwrite=save_overwrite,
+            block=block,
+            done_callback=final_done_callback,
+        )
+
         return checkpoint_path
 
     def fit(

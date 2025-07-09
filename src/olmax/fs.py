@@ -386,7 +386,7 @@ def list_directory(
 
 
 @contextmanager
-def get_tempdir_for(
+def get_temp_dir_for_target_dir(
     permanent_dir: PathOrStr,
     work_dir: PathOrStr | None = None,
     save_overwrite: bool = False,

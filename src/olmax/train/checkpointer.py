@@ -1,8 +1,9 @@
 import dataclasses
 import hashlib
 from abc import ABC, abstractmethod
+from contextlib import ExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import jax
 import orbax.checkpoint as ocp
@@ -21,9 +22,16 @@ class Checkpointer(ABC):
         self._work_dir: Path | None = None
 
     @abstractmethod
-    def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
+    def save(
+        self,
+        dir: PathOrStr,
+        state: "TrainState",
+        save_overwrite: bool = False,
+        block: bool = True,
+        done_callback: Callable[[], None] | None = None,
+    ):
         """
-        Save train state to the ``dir``.
+        Save train state to the ``dir`` synchronously.
         """
         raise NotImplementedError
 
@@ -72,14 +80,42 @@ class SimpleCheckpointer(Checkpointer):
             )
             ocp.type_handlers.register_type_handler(jax.Array, array_handler, override=True)
 
-    def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
-        checkpointer = self._get_checkpointer()
-        with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
-            checkpointer.save(
-                wd,
-                args=self._get_checkpoint_save_args(state),
-                force=True,
+    def save(
+        self,
+        dir: PathOrStr,
+        state: "TrainState",
+        save_overwrite: bool = False,
+        block: bool = True,
+        done_callback: Callable[[], None] | None = None,
+    ):
+        if block:
+            checkpointer = self._get_checkpointer()
+            with fs.get_temp_dir_for_target_dir(
+                dir, work_dir=self.work_dir, save_overwrite=save_overwrite
+            ) as wd:
+                checkpointer.save(
+                    wd,
+                    args=self._get_checkpoint_save_args(state),
+                    force=True,
+                )
+            if done_callback is not None:
+                done_callback()
+            return
+        else:
+            stack = ExitStack()
+            wd = stack.enter_context(
+                fs.get_temp_dir_for_target_dir(
+                    dir, work_dir=self.work_dir, save_overwrite=save_overwrite
+                )
             )
+
+            def final_done_callback():
+                stack.close()
+                if done_callback is not None:
+                    done_callback()
+
+            checkpointer = self._get_async_checkpointer(final_done_callback)
+            checkpointer.save(wd, args=self._get_checkpoint_save_args(state), force=True)
 
     def load(self, dir: PathOrStr, state: "TrainState") -> "TrainState":
         local_dir: Path
@@ -88,7 +124,7 @@ class SimpleCheckpointer(Checkpointer):
             sha256_hash.update(fs.normalize_path(dir).encode())
             dirname_hash = sha256_hash.hexdigest()
             local_dir = self.work_dir / "checkpointer" / dirname_hash
-            with fs.get_tempdir_for(local_dir, save_overwrite=True) as wd:
+            with fs.get_temp_dir_for_target_dir(local_dir, save_overwrite=True) as wd:
                 if dist.get_process_filesystem_rank(local_dir) == 0:
                     fs.copy_dir(dir, wd)
         else:
@@ -116,10 +152,17 @@ class SimpleCheckpointer(Checkpointer):
         return state
 
     def _get_checkpointer(self) -> ocp.Checkpointer:
-        checkpointer = ocp.Checkpointer(
-            ocp.CompositeCheckpointHandler(handler_registry=self.handler_registry)
+        handler = ocp.CompositeCheckpointHandler(handler_registry=self.handler_registry)
+        return ocp.Checkpointer(handler)
+
+    def _get_async_checkpointer(
+        self, done_callback: Callable[[], None] | None
+    ) -> ocp.AsyncCheckpointer:
+        handler = ocp.CompositeCheckpointHandler(handler_registry=self.handler_registry)
+        return ocp.AsyncCheckpointer(
+            handler,
+            async_options=ocp.options.AsyncOptions(post_finalization_callback=done_callback),
         )
-        return checkpointer
 
     def _get_checkpoint_save_args(self, state: "TrainState") -> ocp.args.Composite:
         return ocp.args.Composite(
