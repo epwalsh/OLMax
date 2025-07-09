@@ -44,6 +44,24 @@ class Checkpointer(ABC):
 
 
 class SimpleCheckpointer(Checkpointer):
+    def __init__(self):
+        super().__init__()
+
+        handler_registry = ocp.DefaultCheckpointHandlerRegistry()
+        json_handler = ocp.JsonCheckpointHandler()
+        pytree_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True, use_zarr3=True)
+        handler_registry.add("trainer", ocp.args.JsonSave, json_handler)
+        handler_registry.add("trainer", ocp.args.JsonRestore, json_handler)
+        handler_registry.add("data_loader", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("data_loader", ocp.args.PyTreeRestore, pytree_handler)
+        handler_registry.add("params", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("params", ocp.args.PyTreeRestore, pytree_handler)
+        handler_registry.add("static", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("static", ocp.args.PyTreeRestore, pytree_handler)
+        handler_registry.add("opt_state", ocp.args.PyTreeSave, pytree_handler)
+        handler_registry.add("opt_state", ocp.args.PyTreeRestore, pytree_handler)
+        self.handler_registry = handler_registry
+
     def save(self, dir: PathOrStr, state: "TrainState", save_overwrite: bool = False):
         checkpointer = self._get_checkpointer()
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
@@ -78,15 +96,8 @@ class SimpleCheckpointer(Checkpointer):
                 fs.clear_directory(local_dir)
 
     def _get_checkpointer(self) -> ocp.Checkpointer:
-        handler_registry = ocp.DefaultCheckpointHandlerRegistry()
-        pytree_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True, use_zarr3=True)
-        handler_registry.add("trainer", ocp.args.JsonSave, ocp.JsonCheckpointHandler())
-        handler_registry.add("data_loader", ocp.args.PyTreeSave, pytree_handler)
-        handler_registry.add("params", ocp.args.PyTreeSave, pytree_handler)
-        handler_registry.add("static", ocp.args.PyTreeSave, pytree_handler)
-        handler_registry.add("opt_state", ocp.args.PyTreeSave, pytree_handler)
         checkpointer = ocp.Checkpointer(
-            ocp.CompositeCheckpointHandler(handler_registry=handler_registry)
+            ocp.CompositeCheckpointHandler(handler_registry=self.handler_registry)
         )
         return checkpointer
 
