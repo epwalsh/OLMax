@@ -157,7 +157,7 @@ class SimpleCheckpointer(Checkpointer):
         elif isinstance(data.sharding, jax.sharding.SingleDeviceSharding):
             return ocp.ArrayRestoreArgs(
                 sharding=jax.sharding.SingleDeviceSharding(
-                    device=jax.default_device, memory_kind=data.sharding.memory_kind
+                    device=jax.devices()[0], memory_kind=data.sharding.memory_kind
                 )
             )
         elif self.enable_single_replica_array_restore:
