@@ -50,7 +50,7 @@ class SimpleCheckpointer(Checkpointer):
         with fs.get_tempdir_for(dir, work_dir=self.work_dir, save_overwrite=save_overwrite) as wd:
             checkpointer.save(
                 wd,
-                args=self._get_checkpoint_args(state),
+                args=self._get_checkpoint_save_args(state),
                 force=True,
             )
 
@@ -69,7 +69,7 @@ class SimpleCheckpointer(Checkpointer):
 
         checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
         try:
-            result = checkpointer.restore(local_dir, restore_args=self._get_checkpoint_args(state))
+            result = checkpointer.restore(local_dir, self._get_checkpoint_restore_args(state))
             state.data_loader.load_state(result.pop("data_loader"))
             return dataclasses.replace(
                 state, params=result["params"], opt_state=result["opt_state"], **result["trainer"]
@@ -78,7 +78,7 @@ class SimpleCheckpointer(Checkpointer):
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
                 fs.clear_directory(local_dir)
 
-    def _get_checkpoint_args(self, state: "TrainState") -> ocp.args.Composite:
+    def _get_checkpoint_save_args(self, state: "TrainState") -> ocp.args.Composite:
         return ocp.args.Composite(
             trainer=ocp.args.JsonSave(  # pyright: ignore
                 {  # pyright: ignore
@@ -91,4 +91,19 @@ class SimpleCheckpointer(Checkpointer):
             params=ocp.args.StandardSave(state.params),  # pyright: ignore
             static=ocp.args.StandardSave(state.static),  # pyright: ignore
             opt_state=ocp.args.StandardSave(state.opt_state),  # pyright: ignore
+        )
+
+    def _get_checkpoint_restore_args(self, state: "TrainState") -> ocp.args.Composite:
+        return ocp.args.Composite(
+            trainer=ocp.args.JsonRestore(  # pyright: ignore
+                {  # pyright: ignore
+                    "step": state.step,
+                    "epoch": state.epoch,
+                    "global_train_tokens_seen": state.global_train_tokens_seen,
+                }
+            ),
+            data_loader=ocp.args.StandardRestore(state.data_loader.get_state()),  # pyright: ignore
+            params=ocp.args.StandardRestore(state.params),  # pyright: ignore
+            static=ocp.args.StandardRestore(state.static),  # pyright: ignore
+            opt_state=ocp.args.StandardRestore(state.opt_state),  # pyright: ignore
         )
