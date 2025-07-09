@@ -440,7 +440,7 @@ class Trainer(Generic[M, B]):
         self._canceled = jax.copy_to_host_async(jnp.array(False))
         self._cancel_reason = None
         self._error = None
-        self._last_checkpoint = 0
+        self._last_checkpoint = -1
 
         # Disable automatic garbage collection.
         gc.disable()
