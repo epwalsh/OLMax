@@ -384,6 +384,8 @@ class Trainer(Generic[M, B]):
         step = self.step
         tmp_checkpoint_path = self.work_dir / f"step{step}"
         checkpoint_path = fs.join_path(self.save_folder, f"step{step}")
+        if step == self._last_checkpoint:
+            return checkpoint_path
 
         if not save_overwrite and not fs.dir_is_empty(checkpoint_path):
             raise FileExistsError(
@@ -543,7 +545,7 @@ class Trainer(Generic[M, B]):
             callback.post_train()
 
         # Maybe save a final checkpoint.
-        if self.checkpoint_interval is not None and self.step != self._last_checkpoint:
+        if self.checkpoint_interval is not None:
             self.save_checkpoint()
 
         # Re-combine params and state into model object.
