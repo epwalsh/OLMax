@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import jax
 import orbax.checkpoint as ocp
 
 from .. import distributed as dist
@@ -111,7 +112,7 @@ class SimpleCheckpointer(Checkpointer):
                 }
             ),
             data_loader=ocp.args.PyTreeSave(state.data_loader.get_state()),  # pyright: ignore
-            params=ocp.args.PyTreeSave(state.params),  # pyright: ignore
+            params=ocp.args.ArraySave(state.params),  # pyright: ignore
             static=ocp.args.PyTreeSave(state.static),  # pyright: ignore
             opt_state=ocp.args.PyTreeSave(state.opt_state),  # pyright: ignore
         )
@@ -126,7 +127,14 @@ class SimpleCheckpointer(Checkpointer):
                 }
             ),
             data_loader=ocp.args.PyTreeRestore(state.data_loader.get_state()),  # pyright: ignore
-            params=ocp.args.PyTreeRestore(state.params),  # pyright: ignore
+            params=jax.tree.map(_make_array_restore_args, state.params),  # pyright: ignore
+            #  params=ocp.args.PyTreeRestore(state.params),  # pyright: ignore
             #  static=ocp.args.PyTreeRestore(state.static),  # pyright: ignore
             opt_state=ocp.args.PyTreeRestore(state.opt_state),  # pyright: ignore
         )
+
+
+def _make_array_restore_args(data) -> ocp.ArrayRestoreArgs | None:
+    if not isinstance(data, Array):
+        return None
+    return ocp.ArrayRestoreArgs(sharding=data.sharding)
