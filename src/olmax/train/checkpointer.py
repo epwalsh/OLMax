@@ -70,7 +70,7 @@ class SimpleCheckpointer(Checkpointer):
         checkpointer = ocp.Checkpointer(ocp.CompositeCheckpointHandler())
         try:
             result = checkpointer.restore(local_dir, self._get_checkpoint_restore_args(state))
-            state.data_loader.load_state(result.pop("data_loader"))
+            state.data_loader.load_state(result["data_loader"])
             return dataclasses.replace(
                 state, params=result["params"], opt_state=result["opt_state"], **result["trainer"]
             )
