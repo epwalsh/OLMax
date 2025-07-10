@@ -1,6 +1,9 @@
 import dataclasses
 import hashlib
+import logging
+import os
 import threading
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -9,12 +12,15 @@ import jax
 import orbax.checkpoint as ocp
 
 from .. import distributed as dist
-from .. import fs, jax_utils
+from .. import fs, jax_utils, utils
 from ..checkpoint import utils as checkpoint_utils
 from ..types import *
 
 if TYPE_CHECKING:
     from .trainer import TrainState
+
+
+log = logging.getLogger(__name__)
 
 
 class Checkpointer(ABC):
@@ -24,7 +30,7 @@ class Checkpointer(ABC):
     @abstractmethod
     def save(
         self,
-        dir: Path,
+        dir: PathOrStr,
         state: "TrainState",
         save_overwrite: bool = False,
     ):
@@ -36,7 +42,7 @@ class Checkpointer(ABC):
     @abstractmethod
     def save_async(
         self,
-        dir: Path,
+        dir: PathOrStr,
         state: "TrainState",
         save_overwrite: bool = False,
     ) -> checkpoint_utils.AsyncSaveHandle:
@@ -61,6 +67,32 @@ class Checkpointer(ABC):
     @work_dir.setter
     def work_dir(self, work_dir: PathOrStr):
         self._work_dir = Path(work_dir)
+
+
+class SimpleCheckpointerAsyncSaveHandle:
+    def __init__(
+        self,
+        checkpointer: ocp.AsyncCheckpointer,
+        done_event: threading.Event,
+        finalizer_thread: threading.Thread,
+    ):
+        self.checkpointer = checkpointer
+        self.done_event = done_event
+        self.finalizer_thread = finalizer_thread
+
+    def is_done(self) -> bool:
+        if self.done_event.is_set():
+            self.checkpointer.wait_until_finished()
+            return True
+        else:
+            return False
+
+    def wait_until_finished(self):
+        self.checkpointer.wait_until_finished()
+
+    def close(self):
+        self.finalizer_thread.join()
+        self.checkpointer.close()
 
 
 class SimpleCheckpointer(Checkpointer):
@@ -92,27 +124,54 @@ class SimpleCheckpointer(Checkpointer):
 
     def save(
         self,
-        dir: Path,
+        dir: PathOrStr,
         state: "TrainState",
         save_overwrite: bool = False,
     ):
+        local_dir = self.work_dir / os.path.basename(dir)
         checkpointer = self._get_checkpointer()
-        checkpointer.save(dir, args=self._get_checkpoint_save_args(state), force=save_overwrite)
+        checkpointer.save(
+            local_dir, args=self._get_checkpoint_save_args(state), force=save_overwrite
+        )
+
+        if fs.normalize_path(local_dir) != fs.normalize_path(dir):
+            log.info(f"Copying checkpoint from '{local_dir}' to '{dir}'...")
+            start_time = time.perf_counter()
+
+            if dist.get_process_filesystem_rank(local_dir) == 0:
+                fs.copy_dir(local_dir, dir, save_overwrite=save_overwrite)
+
+            dist.barrier(f"checkpointer-post-upload-{os.path.basename(dir)}")
+
+            end_time = time.perf_counter()
+            log.info(
+                f"Copied checkpoint for from '{local_dir}' to '{dir}' "
+                f"in {utils.format_timedelta(end_time - start_time)}."
+            )
 
     def save_async(
         self,
-        dir: Path,
+        dir: PathOrStr,
         state: "TrainState",
         save_overwrite: bool = False,
     ) -> checkpoint_utils.AsyncSaveHandle:
+        local_dir = self.work_dir / os.path.basename(dir)
         done_event = threading.Event()
-
-        def done_callback():
-            done_event.set()
-
-        checkpointer = self._get_async_checkpointer(done_callback)
+        checkpointer = self._get_async_checkpointer()
         checkpointer.save(dir, args=self._get_checkpoint_save_args(state), force=save_overwrite)
-        return checkpoint_utils.OCPAsyncSaveHandle(checkpointer, done_event)
+        finalizer_thread = threading.Thread(
+            target=self._finalize_async_checkpoint,
+            kwargs=dict(
+                checkpointer=checkpointer,
+                done_event=done_event,
+                local_dir=local_dir,
+                final_dir=dir,
+                save_overwrite=save_overwrite,
+            ),
+        )
+        finalizer_thread.start()
+
+        return SimpleCheckpointerAsyncSaveHandle(checkpointer, done_event, finalizer_thread)
 
     def load(self, dir: PathOrStr, state: "TrainState") -> "TrainState":
         local_dir: Path
@@ -160,6 +219,32 @@ class SimpleCheckpointer(Checkpointer):
             handler,
             async_options=ocp.options.AsyncOptions(post_finalization_callback=done_callback),
         )
+
+    def _finalize_async_checkpoint(
+        self,
+        *,
+        checkpointer: ocp.AsyncCheckpointer,
+        done_event: threading.Event,
+        local_dir: PathOrStr,
+        final_dir: PathOrStr,
+        save_overwrite: bool,
+    ):
+        checkpointer.wait_until_finished()
+        if fs.normalize_path(local_dir) != fs.normalize_path(final_dir):
+            log.info(f"Copying checkpoint from '{local_dir}' to '{final_dir}'...")
+            start_time = time.perf_counter()
+
+            if dist.get_process_filesystem_rank(local_dir) == 0:
+                fs.copy_dir(local_dir, final_dir, save_overwrite=save_overwrite)
+
+            dist.barrier(f"checkpointer-post-upload-{os.path.basename(final_dir)}")
+
+            end_time = time.perf_counter()
+            log.info(
+                f"Copied checkpoint for from '{local_dir}' to '{final_dir}' "
+                f"in {utils.format_timedelta(end_time - start_time)}."
+            )
+        done_event.set()
 
     def _get_checkpoint_save_args(self, state: "TrainState") -> ocp.args.Composite:
         return ocp.args.Composite(

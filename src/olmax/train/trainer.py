@@ -382,7 +382,6 @@ class Trainer(Generic[M, B]):
             block = not self.async_checkpointing
 
         step = self.step
-        tmp_checkpoint_path = self.work_dir / f"step{step}"
         checkpoint_path = fs.join_path(self.save_folder, f"step{step}")
         if step == self._last_checkpoint:
             return checkpoint_path
@@ -394,32 +393,18 @@ class Trainer(Generic[M, B]):
 
         def done_callback():
             gc.collect()
-            if tmp_checkpoint_path != checkpoint_path:
-                log.info(
-                    f"Copying checkpoint for step {step} from '{tmp_checkpoint_path}' to '{checkpoint_path}'..."
-                )
-                start_time = time.perf_counter()
-                fs.copy_dir(tmp_checkpoint_path, checkpoint_path, save_overwrite=save_overwrite)
-                end_time = time.perf_counter()
-                log.info(
-                    f"Copied checkpoint for step {step} from '{tmp_checkpoint_path}' to '{checkpoint_path}' "
-                    f"in {utils.format_timedelta(end_time - start_time)}."
-                )
-            else:
-                log.info(f"Saved checkpoint for step {step} to '{checkpoint_path}'.")
+            log.info(f"Saved checkpoint for step {step} to '{checkpoint_path}'.")
             self._last_checkpoint = max(step, self._last_checkpoint)
             for callback in self._iter_callbacks():
                 callback.post_checkpoint_saved(checkpoint_path)
 
         log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
         if block:
-            self.checkpointer.save(
-                tmp_checkpoint_path, self.state, save_overwrite=self.save_overwrite
-            )
+            self.checkpointer.save(checkpoint_path, self.state, save_overwrite=self.save_overwrite)
             done_callback()
         else:
             self._checkpoint_save_handle = self.checkpointer.save_async(
-                tmp_checkpoint_path,
+                checkpoint_path,
                 self.state,
                 save_overwrite=save_overwrite,
             )
