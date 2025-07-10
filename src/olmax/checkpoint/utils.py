@@ -14,6 +14,12 @@ T = TypeVar("T")
 
 
 class AsyncSaveHandle(Protocol):
+    def is_done(self) -> bool:
+        """
+        Should return ``True`` when the checkpoint has finished saving.
+        """
+        raise NotImplementedError
+
     def wait_until_finished(self):
         """
         Blocks until the checkpoint is finished saving.
@@ -25,6 +31,25 @@ class AsyncSaveHandle(Protocol):
         Close any resources.
         """
         raise NotImplementedError
+
+
+class OCPAsyncSaveHandle:
+    def __init__(self, checkpointer: ocp.AsyncCheckpointer, done_event: threading.Event):
+        self.checkpointer = checkpointer
+        self.done_event = done_event
+
+    def is_done(self) -> bool:
+        if self.done_event.is_set():
+            self.checkpointer.wait_until_finished()
+            return True
+        else:
+            return False
+
+    def wait_until_finished(self):
+        self.checkpointer.wait_until_finished()
+
+    def close(self):
+        self.checkpointer.close()
 
 
 def save(
@@ -46,7 +71,7 @@ def save(
         checkpointer.close()
         return None
     else:
-        return checkpointer
+        return OCPAsyncSaveHandle(checkpointer, done_event)
 
 
 def restore(

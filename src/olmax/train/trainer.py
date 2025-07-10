@@ -374,7 +374,7 @@ class Trainer(Generic[M, B]):
         """
         Save a checkpoint.
         """
-        self._maybe_wait_for_checkpoint()
+        self._maybe_wait_for_checkpoint(block=True)
 
         if save_overwrite is None:
             save_overwrite = self.save_overwrite
@@ -405,6 +405,8 @@ class Trainer(Generic[M, B]):
                     f"Copied checkpoint for step {step} from '{tmp_checkpoint_path}' to '{checkpoint_path}' "
                     f"in {utils.format_timedelta(end_time - start_time)}."
                 )
+            else:
+                log.info(f"Saved checkpoint for step {step} to '{checkpoint_path}'.")
             self._last_checkpoint = max(step, self._last_checkpoint)
             for callback in self._iter_callbacks():
                 callback.post_checkpoint_saved(checkpoint_path)
@@ -452,7 +454,7 @@ class Trainer(Generic[M, B]):
 
         def _shutdown(wait: bool = True):
             self._log_metrics()
-            self._maybe_wait_for_checkpoint()
+            self._maybe_wait_for_checkpoint(block=True)
 
             for callback in self._iter_callbacks():
                 callback.close()
@@ -679,6 +681,8 @@ class Trainer(Generic[M, B]):
             # Maybe save a checkpoint.
             if self.checkpoint_interval is not None and self.step % self.checkpoint_interval == 0:
                 self.save_checkpoint()
+            else:
+                self._maybe_wait_for_checkpoint(block=False)
 
         # Log left-over metrics.
         self._log_metrics()
@@ -904,11 +908,19 @@ class Trainer(Generic[M, B]):
                     latest_path = path
         return latest_path
 
-    def _maybe_wait_for_checkpoint(self):
-        if self._checkpoint_save_handle is not None:
-            self._checkpoint_save_handle.wait_until_finished()
-            self._checkpoint_save_handle.close()
-            self._checkpoint_save_handle = None
-        if self._checkpoint_done_callback is not None:
-            self._checkpoint_done_callback()
-            self._checkpoint_done_callback = None
+    def _maybe_wait_for_checkpoint(self, block: bool = True):
+        if self._checkpoint_save_handle is None:
+            assert self._checkpoint_done_callback is None
+            return
+
+        if not block and not self._checkpoint_save_handle.is_done():
+            return
+
+        self._checkpoint_save_handle.wait_until_finished()
+        self._checkpoint_save_handle.close()
+
+        assert self._checkpoint_done_callback is not None
+        self._checkpoint_done_callback()
+
+        self._checkpoint_save_handle = None
+        self._checkpoint_done_callback = None

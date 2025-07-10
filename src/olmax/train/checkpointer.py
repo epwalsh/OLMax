@@ -1,5 +1,6 @@
 import dataclasses
 import hashlib
+import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -104,9 +105,14 @@ class SimpleCheckpointer(Checkpointer):
         state: "TrainState",
         save_overwrite: bool = False,
     ) -> checkpoint_utils.AsyncSaveHandle:
-        checkpointer = self._get_async_checkpointer()
+        done_event = threading.Event()
+
+        def done_callback():
+            done_event.set()
+
+        checkpointer = self._get_async_checkpointer(done_callback)
         checkpointer.save(dir, args=self._get_checkpoint_save_args(state), force=save_overwrite)
-        return checkpointer
+        return checkpoint_utils.OCPAsyncSaveHandle(checkpointer, done_event)
 
     def load(self, dir: PathOrStr, state: "TrainState") -> "TrainState":
         local_dir: Path
