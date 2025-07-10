@@ -638,13 +638,6 @@ class Trainer(Generic[M, B]):
                 with jax.profiler.TraceAnnotation("log_metrics"):
                     self._log_metrics(exclude={self.step})
 
-                # Maybe save a checkpoint.
-                if (
-                    self.checkpoint_interval is not None
-                    and self.step % self.checkpoint_interval == 0
-                ):
-                    self.save_checkpoint()
-
                 # Maybe run garbage collection.
                 if self.step % self.gc_interval == 0:
                     gc.collect()
@@ -652,7 +645,7 @@ class Trainer(Generic[M, B]):
             for callback in self._iter_callbacks():
                 callback.post_step()
 
-            # Lastly, record throughput.
+            # Record throughput.
             batch_end = time.perf_counter()
             bps = 1 / (batch_end - batch_start)
             bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
@@ -682,6 +675,10 @@ class Trainer(Generic[M, B]):
                     device_tps_std = tps_std / dist.get_global_device_count()
                     self.record_metric("throughput/TPS device stddev", device_tps_std)
             batch_start = batch_end
+
+            # Maybe save a checkpoint.
+            if self.checkpoint_interval is not None and self.step % self.checkpoint_interval == 0:
+                self.save_checkpoint()
 
         # Log left-over metrics.
         self._log_metrics()
