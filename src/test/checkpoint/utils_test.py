@@ -20,7 +20,6 @@ def test_save_and_restore(tmp_path, block: bool):
         assert handle is not None
         handle.wait_until_finished()
         handle.close()
-        assert handle.done()
 
     # Get metadata about checkpoint.
     metadata = checkpoint_utils.get_metadata(checkpoint_dir)

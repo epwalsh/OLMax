@@ -23,7 +23,7 @@ class Checkpointer(ABC):
     @abstractmethod
     def save(
         self,
-        dir: PathOrStr,
+        dir: Path,
         state: "TrainState",
         save_overwrite: bool = False,
     ):
@@ -35,7 +35,7 @@ class Checkpointer(ABC):
     @abstractmethod
     def save_async(
         self,
-        dir: PathOrStr,
+        dir: Path,
         state: "TrainState",
         save_overwrite: bool = False,
     ) -> checkpoint_utils.AsyncSaveHandle:
