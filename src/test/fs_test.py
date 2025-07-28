@@ -1,6 +1,13 @@
 import pytest
 
-from olmax.fs import copy_dir, copy_file, file_exists, list_directory, upload
+from olmax.fs import (
+    copy_dir,
+    copy_file,
+    file_exists,
+    list_directory,
+    remove_file,
+    upload,
+)
 
 
 def test_local_functionality(tmp_path):
@@ -68,6 +75,13 @@ def _run_remote_functionality(tmp_path, remote_dir):
     # Copy dir.
     copy_dir(f"{remote_dir}", tmp_path / "dir3")
     assert (tmp_path / "dir3/dir1/file2").is_file()
+
+    # Remove a file from the remote dir.
+    remove_file(f"{remote_dir}/file1.json")
+    assert set(list_directory(remote_dir, recurse=True)) == {
+        f"{remote_dir}/dir1",
+        f"{remote_dir}/dir1/file2",
+    }
 
 
 def test_s3_functionality(tmp_path, s3_checkpoint_dir):
