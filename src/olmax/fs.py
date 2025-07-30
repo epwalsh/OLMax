@@ -785,7 +785,7 @@ def _get_s3_client(scheme: str):
         "s3",
         endpoint_url=_get_s3_endpoint_url(scheme),
         config=config,
-        use_ssl=not int(os.environ.get("OLMO_NO_SSL", "0")),
+        #  use_ssl=not int(os.environ.get("OLMO_NO_SSL", "0")),
     )
 
 

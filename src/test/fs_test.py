@@ -85,12 +85,12 @@ def _run_remote_functionality(tmp_path, remote_dir):
 
 
 def test_s3_functionality(tmp_path, s3_checkpoint_dir):
-    from botocore.exceptions import NoCredentialsError
+    import boto3
 
-    try:
-        _run_remote_functionality(tmp_path, s3_checkpoint_dir)
-    except NoCredentialsError:
+    if boto3.Session().get_credentials() is None:
         pytest.skip("Requires AWS credentials")
+    else:
+        _run_remote_functionality(tmp_path, s3_checkpoint_dir)
 
 
 def test_gcs_functionality(tmp_path, gcs_checkpoint_dir):
