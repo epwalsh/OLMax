@@ -166,9 +166,6 @@ class Trainer(Generic[M, B]):
     )
     _last_checkpoint: int = dataclasses.field(default=-1, repr=False)
     _checkpoint_save_handle: AsyncSaveHandle | None = dataclasses.field(default=None, repr=False)
-    _checkpoint_done_callback: Callable[[], None] | None = dataclasses.field(
-        default=None, repr=False
-    )
 
     def __post_init__(self):
         # Ensure working directory and save folder exist.
@@ -374,7 +371,7 @@ class Trainer(Generic[M, B]):
         """
         Save a checkpoint.
         """
-        self._maybe_wait_for_checkpoint(block=True)
+        self._maybe_wait_for_checkpoint()
 
         if save_overwrite is None:
             save_overwrite = self.save_overwrite
@@ -391,25 +388,18 @@ class Trainer(Generic[M, B]):
                 f"Checkpoint dir '{checkpoint_path}' is non-empty. Use 'save_overwrite=True' to force overwriting the dir."
             )
 
-        def done_callback():
-            gc.collect()
-            log.info(f"Saved checkpoint for step {step} to '{checkpoint_path}'.")
-            self._last_checkpoint = max(step, self._last_checkpoint)
-            for callback in self._iter_callbacks():
-                callback.post_checkpoint_saved(checkpoint_path)
-
         log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
         if block:
             self.checkpointer.save(checkpoint_path, self.state, save_overwrite=self.save_overwrite)
-            done_callback()
         else:
             self._checkpoint_save_handle = self.checkpointer.save_async(
                 checkpoint_path,
                 self.state,
                 save_overwrite=save_overwrite,
             )
-            self._checkpoint_done_callback = done_callback
 
+        gc.collect()
+        self._last_checkpoint = max(step, self._last_checkpoint)
         return checkpoint_path
 
     def fit(
@@ -439,7 +429,7 @@ class Trainer(Generic[M, B]):
 
         def _shutdown(wait: bool = True):
             self._log_metrics()
-            self._maybe_wait_for_checkpoint(block=True)
+            self._maybe_wait_for_checkpoint()
 
             for callback in self._iter_callbacks():
                 callback.close()
@@ -589,6 +579,7 @@ class Trainer(Generic[M, B]):
                         batch = next(batches)
                     except StopIteration:
                         break
+
                     batch_load_end = time.perf_counter()
                     self.record_metric(
                         "throughput/data loading time", batch_load_end - batch_load_start
@@ -666,8 +657,6 @@ class Trainer(Generic[M, B]):
             # Maybe save a checkpoint.
             if self.checkpoint_interval is not None and self.step % self.checkpoint_interval == 0:
                 self.save_checkpoint()
-            else:
-                self._maybe_wait_for_checkpoint(block=False)
 
         # Log left-over metrics.
         self._log_metrics()
@@ -893,19 +882,10 @@ class Trainer(Generic[M, B]):
                     latest_path = path
         return latest_path
 
-    def _maybe_wait_for_checkpoint(self, block: bool = True):
+    def _maybe_wait_for_checkpoint(self):
         if self._checkpoint_save_handle is None:
-            assert self._checkpoint_done_callback is None
-            return
-
-        if not block and not self._checkpoint_save_handle.is_done():
             return
 
         self._checkpoint_save_handle.wait_until_finished()
         self._checkpoint_save_handle.close()
-
-        assert self._checkpoint_done_callback is not None
-        self._checkpoint_done_callback()
-
         self._checkpoint_save_handle = None
-        self._checkpoint_done_callback = None

@@ -120,13 +120,16 @@ class Callback(Registrable):
         """
         pass
 
-    def post_checkpoint_saved(self, path: PathOrStr):
-        """
-        Called when a checkpoint is successfully saved.
+    # TODO: difficult to keep in sync when using async checkpointing and without triggering a
+    # host-device sync. With torch we get around this by using separate GLOO backend, but that
+    # doesn't seem possible directly with JAX.
+    #  def post_checkpoint_saved(self, path: PathOrStr):
+    #      """
+    #      Called when a checkpoint is successfully saved.
 
-        :param path: The path/URL to the checkpoint.
-        """
-        del path
+    #      :param path: The path/URL to the checkpoint.
+    #      """
+    #      del path
 
     def post_checkpoint_loaded(self, path: PathOrStr):
         """

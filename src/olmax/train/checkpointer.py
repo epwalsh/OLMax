@@ -231,19 +231,15 @@ class SimpleCheckpointer(Checkpointer):
     ):
         checkpointer.wait_until_finished()
         if fs.normalize_path(local_dir) != fs.normalize_path(final_dir):
-            log.info(f"Copying checkpoint from '{local_dir}' to '{final_dir}'...")
-            start_time = time.perf_counter()
-
             if dist.get_process_filesystem_rank(local_dir) == 0:
+                log.info(f"Copying checkpoint from '{local_dir}' to '{final_dir}'...")
+                start_time = time.perf_counter()
                 fs.copy_dir(local_dir, final_dir, save_overwrite=save_overwrite)
-
-            dist.barrier(f"checkpointer-post-upload-{os.path.basename(final_dir)}")
-
-            end_time = time.perf_counter()
-            log.info(
-                f"Copied checkpoint for from '{local_dir}' to '{final_dir}' "
-                f"in {utils.format_timedelta(end_time - start_time)}."
-            )
+                end_time = time.perf_counter()
+                log.info(
+                    f"Copied checkpoint for from '{local_dir}' to '{final_dir}' "
+                    f"in {utils.format_timedelta(end_time - start_time)}."
+                )
         done_event.set()
 
     def _get_checkpoint_save_args(self, state: "TrainState") -> ocp.args.Composite:

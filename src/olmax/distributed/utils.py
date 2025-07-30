@@ -196,6 +196,17 @@ def synchronize_value(value: V, src_process_rank: int = 0) -> V:
     return type(value)(arr.item())
 
 
+def allgather_value(value: V) -> list[V]:
+    """
+    Gather a value from all processes.
+    """
+    if not is_distributed():
+        return [value]
+    arr = jnp.array(value)
+    gathered = multihost_utils.process_allgather(arr)
+    return [type(value)(v.item()) for v in gathered]
+
+
 def get_reduce_divide_factor(axis_size: int) -> float:
     factor: int = 1
     while axis_size % factor == 0 and axis_size / factor > factor:
