@@ -189,17 +189,18 @@ class SimpleCheckpointer(Checkpointer):
         checkpointer = self._get_checkpointer()
         try:
             result = checkpointer.restore(local_dir, self._get_checkpoint_restore_args(state))
+            updates = {k: v for k, v in result.items()}  # make into a mutable mapping
 
             # HACK: orbax will commit all arrays to devices, including previously uncommitted single
             # device arrays, which might break things in compiled regions when those arrays are not
             # meant to be committed. So we force un-commit those here.
-            result["opt_state"] = jax_utils.uncommit_single_device_arrays(result["opt_state"])
-            result["params"] = jax_utils.uncommit_single_device_arrays(result["params"])
-            result["data_loader_state"] = jax_utils.uncommit_single_device_arrays(
-                result["data_loader_state"]
+            updates["opt_state"] = jax_utils.uncommit_single_device_arrays(updates["opt_state"])
+            updates["params"] = jax_utils.uncommit_single_device_arrays(updates["params"])
+            updates["data_loader_state"] = jax_utils.uncommit_single_device_arrays(
+                updates["data_loader_state"]
             )
 
-            state = dataclasses.replace(state, **result)
+            state = dataclasses.replace(state, **updates)
         finally:
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
                 fs.clear_directory(local_dir)
