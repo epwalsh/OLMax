@@ -21,7 +21,7 @@ def _get_batch(
     )
 
 
-@jax.jit
+@eqx.filter_jit
 @eqx.filter_value_and_grad
 def _get_loss_and_grads(model: nn.Linear, batch: tuple[Array, Array]) -> Array:
     inputs, targets = batch
