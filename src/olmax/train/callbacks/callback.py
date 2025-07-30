@@ -7,7 +7,7 @@ from dataclass_extensions import Registrable
 from ...types import *
 
 if TYPE_CHECKING:
-    from ..trainer import Trainer, TrainState
+    from ..trainer import Trainer
 
 
 @dataclass
@@ -44,14 +44,6 @@ class Callback(Registrable):
     @trainer.setter
     def trainer(self, trainer: "Trainer"):
         self._trainer = trainer
-
-    @property
-    def train_state(self) -> "TrainState":
-        """
-        The current train state. This can only be called during :meth:`Trainer.fit()`, otherwise
-        a runtime error is raised.
-        """
-        return self.trainer.state
 
     @property
     def step(self) -> int:

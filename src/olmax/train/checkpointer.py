@@ -193,14 +193,13 @@ class SimpleCheckpointer(Checkpointer):
             # HACK: orbax will commit all arrays to devices, including previously uncommitted single
             # device arrays, which might break things in compiled regions when those arrays are not
             # meant to be committed. So we force un-commit those here.
-            opt_state = jax_utils.uncommit_single_device_arrays(result["opt_state"])
-            params = jax_utils.uncommit_single_device_arrays(result["params"])
-            data_loader_state = jax_utils.uncommit_single_device_arrays(result["data_loader"])
-
-            state.data_loader.load_state(data_loader_state)
-            state = dataclasses.replace(
-                state, params=params, opt_state=opt_state, **result["trainer"]
+            result["opt_state"] = jax_utils.uncommit_single_device_arrays(result["opt_state"])
+            result["params"] = jax_utils.uncommit_single_device_arrays(result["params"])
+            result["data_loader_state"] = jax_utils.uncommit_single_device_arrays(
+                result["data_loader_state"]
             )
+
+            state = dataclasses.replace(state, **result)
         finally:
             if fs.is_url(dir) and dist.get_process_filesystem_rank(local_dir) == 0:
                 fs.clear_directory(local_dir)
@@ -251,10 +250,11 @@ class SimpleCheckpointer(Checkpointer):
                     "global_train_tokens_seen": state.global_train_tokens_seen,
                 }
             ),
-            data_loader=ocp.args.PyTreeSave(state.data_loader.get_state()),  # pyright: ignore
             params=ocp.args.PyTreeSave(state.params),  # pyright: ignore
             static=ocp.args.PyTreeSave(state.static),  # pyright: ignore
             opt_state=ocp.args.PyTreeSave(state.opt_state),  # pyright: ignore
+            data_loader_state=ocp.args.PyTreeSave(state.data_loader_state),  # pyright: ignore
+            callbacks_state=ocp.args.PyTreeSave(state.callbacks_state),  # pyright: ignore
         )
 
     def _get_checkpoint_restore_args(self, state: "TrainState") -> ocp.args.Composite:
@@ -266,11 +266,14 @@ class SimpleCheckpointer(Checkpointer):
                     "global_train_tokens_seen": state.global_train_tokens_seen,
                 }
             ),
-            data_loader=self._make_pytree_restore_args(  # pyright: ignore
-                state.data_loader.get_state()
-            ),
             params=self._make_pytree_restore_args(state.params),  # pyright: ignore
             opt_state=self._make_pytree_restore_args(state.opt_state),  # pyright: ignore
+            data_loader_state=self._make_pytree_restore_args(  # pyright: ignore
+                state.data_loader_state
+            ),
+            callbacks_state=self._make_pytree_restore_args(  # pyright: ignore
+                state.callbacks_state
+            ),
         )
 
     def _make_pytree_restore_args(self, data) -> ocp.args.PyTreeRestore:

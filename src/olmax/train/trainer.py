@@ -14,7 +14,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable, Generic, Iterable, Iterator, Sequence, Type, TypeVar
+from typing import Any, Callable, Generic, Iterable, Iterator, Sequence, Type, TypeVar
 
 import equinox as eqx
 import jax
@@ -48,9 +48,9 @@ class TrainState(Generic[M]):
     global_train_tokens_seen: int | None
     params: M
     static: M
-    optim: Optim
     opt_state: OptState
-    data_loader: data.DataLoader
+    data_loader_state: Any
+    callbacks_state: dict[str, Any]
 
     @property
     def model(self) -> M:
@@ -148,7 +148,6 @@ class Trainer(Generic[M, B]):
     """
 
     # Internal bookkeeping.
-    _state: TrainState | None = dataclasses.field(default=None, repr=False)
     _step: int = dataclasses.field(default=0, repr=False)
     _step_this_run: int = dataclasses.field(default=0, repr=False)
     _epoch: int = dataclasses.field(default=1, repr=False)
@@ -210,15 +209,6 @@ class Trainer(Generic[M, B]):
             if isinstance(cb, cb_class):
                 return True
         return False
-
-    @property
-    def state(self) -> TrainState:
-        """
-        The current trainer state.
-        """
-        if self._state is None:
-            raise RuntimeError("trainer state can only be accessed during `trainer.fit()`.")
-        return self._state
 
     @property
     def step(self) -> int:
@@ -363,45 +353,6 @@ class Trainer(Generic[M, B]):
         finally:
             tmp_path.unlink(missing_ok=True)
 
-    def save_checkpoint(
-        self,
-        save_overwrite: bool | None = None,
-        block: bool | None = None,
-    ) -> PathOrStr:
-        """
-        Save a checkpoint.
-        """
-        self._maybe_wait_for_checkpoint()
-
-        if save_overwrite is None:
-            save_overwrite = self.save_overwrite
-        if block is None:
-            block = not self.async_checkpointing
-
-        step = self.step
-        checkpoint_path = fs.join_path(self.save_folder, f"step{step}")
-        if step == self._last_checkpoint:
-            return checkpoint_path
-
-        if not save_overwrite and not fs.dir_is_empty(checkpoint_path):
-            raise FileExistsError(
-                f"Checkpoint dir '{checkpoint_path}' is non-empty. Use 'save_overwrite=True' to force overwriting the dir."
-            )
-
-        log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
-        if block:
-            self.checkpointer.save(checkpoint_path, self.state, save_overwrite=self.save_overwrite)
-        else:
-            self._checkpoint_save_handle = self.checkpointer.save_async(
-                checkpoint_path,
-                self.state,
-                save_overwrite=save_overwrite,
-            )
-
-        gc.collect()
-        self._last_checkpoint = max(step, self._last_checkpoint)
-        return checkpoint_path
-
     def fit(
         self, model: M, data_loader: data.DataLoader, *, load_path: PathOrStr | None = None
     ) -> tuple[M, Optim, OptState]:
@@ -460,18 +411,22 @@ class Trainer(Generic[M, B]):
         optim, opt_state = self.optim.build(params, num_microbatches)
         opt_state_sharding = self.mesh.get_opt_state_sharding(opt_state)
 
-        self._init_state(
-            params=params, static=static, optim=optim, opt_state=opt_state, data_loader=data_loader
-        )
-
         if load_path is None:
             load_path = self._find_latest_checkpoint()
 
         if load_path is not None:
-            params, opt_state = self._restore_checkpoint(load_path)
+            params, opt_state = self._restore_checkpoint(
+                load_path,
+                params=params,
+                static=static,
+                opt_state=opt_state,
+                data_loader=data_loader,
+            )
         elif self.checkpoint_interval is not None:
             # Save pre-train checkpoint.
-            self.save_checkpoint()
+            self._save_checkpoint(
+                params=params, static=static, opt_state=opt_state, data_loader=data_loader
+            )
 
         train_batch = self._make_train_batch(
             static=static,
@@ -504,10 +459,11 @@ class Trainer(Generic[M, B]):
                 params, opt_state = self._fit_epoch(
                     train_batch=train_batch,
                     params=params,
+                    static=static,
                     opt_state=opt_state,
+                    data_loader=data_loader,
                     batches=batches,
                 )
-                self._update_state(params=params, opt_state=opt_state)
                 batches = iter(data_loader)
         except BaseException as exc:
             log.error(f"Training failed due to:\n{exc}")
@@ -521,7 +477,9 @@ class Trainer(Generic[M, B]):
 
         # Maybe save a final checkpoint.
         if self.checkpoint_interval is not None:
-            self.save_checkpoint()
+            self._save_checkpoint(
+                params=params, static=static, opt_state=opt_state, data_loader=data_loader
+            )
 
         # Re-combine params and state into model object.
         model = eqx.combine(params, static)
@@ -538,7 +496,9 @@ class Trainer(Generic[M, B]):
         self,
         train_batch: Callable[[M, OptState, Sequence[B]], tuple[M, OptState]],
         params: M,
+        static: M,
         opt_state: OptState,
+        data_loader: data.DataLoader,
         batches: Iterator[Sequence[B]],
     ) -> tuple[M, OptState]:
         log.info(f"Starting epoch {self.epoch}...")
@@ -559,7 +519,6 @@ class Trainer(Generic[M, B]):
             self._step += 1
             self._step_this_run += 1
             self._metrics_per_step[self.step] = {}
-            self._update_state()
 
             # Maybe synchronize cancellation.
             if self.step % self.cancel_check_interval == 0:
@@ -597,7 +556,6 @@ class Trainer(Generic[M, B]):
                 # Train on batch.
                 with jax.profiler.TraceAnnotation("train_batch"):
                     params, opt_state = train_batch(params, opt_state, batch)
-                    self._update_state(params=params, opt_state=opt_state)
 
                 # More bookkeeping.
                 if global_train_tokens_this_batch is not None:
@@ -656,7 +614,9 @@ class Trainer(Generic[M, B]):
 
             # Maybe save a checkpoint.
             if self.checkpoint_interval is not None and self.step % self.checkpoint_interval == 0:
-                self.save_checkpoint()
+                self._save_checkpoint(
+                    params=params, static=static, opt_state=opt_state, data_loader=data_loader
+                )
 
         # Log left-over metrics.
         self._log_metrics()
@@ -827,40 +787,99 @@ class Trainer(Generic[M, B]):
         *,
         params: M,
         static: M,
-        optim: Optim,
         opt_state: OptState,
         data_loader: data.DataLoader,
-    ):
-        self._state = TrainState(
+    ) -> TrainState:
+        return TrainState(
             step=self.step,
             epoch=self.epoch,
             global_train_tokens_seen=self.global_train_tokens_seen,
             params=params,
             static=static,
-            optim=optim,
+            opt_state=opt_state,
+            data_loader_state=data_loader.get_state(),
+            callbacks_state={
+                name: callback.get_state() for name, callback in self.callbacks.items()
+            },
+        )
+
+    def _save_checkpoint(
+        self,
+        *,
+        params: M,
+        static: M,
+        opt_state: OptState,
+        data_loader: data.DataLoader,
+        save_overwrite: bool | None = None,
+        block: bool | None = None,
+    ) -> PathOrStr:
+        """
+        Save a checkpoint.
+        """
+        self._maybe_wait_for_checkpoint()
+
+        if save_overwrite is None:
+            save_overwrite = self.save_overwrite
+        if block is None:
+            block = not self.async_checkpointing
+
+        step = self.step
+        checkpoint_path = fs.join_path(self.save_folder, f"step{step}")
+        if step == self._last_checkpoint:
+            return checkpoint_path
+
+        if not save_overwrite and not fs.dir_is_empty(checkpoint_path):
+            raise FileExistsError(
+                f"Checkpoint dir '{checkpoint_path}' is non-empty. Use 'save_overwrite=True' to force overwriting the dir."
+            )
+
+        log.info(f"Saving checkpoint for step {step} to '{checkpoint_path}'...")
+        state = self._init_state(
+            params=params,
+            static=static,
             opt_state=opt_state,
             data_loader=data_loader,
         )
 
-    def _update_state(self, **kwargs):
-        self._state = dataclasses.replace(
-            self.state,
-            step=self.step,
-            epoch=self.epoch,
-            global_train_tokens_seen=self.global_train_tokens_seen,
-            **kwargs,
-        )
+        if block:
+            self.checkpointer.save(checkpoint_path, state, save_overwrite=self.save_overwrite)
+        else:
+            self._checkpoint_save_handle = self.checkpointer.save_async(
+                checkpoint_path,
+                state,
+                save_overwrite=save_overwrite,
+            )
 
-    def _restore_checkpoint(self, dir: PathOrStr) -> tuple[M, OptState]:
+        gc.collect()
+        self._last_checkpoint = max(step, self._last_checkpoint)
+        return checkpoint_path
+
+    def _restore_checkpoint(
+        self,
+        dir: PathOrStr,
+        *,
+        params: M,
+        static: M,
+        opt_state: OptState,
+        data_loader: data.DataLoader,
+    ) -> tuple[M, OptState]:
         log.info(f"Restoring checkpoint from '{dir}'...")
         start_time = time.perf_counter()
 
-        state = self.checkpointer.load(dir, self.state)
+        state = self.checkpointer.load(
+            dir,
+            self._init_state(
+                params=params, static=static, opt_state=opt_state, data_loader=data_loader
+            ),
+        )
 
         self._step = state.step
         self._epoch = state.epoch
         self._global_train_tokens_seen = state.global_train_tokens_seen
-        self._update_state(params=state.params, opt_state=state.opt_state)
+        data_loader.load_state(state.data_loader_state)
+        for name, callback in self.callbacks.items():
+            if name in state.callbacks_state:
+                callback.load_state(state.callbacks_state[name])
 
         end_time = time.perf_counter()
         log.info(f"Checkpoint restored in {utils.format_timedelta(end_time - start_time)}")
