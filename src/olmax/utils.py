@@ -2,8 +2,9 @@ import functools as ft
 import logging
 import os
 import sys
-from datetime import datetime
-from typing import Any, Type
+import time
+from datetime import datetime, timedelta
+from typing import Any, Callable, Generic, Type, TypeVar
 
 import rich
 from rich.console import Console, ConsoleRenderable
@@ -12,7 +13,7 @@ from rich.text import Text
 from rich.traceback import Traceback
 
 from .exceptions import OLMaxError
-from .types import Array, Scalar
+from .types import *
 
 log = logging.getLogger(__name__)
 
@@ -103,8 +104,11 @@ def install_excepthook():
 
 
 def prepare_cli_environment():
+    from .fs import add_cached_path_clients
+
     install_excepthook()
     setup_logging()
+    add_cached_path_clients()
 
 
 def set_env_var(name: str, value: str, override: bool = False, secret: bool = False):
@@ -160,6 +164,86 @@ def format_float(value: float) -> str:
         return f"{value:.3f}"
     else:
         return f"{value:.4f}"
+
+
+def format_timedelta(td: timedelta | int | float) -> str:
+    if not isinstance(td, timedelta):
+        td = timedelta(seconds=td)
+
+    breakdown = []
+    if td.days > 0:
+        breakdown.append(f"{td.days}d")
+
+    hours = td.seconds // 3600
+    if hours > 0:
+        breakdown.append(f"{hours}h")
+
+    minutes = (td.seconds % 3600) // 60
+    if minutes > 0:
+        breakdown.append(f"{minutes}m")
+
+    seconds = td.seconds % 60
+    if seconds > 0:
+        breakdown.append(f"{seconds}s")
+
+    if breakdown:
+        return ", ".join(breakdown)
+    else:
+        return "0s"
+
+
+def wait_for(predicate: Callable[[], bool], description: str, timeout: float = 10.0):
+    """
+    Wait for the predicate function to resolve to true.
+    """
+    start_time = time.monotonic()
+    while not predicate():
+        time.sleep(0.5)
+        if time.monotonic() - start_time > timeout:
+            raise TimeoutError(f"timed out {description}")
+
+
+T = TypeVar("T", Array, float)
+
+
+class RunningAverage(Generic[T]):
+    """
+    Computes an online running average (and variance) using Welford's algorithm.
+    """
+
+    def __init__(self, zeros: T):
+        self.zeros: T = zeros
+        self.mean: T = zeros
+        self.m2: T = zeros
+        self.count = 0
+
+    def update(self, value: T) -> T:
+        delta = value - self.mean
+        self.mean += delta / (self.count + 1)
+        delta2 = value - self.mean
+        self.m2 += delta * delta2
+        self.count += 1
+        return self.mean
+
+    def get(self) -> T:
+        if self.count == 0:
+            raise ZeroDivisionError
+        return self.mean
+
+    def get_variance(self) -> T:
+        if self.count < 2:
+            raise ZeroDivisionError
+        return self.m2 / self.count
+
+    def get_sample_variance(self) -> T:
+        if self.count < 2:
+            raise ZeroDivisionError
+        return self.m2 / (self.count - 1)
+
+    def reset(self):
+        self.mean = self.zeros
+        self.m2 = self.zeros
+        self.count = 0
 
 
 class _RichHandler(logging.Handler):

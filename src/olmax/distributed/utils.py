@@ -8,7 +8,7 @@ import jax.experimental.multihost_utils as multihost_utils
 import jax.numpy as jnp
 
 from .. import fs
-from ..types import PathOrStr
+from ..types import *
 
 SHARED_FS_DIRS_ENV_VAR = "OLMAX_SHARED_FS_DIRS"
 
@@ -177,15 +177,34 @@ def barrier(name: str):
         multihost_utils.sync_global_devices(name)
 
 
+def synchronize_array(arr: Array, src_process_rank: int = 0) -> Array:
+    if not is_distributed():
+        return arr
+    return multihost_utils.broadcast_one_to_all(
+        arr, is_source=get_process_rank() == src_process_rank
+    )
+
+
 V = TypeVar("V", bool, int, float)
 
 
-def synchronize_value(value: V) -> V:
+def synchronize_value(value: V, src_process_rank: int = 0) -> V:
     if not is_distributed():
         return value
     arr = jnp.array(value)
-    arr = multihost_utils.broadcast_one_to_all(arr)
+    arr = synchronize_array(arr, src_process_rank=src_process_rank)
     return type(value)(arr.item())
+
+
+def allgather_value(value: V) -> list[V]:
+    """
+    Gather a value from all processes.
+    """
+    if not is_distributed():
+        return [value]
+    arr = jnp.array(value)
+    gathered = multihost_utils.process_allgather(arr)
+    return [type(value)(v.item()) for v in gathered]
 
 
 def get_reduce_divide_factor(axis_size: int) -> float:

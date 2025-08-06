@@ -37,7 +37,7 @@ def _get_loss(model: nn.Module, batch: tuple[Array, Array]) -> Array:
     return jnp.mean(jnp.sum((predictions - targets) ** 2, axis=-1))
 
 
-@jax.jit
+@eqx.filter_jit
 @eqx.filter_value_and_grad
 def _get_loss_and_grads(model: nn.Module, batch: tuple[Array, Array]) -> Array:
     return _get_loss(model, batch)

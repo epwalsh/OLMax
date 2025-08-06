@@ -47,7 +47,7 @@ def test_build_weight_decay_mask():
     assert weight_decay_mask.up_proj.bias is False
 
 
-@jax.jit
+@eqx.filter_jit
 @eqx.filter_value_and_grad
 def _get_loss_and_grads(model: nn.Module, x: Array, y: Array):
     preds = model(x)

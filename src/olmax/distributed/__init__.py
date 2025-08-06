@@ -20,6 +20,7 @@ from .utils import (
     get_process_world_size,
     init_distributed,
     is_distributed,
+    synchronize_array,
     synchronize_value,
     teardown_distributed,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "get_local_device_count",
     "get_local_devices",
     "barrier",
+    "synchronize_array",
     "synchronize_value",
     "MeshResource",
     "MeshAxesNames",

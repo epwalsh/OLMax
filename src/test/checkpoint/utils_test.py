@@ -18,15 +18,14 @@ def test_save_and_restore(tmp_path, block: bool):
     handle = checkpoint_utils.save(checkpoint_dir, model, block=block)
     if not block:
         assert handle is not None
-        handle.wait()
+        handle.wait_until_finished()
         handle.close()
-        assert handle.done()
 
     # Get metadata about checkpoint.
     metadata = checkpoint_utils.get_metadata(checkpoint_dir)
 
     # Restore from metadata.
-    checkpoint_utils.restore(checkpoint_dir, metadata)
+    checkpoint_utils.restore_from_metadata(checkpoint_dir, metadata)
 
     # Restore from model.
     model2 = nn.Linear(2, 3, key=jax.random.PRNGKey(1))

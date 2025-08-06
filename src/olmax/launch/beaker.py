@@ -234,7 +234,7 @@ def _parse_args():
     parser.add_argument("--allow-dirty", action="store_true", help="""Allow uncommitted changes.""")
     parser.add_argument(
         "--priority",
-        choices=["low", "normal", "high", "urgent"],
+        choices=["low", "normal", "high", "urgent", "immediate"],
         default="high",
         help="""The job priority.""",
     )
@@ -275,7 +275,7 @@ def main():
         env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"],
         env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
-        install="pip install -e '.[all]'",
+        system_python=True,
         replicas=opts.nodes if is_multi_node else None,
         leader_selection=is_multi_node,
         host_networking=is_multi_node,

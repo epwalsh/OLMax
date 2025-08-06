@@ -1,7 +1,5 @@
-import functools as ft
 import threading
-from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Protocol, TypeVar
 
 import jax
 import numpy as np
@@ -12,37 +10,46 @@ from .. import distributed as dist
 from ..types import PathOrStr, PyTree
 
 CheckpointMetadata = Any
+T = TypeVar("T")
 
 
-@dataclass
-class AsyncSaveHandle:
-    """
-    Async save handle.
-    """
-
-    _checkpointer: ocp.AsyncCheckpointer
-    _done_event: threading.Event
-
-    def done(self) -> bool:
+class AsyncSaveHandle(Protocol):
+    def is_done(self) -> bool:
         """
-        Check if the checkpoint has finished saving.
+        Should return ``True`` when the checkpoint has finished saving.
         """
-        return self._done_event.is_set()
+        raise NotImplementedError
 
-    def wait(self):
+    def wait_until_finished(self):
         """
         Blocks until the checkpoint is finished saving.
         """
-        self._checkpointer.wait_until_finished()
+        raise NotImplementedError
 
     def close(self):
         """
         Close any resources.
         """
-        self._checkpointer.close()
+        raise NotImplementedError
 
-    def __del__(self):
-        self.close()
+
+class OCPAsyncSaveHandle:
+    def __init__(self, checkpointer: ocp.AsyncCheckpointer, done_event: threading.Event):
+        self.checkpointer = checkpointer
+        self.done_event = done_event
+
+    def is_done(self) -> bool:
+        if self.done_event.is_set():
+            self.checkpointer.wait_until_finished()
+            return True
+        else:
+            return False
+
+    def wait_until_finished(self):
+        self.checkpointer.wait_until_finished()
+
+    def close(self):
+        self.checkpointer.close()
 
 
 def save(
@@ -58,21 +65,20 @@ def save(
 
     checkpointer = _get_checkpointer(post_save_callback=done_callback)
     checkpointer.save(dir, state, force=force)
-    save_handle = AsyncSaveHandle(_checkpointer=checkpointer, _done_event=done_event)
 
     if block:
-        save_handle.wait()
-        save_handle.close()
+        checkpointer.wait_until_finished()
+        checkpointer.close()
         return None
     else:
-        return save_handle
+        return OCPAsyncSaveHandle(checkpointer, done_event)
 
 
 def restore(
     dir: PathOrStr,
-    state: PyTree | CheckpointMetadata,
+    state: T,
     enable_single_replica_restoring: bool | None = None,
-) -> PyTree:
+) -> T:
     """
     Restore a checkpoint saved via :func:`save()`.
 
@@ -93,18 +99,44 @@ def restore(
             "'enable_single_replica_restoring=True' is only valid in a distributed environment"
         )
 
-    if _is_checkpoint_metadata(state):
-        state = jax.tree.map(ocp.utils.to_shape_dtype_struct, state)
-
-    restore_args = jax.tree.map(
-        ft.partial(
-            _make_restore_args,
-            enable_single_replica_restoring=enable_single_replica_restoring,
-        ),
-        state,
+    restore_args = make_restore_args(
+        state, enable_single_replica_restoring=enable_single_replica_restoring
     )
 
     with _get_checkpointer() as checkpointer:
+        result = checkpointer.restore(dir, item=state, restore_args=restore_args)
+
+    return result
+
+
+def restore_from_metadata(
+    dir: PathOrStr,
+    metadata: CheckpointMetadata | None = None,
+    enable_single_replica_restoring: bool | None = None,
+) -> Any:
+    """
+    Restore a checkpoint saved via :func:`save()` from metadata only.
+
+    :param dir: The checkpoint directory to restore from.
+    :param metadata: The metadata to restore from.
+    :param enable_single_replica_restoring: If ``True``, read the checkpoint only
+        on a single replica's hosts and do broadcasting. This should significantly
+        improve the loading time at scale. Only valid in a distributed environment.
+    """
+    if enable_single_replica_restoring is None:
+        enable_single_replica_restoring = dist.is_distributed()
+    elif enable_single_replica_restoring and not dist.is_distributed():
+        raise ValueError(
+            "'enable_single_replica_restoring=True' is only valid in a distributed environment"
+        )
+
+    with _get_checkpointer() as checkpointer:
+        if metadata is None:
+            metadata = checkpointer.metadata(dir)
+        state = jax.tree.map(ocp.utils.to_shape_dtype_struct, metadata)
+        restore_args = make_restore_args(
+            state, enable_single_replica_restoring=enable_single_replica_restoring
+        )
         result = checkpointer.restore(dir, item=state, restore_args=restore_args)
 
     return result
@@ -114,10 +146,8 @@ def get_metadata(dir: PathOrStr) -> CheckpointMetadata:
     """
     Get metadata about a checkpoint saved via :func:`save()`.
     """
-    checkpointer = _get_checkpointer()
-    result = checkpointer.metadata(dir)
-    checkpointer.close()
-    return result
+    with _get_checkpointer() as checkpointer:
+        return checkpointer.metadata(dir)
 
 
 def _get_checkpointer(
@@ -129,38 +159,42 @@ def _get_checkpointer(
     )
 
 
-def _is_checkpoint_metadata(state: PyTree | CheckpointMetadata) -> bool:
+def is_checkpoint_metadata(state: PyTree | CheckpointMetadata) -> bool:
     for leaf in jax.tree.leaves(state):
         if isinstance(leaf, ocp.metadata.Metadata):
             return True
     return False
 
 
-def _make_restore_args(
-    data: Array, enable_single_replica_restoring: bool = False
-) -> ocp.RestoreArgs:
-    if not enable_single_replica_restoring:
-        return ocp.type_handlers.ArrayRestoreArgs(sharding=data.sharding)
+def make_restore_args(data: T, enable_single_replica_restoring: bool = False) -> T:
+    def _make_restore_args(x: Any) -> ocp.RestoreArgs | None:
+        if not isinstance(x, Array):
+            return None
 
-    if not isinstance(data.sharding, jax.sharding.NamedSharding):
-        raise RuntimeError(
-            "Restoring a checkpoint with 'enable_single_replica_restoring=True' requires all arrays to use NamedSharding"
+        if not enable_single_replica_restoring:
+            return ocp.type_handlers.ArrayRestoreArgs(sharding=x.sharding)
+
+        if not isinstance(x.sharding, jax.sharding.NamedSharding):
+            raise RuntimeError(
+                "Restoring a checkpoint with 'enable_single_replica_restoring=True' requires all arrays to use NamedSharding"
+            )
+
+        pspec = x.sharding.spec
+        mesh = x.sharding.mesh
+        assert mesh.devices is not None
+        replica_axis_index = 0
+        replica_devices = _replica_devices(mesh.devices, replica_axis_index)
+        replica_mesh = jax.sharding.Mesh(replica_devices, mesh.axis_names)
+        single_replica_sharding = jax.sharding.NamedSharding(replica_mesh, pspec)
+
+        return ocp.type_handlers.SingleReplicaArrayRestoreArgs(
+            sharding=jax.sharding.NamedSharding(mesh, pspec),
+            single_replica_sharding=single_replica_sharding,
+            global_shape=x.shape,
+            dtype=x.dtype,
         )
 
-    pspec = data.sharding.spec
-    mesh = data.sharding.mesh
-    assert mesh.devices is not None
-    replica_axis_index = 0
-    replica_devices = _replica_devices(mesh.devices, replica_axis_index)
-    replica_mesh = jax.sharding.Mesh(replica_devices, mesh.axis_names)
-    single_replica_sharding = jax.sharding.NamedSharding(replica_mesh, pspec)
-
-    return ocp.type_handlers.SingleReplicaArrayRestoreArgs(
-        sharding=jax.sharding.NamedSharding(mesh, pspec),
-        single_replica_sharding=single_replica_sharding,
-        global_shape=data.shape,
-        dtype=data.dtype,
-    )
+    return jax.tree.map(_make_restore_args, data)
 
 
 def _replica_devices(device_array: np.ndarray, replica_axis_idx: int):
