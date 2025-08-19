@@ -1,9 +1,12 @@
+from glob import glob
+
 import pytest
 
 from olmax.fs import (
     copy_dir,
     copy_file,
     file_exists,
+    glob_directory,
     list_directory,
     remove_file,
     upload,
@@ -100,3 +103,10 @@ def test_gcs_functionality(tmp_path, gcs_checkpoint_dir):
         _run_remote_functionality(tmp_path, gcs_checkpoint_dir)
     except DefaultCredentialsError:
         pytest.skip("Requires authentication with Google Cloud")
+
+
+def test_glob_directory():
+    assert set(glob("*.md")) == set(glob_directory("*.md"))
+    assert set(glob("src/olmax/**/*.py", recursive=True)) == set(
+        glob_directory("src/olmax/**/*.py")
+    )
