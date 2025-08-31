@@ -19,7 +19,8 @@ from .model import DefaultTransformerConfig, TransformerConfig
 class TransformerRecipeType(StrEnum):
     llama_like_271M = "llama_like_271M"
     llama_like_7B = "llama_like_7B"
-    llama_8B = "llama_8B"
+    llama3_8B = "llama3_8B"
+    llama3_70B = "llama3_70B"
 
     olmo2_7B = "olmo2_7B"
     olmo2_32B = "olmo2_32B"
@@ -122,7 +123,7 @@ class TransformerRecipe:
         )
 
     @classmethod
-    def llama_8B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
+    def llama3_8B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
         device_mbz: int
         if device_type == DeviceType.NVIDIA_H100:
             device_mbz = 1 * 8192
@@ -157,6 +158,43 @@ class TransformerRecipe:
                 ),
                 norm=norm,
                 lm_head=LMHeadConfig(bias=False),
+            ),
+            sequence_length=8192,
+            device_microbatch_size=device_mbz,
+            env=env_defaults,
+        )
+
+    @classmethod
+    def llama3_70B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
+        del device_type
+        device_mbz = 1 * 8192
+
+        if env_defaults.xla.gpu_all_gather_combine_threshold_mib is None:
+            env_defaults.xla.gpu_all_gather_combine_threshold_mib = 1024
+        if env_defaults.xla.gpu_all_reduce_combine_threshold_mib is None:
+            env_defaults.xla.gpu_all_reduce_combine_threshold_mib = 1024
+
+        norm = RMSNormConfig(bias=False)
+        return cls(
+            model=DefaultTransformerConfig(
+                vocab_size=128_256,
+                d_model=8192,
+                hidden_size=28_672,
+                num_layers=80,
+                layer=DefaultTransformerLayerConfig(
+                    attention=MultiheadSelfAttentionConfig(
+                        n_heads=64,
+                        n_kv_heads=8,
+                        rope=RotaryPositionalEmbeddingConfig(theta=500_000.0),
+                        bias=False,
+                    ),
+                    norm=norm,
+                    bias=False,
+                ),
+                norm=norm,
+                lm_head=LMHeadConfig(bias=False),
+                scan_layers=True,
+                layer_ac_policy=NothingSaveable(prevent_cse=False),
             ),
             sequence_length=8192,
             device_microbatch_size=device_mbz,
