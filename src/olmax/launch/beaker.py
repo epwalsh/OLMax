@@ -273,7 +273,7 @@ def main():
         hostnames=opts.hostname,
         beaker_image=opts.beaker_image,
         env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"],
-        env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
+        env_secrets=["BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
         system_python=True,
         replicas=opts.nodes if is_multi_node else None,
