@@ -215,6 +215,7 @@ def _parse_args():
             {},
         ),
     )
+    parser.add_argument("--workspace", type=str, help="""The Beaker workspace to use.""")
     parser.add_argument("--nodes", type=int, default=1, help="""The number of nodes/replicas.""")
     parser.add_argument(
         "--gpus-per-node",
@@ -264,6 +265,7 @@ def main():
     is_multi_node = opts.nodes > 1
     launch_experiment(
         command,
+        workspace=opts.workspace,
         priority=opts.priority,
         yes=True,
         timeout=-1,
