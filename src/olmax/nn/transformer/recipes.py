@@ -169,10 +169,6 @@ class TransformerRecipe:
         del device_type
         device_mbz = 1 * 8192
 
-        if env_defaults.xla.gpu_all_gather_combine_threshold_mib is None:
-            env_defaults.xla.gpu_all_gather_combine_threshold_mib = 1024
-        if env_defaults.xla.gpu_all_reduce_combine_threshold_mib is None:
-            env_defaults.xla.gpu_all_reduce_combine_threshold_mib = 1024
         if env_defaults.xla.disable_hlo_passes is None:
             env_defaults.xla.disable_hlo_passes = "rematerialization"
 
