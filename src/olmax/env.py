@@ -62,6 +62,8 @@ class XLAConfig(_EnvBaseConfig):
 
     gpu_enable_triton_gemm: bool = False
 
+    disable_hlo_passes: str | None = None
+
     @classmethod
     def recommended(
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
