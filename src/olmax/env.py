@@ -56,6 +56,7 @@ class XLAConfig(_EnvBaseConfig):
     gpu_enable_command_buffer: str | None = None
     gpu_enable_triton_gemm: bool = False
     gpu_graph_level: int | None = None
+    gpu_enable_highest_priority_async_stream: bool | None = None
 
     disable_hlo_passes: str | None = None
 
