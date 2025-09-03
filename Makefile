@@ -26,7 +26,7 @@ build :
 dev-install :
 	pip install -e .[dev] --config-settings editable_mode=compat
 
-NVCR_TAG = 25.04
+NVCR_TAG = 25.08
 
 .PHONY : docker-image
 docker-image :
