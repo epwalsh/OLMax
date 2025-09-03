@@ -86,8 +86,8 @@ def _run_save_and_restore_distributed_hsdp(checkpoint_dir):
     assert dist.get_global_device_count() == 4
     _run_save_and_restore_distributed(
         checkpoint_dir,
-        dist.MeshResource.HSDP(2),
-        dist.MeshResource.HSDP(2),
+        dist.MeshResource.HSDP(shard_degree=2),
+        dist.MeshResource.HSDP(shard_degree=2),
     )
 
 
@@ -103,7 +103,7 @@ def _run_save_and_restore_distributed_fsdp_to_hsdp(checkpoint_dir):
     _run_save_and_restore_distributed(
         checkpoint_dir,
         dist.MeshResource.FSDP(),
-        dist.MeshResource.HSDP(2),
+        dist.MeshResource.HSDP(shard_degree=2),
     )
 
 

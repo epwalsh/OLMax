@@ -45,6 +45,7 @@ def generate_batches_of_sequential_tokens(
     microbatch = (
         jnp.arange(0, sequence_length).reshape(1, -1).repeat(global_microbatch_size_instances, 0)
     )
+    sharding = None if mesh_resource is None else mesh_resource.get_data_sharding_for(microbatch)
     for batch_idx in range(start_batch, total_batches):
         batch_key = jax.random.fold_in(key, batch_idx)
         batch = []
@@ -55,7 +56,7 @@ def generate_batches_of_sequential_tokens(
                     microbatch=microbatch,
                     vocab_size=vocab_size,
                     key=microbatch_key,
-                    sharding=None if mesh_resource is None else mesh_resource.get_data_sharding(),
+                    sharding=sharding,
                 )
             )
         yield batch

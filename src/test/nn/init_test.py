@@ -17,7 +17,7 @@ def _run_truncated_normal_mp():
     # given the same key, should get same result regardless of how we shard
     key = jax.random.PRNGKey(0)
     x_full = nn.init.truncated_normal(key, (4, 8))
-    x_sharded = nn.init.truncated_normal(key, (4, 8), sharding=pc.get_param_sharding())
+    x_sharded = nn.init.truncated_normal(key, (4, 8), sharding=pc.get_param_sharding_for(x_full))
     assert allclose(x_full, x_sharded)
 
 

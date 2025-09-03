@@ -165,7 +165,6 @@ def train(
     )
 
     param_sharding = model.get_param_shardings()
-    data_sharding = config.mesh.get_data_sharding()
 
     @jax.named_scope("compute_loss")
     def loss_fun(model: nn.Transformer, batch: tuple[Array, Array]):
@@ -173,12 +172,12 @@ def train(
 
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
+        input_ids = config.mesh.with_data_sharding_constraint(input_ids)
+        labels = config.mesh.with_data_sharding_constraint(labels)
 
         # Get predicted logits.
         logits = model(input_ids)
-        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+        logits = config.mesh.with_data_sharding_constraint(logits)
 
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
@@ -269,6 +268,28 @@ def _parse_args():
         action="store_true",
         help="""Print out the model structure after initialization.""",
     )
+    parser.add_argument(
+        "--local-device-count",
+        type=int,
+        default=jax.local_device_count()
+        if beaker_runtime is None
+        else beaker_runtime.local_device_count,
+        help="""The number of local devices.""",
+    )
+    parser.add_argument(
+        "--global-device-count",
+        type=int,
+        default=jax.local_device_count()
+        if beaker_runtime is None
+        else beaker_runtime.global_device_count,
+        help="""The number of global devices.""",
+    )
+    parser.add_argument(
+        "--mesh-type",
+        choices=["FSDP", "HSDP"],
+        default="FSDP",
+        help="""The type of distributed mesh to use.""",
+    )
     # Some configuration depend on others, so it's better to parse those base fields here instead of
     # as overrides.
     parser.add_argument(
@@ -296,6 +317,16 @@ def main():
     else:
         learning_rate = 1e-3
 
+    mesh_resource: dist.MeshResource
+    if opts.mesh_type == "FSDP":
+        mesh_resource = dist.MeshResource.FSDP(global_device_count=opts.global_device_count)
+    elif opts.mesh_type == "HSDP":
+        mesh_resource = dist.MeshResource.HSDP(
+            global_device_count=opts.global_device_count, local_device_count=opts.local_device_count
+        )
+    else:
+        raise ValueError(f"Unsupported mesh type '{opts.mesh_type}'")
+
     config = IntegrationTestConfig(
         model=recipe.model,
         optim=olmax.optim.AdamWConfig(
@@ -310,6 +341,7 @@ def main():
         ),
         sequence_length=recipe.sequence_length,
         device_microbatch_size=recipe.device_microbatch_size,
+        mesh=mesh_resource,
         env=recipe.env,
         steps=opts.steps,
     )

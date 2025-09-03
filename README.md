@@ -27,7 +27,7 @@ You can view these profiles with tensorboard or [ui.perfetto.dev](http://ui.perf
 
 ### Known performance issues
 
-- When using HSDP with gradient accumulation enabled (e.g. `--mesh.dp.replicate_degree=-1 --mesh.dp.shard_degree=8 --num_microbatches=2`), gradients are all-reduced after each micro-batch when ideally we should only issue an all-reduce on the last micro-batch.
+- When using HSDP with gradient accumulation enabled (e.g. `--mesh-type=HSDP --num_microbatches=2`), gradients are all-reduced after each micro-batch when ideally we should only issue an all-reduce on the last micro-batch.
 
 ### Runs
 
@@ -40,7 +40,7 @@ All run below shared these common trainer settings:
 
 - [12,035 TPS/GPU](https://beaker.org/ex/01JXDC25DM5GJRMWNDXSJ2QA7J) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
-  python -m olmax.launch.beaker --cluster=ai2/jupiter-cirrascale-2 --nodes=2 -- \
+  python -m olmax.launch.beaker --cluster=ai3/jupiter-cirrascale-2 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=llama_like_7B
   ```
 - [11,854 TPS/GPU](https://beaker.org/ex/01JZ1S2X9QF8T3GK3KXME61K0Q) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
@@ -67,8 +67,7 @@ All run below shared these common trainer settings:
   python -m olmax.launch.beaker --cluster=ai2/augusta-google-1 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=olmo2_7B \
     --env.jax.compiler_enable_remat_pass=false \
-    --mesh.dp.replicate_degree=-1 \
-    --mesh.dp.shard_degree=8
+    --mesh-type=HSDP
   ```
 - [12,006 TPS/GPU](https://beaker.org/ex/01JZ1VB0RMCQWBSYCQHM4WQDMD) on 1 H100 node with full FSDP, micro-batch size of 2 instances/GPU
   ```fish

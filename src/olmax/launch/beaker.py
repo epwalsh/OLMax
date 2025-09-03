@@ -159,6 +159,18 @@ class BeakerRuntime:
         return self.node.hostname.split("-")[0]
 
     @property
+    def local_device_count(self) -> int:
+        return self.resources.gpu_count
+
+    @property
+    def global_device_count(self) -> int:
+        local_device_count = self.resources.gpu_count
+        if self.replica is not None:
+            return self.replica.count * local_device_count
+        else:
+            return local_device_count
+
+    @property
     def is_experiment(self) -> bool:
         return self.workload.task_id is not None
 

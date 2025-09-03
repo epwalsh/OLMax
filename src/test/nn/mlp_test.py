@@ -49,14 +49,14 @@ def _run_mlp_parallel(mesh_resource: dist.MeshResource):
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, d_model)
-    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding_for(full_batch[0]))
 
-    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=mesh_resource.tp is None)
+    full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False)
     dist_mlp = nn.GatedMLP(
         d_model,
         hidden_size,
         key=key,
-        bias=mesh_resource.tp is None,
+        bias=False,
         mesh_resource=mesh_resource,
     )
 
@@ -74,16 +74,16 @@ def _run_mlp_parallel(mesh_resource: dist.MeshResource):
 @pytest.mark.parametrize(
     "mesh_resource",
     [
-        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
-        pytest.param(dist.MeshResource.DDP(), id="DDP"),
-        pytest.param(dist.MeshResource.HSDP(2, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(global_device_count=2), id="FSDP"),
+        pytest.param(dist.MeshResource.DDP(global_device_count=2), id="DDP"),
+        pytest.param(dist.MeshResource.HSDP(shard_degree=2, global_device_count=4), id="HSDP"),
     ],
 )
 def test_mlp_data_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_mlp_parallel,
         num_processes=1,
-        devices_per_process=mesh_resource.get_min_device_count(),
+        devices_per_process=mesh_resource.size,
         args=(mesh_resource,),
     )
 
@@ -92,11 +92,21 @@ def test_mlp_data_parallel(mesh_resource: dist.MeshResource):
     "mesh_resource",
     [
         pytest.param(
-            dist.MeshResource(dp=dist.DataParallelConfig.FSDP(), tp=dist.TensorParallelConfig(2)),
+            dist.MeshResource(
+                axes=((2, "fsdp", None), (2, "tp", None)),
+                data_sharding_axis="fsdp",
+                fsdp_sharding_axis="fsdp",
+                tp_sharding_axis="tp",
+            ),
             id="FSDP+TP",
         ),
         pytest.param(
-            dist.MeshResource(tp=dist.TensorParallelConfig(2)),
+            dist.MeshResource(
+                axes=((2, "tp", None),),
+                data_sharding_axis=None,
+                fsdp_sharding_axis=None,
+                tp_sharding_axis="tp",
+            ),
             id="TP",
         ),
     ],
@@ -105,7 +115,7 @@ def test_mlp_tensor_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_mlp_parallel,
         num_processes=1,
-        devices_per_process=mesh_resource.get_min_device_count(),
+        devices_per_process=mesh_resource.size,
         args=(mesh_resource,),
     )
 
@@ -114,14 +124,19 @@ if __name__ == "__main__":
     jax.config.update("jax_num_cpu_devices", 2)
     jax.config.update("jax_disable_jit", True)
 
-    mesh_resource = dist.MeshResource(tp=dist.TensorParallelConfig(2))
+    mesh_resource = dist.MeshResource(
+        axes=((2, "tp", None),),
+        data_sharding_axis=None,
+        fsdp_sharding_axis=None,
+        tp_sharding_axis="tp",
+    )
 
     d_model, hidden_size, batch_size = (8, 32, 2)
     key = jax.random.PRNGKey(0)
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, d_model)
-    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding_for(full_batch[0]))
 
     full_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False)
     dist_mlp = nn.GatedMLP(d_model, hidden_size, key=key, bias=False, mesh_resource=mesh_resource)

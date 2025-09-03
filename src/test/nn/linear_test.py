@@ -59,7 +59,7 @@ def _run_linear_data_parallel(mesh_resource: dist.MeshResource):
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, in_size, out_size)
-    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding_for(full_batch[0]))
 
     full_linear = nn.Linear(in_size, out_size, key=key)
     dist_linear = nn.Linear(in_size, out_size, key=key, mesh_resource=mesh_resource)
@@ -77,21 +77,23 @@ def _run_linear_data_parallel(mesh_resource: dist.MeshResource):
 @pytest.mark.parametrize(
     "mesh_resource",
     [
-        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
-        pytest.param(dist.MeshResource.DDP(), id="DDP"),
-        pytest.param(dist.MeshResource.HSDP(2, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(2), id="FSDP"),
+        pytest.param(dist.MeshResource.DDP(2), id="DDP"),
+        pytest.param(dist.MeshResource.HSDP(shard_degree=2, global_device_count=4), id="HSDP"),
     ],
 )
 def test_linear_data_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_linear_data_parallel,
         num_processes=1,
-        devices_per_process=mesh_resource.get_min_device_count(),
+        devices_per_process=mesh_resource.size,
         args=(mesh_resource,),
     )
 
 
 def _run_linear_manual_sharding(mesh_resource: dist.MeshResource):
+    assert isinstance(mesh_resource.fsdp_sharding_axis, str)
+
     in_size, out_size, batch_size = (
         2 * dist.get_global_device_count(),
         2 * dist.get_global_device_count(),
@@ -101,7 +103,7 @@ def _run_linear_manual_sharding(mesh_resource: dist.MeshResource):
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, in_size, out_size)
-    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding_for(full_batch[0]))
 
     full_linear = nn.Linear(in_size, out_size, key=key)
     dist_linear = nn.Linear(in_size, out_size, key=key, mesh_resource=mesh_resource)
@@ -114,25 +116,27 @@ def _run_linear_manual_sharding(mesh_resource: dist.MeshResource):
         mesh_resource.shard_map,
         in_specs=(
             dist_linear.get_param_partitions(),
-            (mesh_resource.get_data_partition(), mesh_resource.get_data_partition()),
+            (
+                mesh_resource.get_data_partition_for(full_batch[0]),
+                mesh_resource.get_data_partition_for(full_batch[1]),
+            ),
         ),
         out_specs=(mesh_resource.get_replicated_partition(), dist_linear.get_param_partitions()),
     )
     def get_dist_loss_and_grads(
         model: nn.Linear, batch: tuple[Array, Array]
     ) -> tuple[Array, Array]:
+        assert isinstance(mesh_resource.fsdp_sharding_axis, str)
         loss, grads = _get_loss_and_grads(
-            mesh_resource.all_gather(model, dist.MeshAxesNames.DP.shard), batch
+            mesh_resource.all_gather(model, mesh_resource.fsdp_sharding_axis), batch
         )
 
-        for axis in (dist.MeshAxesNames.DP.replicate, dist.MeshAxesNames.DP.shard):
-            if mesh_resource.has_axis(axis):
-                loss = jax.lax.pmean(loss, axis)
+        for axis in mesh_resource.axis_names:
+            loss = jax.lax.pmean(loss, axis)
 
-        if mesh_resource.has_axis(dist.MeshAxesNames.DP.shard):
-            grads = mesh_resource.reduce_scatter(grads, dist.MeshAxesNames.DP.shard)
+        grads = mesh_resource.reduce_scatter(grads, mesh_resource.fsdp_sharding_axis)
 
-        if mesh_resource.has_axis(dist.MeshAxesNames.DP.replicate):
+        if mesh_resource.has_axis("fsdp_replicate"):
             # NOTE: JAX will have already ensured the grads are replicated across this axis
             # (by summation via psum), but we need that to be an average so we just divide here by the
             # size of that axis.
@@ -141,9 +145,7 @@ def _run_linear_manual_sharding(mesh_resource: dist.MeshResource):
             #  grads = mesh_resource.all_reduce(grads, dist.MeshAxesNames.DP.replicate)
             #
             # We just do this:
-            grads = jax.tree.map(
-                lambda x: x / mesh_resource.axis_size(dist.MeshAxesNames.DP.replicate), grads
-            )
+            grads = jax.tree.map(lambda x: x / mesh_resource.axis_size("fsdp_replicate"), grads)
 
         return loss, grads
 
@@ -160,15 +162,15 @@ def _run_linear_manual_sharding(mesh_resource: dist.MeshResource):
 @pytest.mark.parametrize(
     "mesh_resource",
     [
-        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
-        pytest.param(dist.MeshResource.HSDP(4, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(2), id="FSDP"),
+        pytest.param(dist.MeshResource.HSDP(shard_degree=4, global_device_count=8), id="HSDP"),
     ],
 )
 def test_linear_manual_sharding(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_linear_manual_sharding,
         num_processes=1,
-        devices_per_process=mesh_resource.get_min_device_count(),
+        devices_per_process=mesh_resource.size,
         args=(mesh_resource,),
     )
 
@@ -186,7 +188,7 @@ def main():
 
     key, batch_key = jax.random.split(key)
     batch = _get_batch(batch_key, batch_size, in_size, out_size)
-    batch = jax.device_put(batch, mesh_resource.get_data_sharding())
+    batch = jax.device_put(batch, mesh_resource.get_data_sharding_for(batch[0]))
 
     model = nn.Linear(in_size, out_size, key=key, mesh_resource=mesh_resource)
 
@@ -195,7 +197,10 @@ def main():
         mesh_resource.shard_map,
         in_specs=(
             model.get_param_partitions(),
-            (mesh_resource.get_data_partition(), mesh_resource.get_data_partition()),
+            (
+                mesh_resource.get_data_partition_for(batch[0]),
+                mesh_resource.get_data_partition_for(batch[1]),
+            ),
         ),
         out_specs=(mesh_resource.get_replicated_partition(), model.get_param_partitions()),
     )

@@ -48,7 +48,9 @@ class Normalizer(Module):
                 wkey,
                 shape,
                 dtype=dtype,
-                sharding=None if mesh_resource is None else mesh_resource.get_param_sharding(),
+                sharding=None
+                if mesh_resource is None
+                else mesh_resource.get_param_sharding_for(shape),
             )
         )
         self.bias = (
@@ -58,7 +60,9 @@ class Normalizer(Module):
                 bkey,
                 shape,
                 dtype=dtype,
-                sharding=None if mesh_resource is None else mesh_resource.get_param_sharding(),
+                sharding=None
+                if mesh_resource is None
+                else mesh_resource.get_param_sharding_for(shape),
             )
         )
 
