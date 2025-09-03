@@ -245,7 +245,7 @@ def _parse_args():
         help="""If the job should be preemptible.""",
     )
     parser.add_argument(
-        "--beaker-image", type=str, default="petew/olmax", help="""The Beaker image to use."""
+        "--beaker-image", type=str, default="petew/olmax-25.08", help="""The Beaker image to use."""
     )
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
