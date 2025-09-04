@@ -23,7 +23,7 @@ class Module(eqx.Module):
     mesh_resource: MeshResource | None = eqx.field(static=True, repr=False)
     checkpoint_name: str | None = eqx.field(static=True)
     """A name to assign to the output the module for activation checkpointing."""
-    inference_mode: bool = eqx.field(static=False, repr=False)
+    inference_mode: bool
 
     def __init__(
         self,
@@ -102,7 +102,7 @@ class Module(eqx.Module):
         """
         Get all parameters, recursively.
         """
-        return jax.tree.flatten(self)[0]
+        return [x for x in jax.tree.flatten(self)[0] if eqx.is_array(x)]
 
     def children(self, recurse: bool = False) -> Iterable["Module"]:
         """
