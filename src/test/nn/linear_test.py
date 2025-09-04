@@ -178,67 +178,19 @@ def test_linear_manual_sharding(mesh_resource: dist.MeshResource):
 
 
 def main():
-    mesh_resource = dist.MeshResource.HSDP(2, 2)
-
     key = jax.random.PRNGKey(0)
-    in_size, out_size, batch_size = (
-        2 * dist.get_global_device_count(),
-        2 * dist.get_global_device_count(),
-        2 * dist.get_global_device_count(),
-    )
-    print(f"{in_size=}, {out_size}")
-
     key, batch_key = jax.random.split(key)
-    batch = _get_batch(batch_key, batch_size, in_size, out_size)
-    batch = jax.device_put(batch, mesh_resource.get_data_sharding_for(batch[0]))
-
-    model = nn.Linear(in_size, out_size, key=key, mesh_resource=mesh_resource)
-
-    @jax.jit
-    @ft.partial(
-        mesh_resource.shard_map,
-        in_specs=(
-            model.get_param_partitions(),
-            (
-                mesh_resource.get_data_partition_for(batch[0]),
-                mesh_resource.get_data_partition_for(batch[1]),
-            ),
-        ),
-        out_specs=(mesh_resource.get_replicated_partition(), model.get_param_partitions()),
-    )
-    def get_dist_loss_and_grads(
-        model: nn.Linear, batch: tuple[Array, Array]
-    ) -> tuple[Array, Array]:
-        loss, grads = _get_loss_and_grads(
-            mesh_resource.all_gather(model, dist.MeshAxesNames.DP.shard), batch
-        )
-
-        for axis in (dist.MeshAxesNames.DP.replicate, dist.MeshAxesNames.DP.shard):
-            if mesh_resource.has_axis(axis):
-                loss = jax.lax.pmean(loss, axis)
-
-        if mesh_resource.has_axis(dist.MeshAxesNames.DP.shard):
-            grads = mesh_resource.reduce_scatter(grads, dist.MeshAxesNames.DP.shard)
-
-        if mesh_resource.has_axis(dist.MeshAxesNames.DP.replicate):
-            #  grads = mesh_resource.all_reduce(grads, dist.MeshAxesNames.DP.replicate)
-            grads = jax.tree.map(
-                lambda x: x / mesh_resource.axis_size(dist.MeshAxesNames.DP.replicate), grads
-            )
-
-        return loss, grads
-
-    print(jax.make_jaxpr(get_dist_loss_and_grads)(model, batch))
-
-    loss, grads = get_dist_loss_and_grads(model, batch)
-    print(loss)
-    print(grads.weight)
-
-    #  jax.debug.visualize_array_sharding(model.weight)
-    #  jax.debug.visualize_array_sharding(grads.weight)
+    batch = _get_batch(batch_key, 2, 4, 4)
+    linear = nn.Linear(4, 4, key=key)
+    assert linear.training
+    loss, grads = _get_loss_and_grads(linear, batch)
+    assert loss is not None
+    assert grads is not None
+    assert not linear.eval().training
+    print(grads)
 
 
 if __name__ == "__main__":
-    jax.config.update("jax_num_cpu_devices", 4)
+    #  jax.config.update("jax_num_cpu_devices", 4)
     #  jax.config.update("jax_disable_jit", True)
     main()
