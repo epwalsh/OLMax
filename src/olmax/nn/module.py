@@ -10,7 +10,6 @@ from typing_extensions import Self
 
 from ..activation_checkpointing import ActivationCheckpointingPolicy
 from ..distributed.parallel import MeshResource
-from ..jax_utils import is_in_jit
 from ..types import Array, PyTree
 
 M = TypeVar("M", bound="Module")
@@ -24,7 +23,7 @@ class Module(eqx.Module):
     mesh_resource: MeshResource | None = eqx.field(static=True, repr=False)
     checkpoint_name: str | None = eqx.field(static=True)
     """A name to assign to the output the module for activation checkpointing."""
-    inference_mode: bool
+    inference_mode: bool = eqx.field(static=True)
 
     def __init__(
         self,
@@ -42,10 +41,7 @@ class Module(eqx.Module):
         Whether the module is in training mode or not. This is determined by checking the
         ``inference_mode`` flag of the module and all its children recursively.
         """
-        if is_in_jit():
-            return jax.lax.cond(self.inference_mode, lambda: False, lambda: True)
-        else:
-            return not self.inference_mode
+        return not self.inference_mode
 
     def __call__(self, *args, **kwargs):
         out = self.forward(*args, **kwargs)
@@ -86,11 +82,10 @@ class Module(eqx.Module):
         .. important::
             Unlike the equivalent in Pytorch this does not modify the module in-place!
         """
-        return eqx.tree_at(
-            lambda m: (m.inference_mode,) + tuple(c.inference_mode for c in m.children()),
-            self,
-            replace_fn=lambda _: not mode,
-        )
+        out = jax.tree.map(lambda x: x, self)
+        for m in out.modules():
+            object.__setattr__(m, "inference_mode", not mode)
+        return out
 
     def get_checkpoint_names(self) -> Iterable[str]:
         """
@@ -121,6 +116,11 @@ class Module(eqx.Module):
                     yield from flatten_children(v)
 
         yield from flatten_children(self)
+
+    def modules(self) -> Iterable["Module"]:
+        yield self
+        for child in self.children(recurse=True):
+            yield child
 
     def get_param_partitions(self) -> PyTree:
         if self.mesh_resource is None:

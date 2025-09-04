@@ -211,8 +211,7 @@ class MultiheadSelfAttention(Attention):
                 qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
                 scaling_factor=1.0 / math.sqrt(self.head_dim),
                 dropout_probability=0.0,
-                #  is_training=self.training,  # TODO: fix, might have to change back to static
-                is_training=True,
+                is_training=self.training,
                 max_segments_per_seq=1,
                 window_size=self.window_size,
                 context_parallel_strategy=te.jax.attention.CPStrategy.DEFAULT,

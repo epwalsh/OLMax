@@ -23,8 +23,9 @@ class Linear(Module):
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         tp_style: TPStyle | None = None,
+        inference_mode: bool = False,
     ):
-        super().__init__(mesh_resource, checkpoint_name)
+        super().__init__(mesh_resource, checkpoint_name, inference_mode)
 
         # Notes on tensor parallelism.
         # ============================
