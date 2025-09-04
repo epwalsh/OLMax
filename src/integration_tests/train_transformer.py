@@ -172,12 +172,12 @@ def train(
 
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = config.mesh.with_data_sharding_constraint(input_ids)
-        labels = config.mesh.with_data_sharding_constraint(labels)
+        input_ids = config.mesh.with_data_sharding_constraint(input_ids, sequence_dim=1)
+        labels = config.mesh.with_data_sharding_constraint(labels, sequence_dim=1)
 
         # Get predicted logits.
         logits = model(input_ids)
-        logits = config.mesh.with_data_sharding_constraint(logits)
+        logits = config.mesh.with_data_sharding_constraint(logits, sequence_dim=1)
 
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)

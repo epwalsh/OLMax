@@ -106,10 +106,10 @@ class Transformer(Module):
                 h,
                 input_sharding=None
                 if self.mesh_resource is None
-                else self.mesh_resource.get_data_sharding_for(h),
+                else self.mesh_resource.get_data_sharding_for(h, sequence_dim=0),
                 output_sharding=None
                 if self.mesh_resource is None
-                else self.mesh_resource.get_data_sharding_for(h),
+                else self.mesh_resource.get_data_sharding_for(h, sequence_dim=0),
                 #  param_sharding=None
                 #  if self.mesh_resource is None
                 #  else self.mesh_resource.get_data_sharding(),  # TODO: fix this

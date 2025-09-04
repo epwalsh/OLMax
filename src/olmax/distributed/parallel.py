@@ -89,7 +89,7 @@ class MeshResource:
     List of ``(axis_size, axis_name, axis_type)`` tuples.
     """
 
-    data_sharding_axis: str | tuple[str, ...] | None
+    batch_sharding_axis: str | tuple[str, ...] | None
     """
     The axis name(s) along which data should be sharded.
     """
@@ -99,9 +99,14 @@ class MeshResource:
     The axis name(s) along which parameters should be sharded for FSDP.
     """
 
-    tp_sharding_axis: str | None
+    tp_sharding_axis: str | None = None
     """
     The axis name(s) along which parameters should be sharded for TP.
+    """
+
+    cp_sharding_axis: str | None = None
+    """
+    The axis name(s) along which sequences should be sharded for CP.
     """
 
     @classmethod
@@ -116,9 +121,10 @@ class MeshResource:
                     AxisType.Auto,
                 ),
             ),
-            data_sharding_axis="fsdp",
+            batch_sharding_axis="fsdp",
             fsdp_sharding_axis="fsdp",
             tp_sharding_axis=None,
+            cp_sharding_axis=None,
         )
 
     @classmethod
@@ -146,9 +152,27 @@ class MeshResource:
                 (replicate_degree, "fsdp_replicate", AxisType.Auto),
                 (shard_degree, "fsdp_shard", AxisType.Auto),
             ),
-            data_sharding_axis=("fsdp_replicate", "fsdp_shard"),
+            batch_sharding_axis=("fsdp_replicate", "fsdp_shard"),
             fsdp_sharding_axis="fsdp_shard",
             tp_sharding_axis=None,
+            cp_sharding_axis=None,
+        )
+
+    @classmethod
+    def HSDP_with_CP(
+        cls,
+        shard_degree: int | None = None,
+        global_device_count: int | None = None,
+        local_device_count: int | None = None,
+    ) -> Self:
+        return dataclasses.replace(
+            cls.HSDP(
+                shard_degree=shard_degree,
+                global_device_count=global_device_count,
+                local_device_count=local_device_count,
+            ),
+            batch_sharding_axis="fsdp_replicate",
+            cp_sharding_axis="fsdp_shard",
         )
 
     @classmethod
@@ -163,9 +187,10 @@ class MeshResource:
                     AxisType.Auto,
                 ),
             ),
-            data_sharding_axis="data",
+            batch_sharding_axis="data",
             fsdp_sharding_axis=None,
             tp_sharding_axis=None,
+            cp_sharding_axis=None,
         )
 
     @ft.cached_property
@@ -243,66 +268,72 @@ class MeshResource:
     def get_param_partition_for(
         self,
         x: Array | tuple[int, ...] | int,
-        fsdp_sharding_axis: int | None = 0,
-        tp_sharding_axis: int | None = None,
+        fsdp_sharding_dim: int | None = 0,
+        tp_sharding_dim: int | None = None,
     ) -> P:
         axes: dict[int, str | tuple[str, ...] | None] = {}
-        if fsdp_sharding_axis is not None and self.fsdp_sharding_axis is not None:
-            axes[fsdp_sharding_axis] = self.fsdp_sharding_axis
-        if tp_sharding_axis is not None and self.tp_sharding_axis is not None:
-            axes[tp_sharding_axis] = self.tp_sharding_axis
+        if fsdp_sharding_dim is not None and self.fsdp_sharding_axis is not None:
+            axes[fsdp_sharding_dim] = self.fsdp_sharding_axis
+        if tp_sharding_dim is not None and self.tp_sharding_axis is not None:
+            axes[tp_sharding_dim] = self.tp_sharding_axis
         return self.get_partition_for(x, axes)
 
     def get_param_sharding_for(
         self,
         x: Array | tuple[int, ...] | int,
-        fsdp_sharding_axis: int | None = 0,
-        tp_sharding_axis: int | None = None,
+        fsdp_sharding_dim: int | None = 0,
+        tp_sharding_dim: int | None = None,
     ) -> NamedSharding:
         mesh = self.get_mesh()
         return NamedSharding(
             mesh,
             self.get_param_partition_for(
-                x, fsdp_sharding_axis=fsdp_sharding_axis, tp_sharding_axis=tp_sharding_axis
+                x, fsdp_sharding_dim=fsdp_sharding_dim, tp_sharding_dim=tp_sharding_dim
             ),
         )
 
     def get_data_partition_for(
         self,
         x: Array | tuple[int, ...],
-        dp_sharding_axis: int = 0,
-        tp_sharding_axis: int | None = None,
+        batch_dim: int = 0,
+        sequence_dim: int | None = None,
+        tp_sharding_dim: int | None = None,
     ) -> P:
         axes: dict[int, str | tuple[str, ...] | None] = {}
-        axes[dp_sharding_axis] = self.data_sharding_axis
-        if tp_sharding_axis is not None and self.tp_sharding_axis is not None:
-            axes[tp_sharding_axis] = self.tp_sharding_axis
+        if self.batch_sharding_axis is not None:
+            axes[batch_dim] = self.batch_sharding_axis
+        if sequence_dim is not None and self.cp_sharding_axis is not None:
+            axes[sequence_dim] = self.cp_sharding_axis
+        if tp_sharding_dim is not None and self.tp_sharding_axis is not None:
+            axes[tp_sharding_dim] = self.tp_sharding_axis
         return self.get_partition_for(x, axes)
 
     def get_data_sharding_for(
         self,
         x: Array | tuple[int, ...],
-        dp_sharding_axis: int = 0,
-        tp_sharding_axis: int | None = None,
+        batch_dim: int = 0,
+        sequence_dim: int | None = None,
+        tp_sharding_dim: int | None = None,
     ) -> NamedSharding:
         mesh = self.get_mesh()
         return NamedSharding(
             mesh,
             self.get_data_partition_for(
-                x, dp_sharding_axis=dp_sharding_axis, tp_sharding_axis=tp_sharding_axis
+                x, batch_dim=batch_dim, sequence_dim=sequence_dim, tp_sharding_dim=tp_sharding_dim
             ),
         )
 
     def with_data_sharding_constraint(
         self,
         x: Array,
-        dp_sharding_axis: int = 0,
-        tp_sharding_axis: int | None = None,
+        batch_dim: int = 0,
+        sequence_dim: int | None = None,
+        tp_sharding_dim: int | None = None,
     ) -> Array:
         return jax.lax.with_sharding_constraint(
             x,
             self.get_data_sharding_for(
-                x, dp_sharding_axis=dp_sharding_axis, tp_sharding_axis=tp_sharding_axis
+                x, batch_dim=batch_dim, sequence_dim=sequence_dim, tp_sharding_dim=tp_sharding_dim
             ),
         )
 

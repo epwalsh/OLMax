@@ -94,7 +94,7 @@ def test_mlp_data_parallel(mesh_resource: dist.MeshResource):
         pytest.param(
             dist.MeshResource(
                 axes=((2, "fsdp", None), (2, "tp", None)),
-                data_sharding_axis="fsdp",
+                batch_sharding_axis="fsdp",
                 fsdp_sharding_axis="fsdp",
                 tp_sharding_axis="tp",
             ),
@@ -103,7 +103,7 @@ def test_mlp_data_parallel(mesh_resource: dist.MeshResource):
         pytest.param(
             dist.MeshResource(
                 axes=((2, "tp", None),),
-                data_sharding_axis=None,
+                batch_sharding_axis=None,
                 fsdp_sharding_axis=None,
                 tp_sharding_axis="tp",
             ),
@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     mesh_resource = dist.MeshResource(
         axes=((2, "tp", None),),
-        data_sharding_axis=None,
+        batch_sharding_axis=None,
         fsdp_sharding_axis=None,
         tp_sharding_axis="tp",
     )

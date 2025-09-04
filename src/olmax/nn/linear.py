@@ -46,8 +46,8 @@ class Linear(Module):
             if mesh_resource is None
             else mesh_resource.get_param_sharding_for(
                 2,
-                fsdp_sharding_axis=1 if tp_style == TPStyle.colwise else 0,
-                tp_sharding_axis=0
+                fsdp_sharding_dim=1 if tp_style == TPStyle.colwise else 0,
+                tp_sharding_dim=0
                 if tp_style == TPStyle.colwise
                 else (1 if tp_style == TPStyle.rowwise else None),
             ),
@@ -63,8 +63,8 @@ class Linear(Module):
                 if mesh_resource is None
                 else mesh_resource.get_param_sharding_for(
                     1,
-                    fsdp_sharding_axis=0,
-                    tp_sharding_axis=0 if tp_style == TPStyle.colwise else None,
+                    fsdp_sharding_dim=0,
+                    tp_sharding_dim=0 if tp_style == TPStyle.colwise else None,
                 ),
                 dtype=dtype,
             )
@@ -81,24 +81,24 @@ class Linear(Module):
                 (
                     pc.get_data_partition_for(x),
                     pc.get_param_partition_for(
-                        self.weight, fsdp_sharding_axis=None, tp_sharding_axis=0
+                        self.weight, fsdp_sharding_dim=None, tp_sharding_dim=0
                     ),
                     None
                     if self.bias is None
                     else pc.get_param_partition_for(
-                        self.bias, fsdp_sharding_axis=None, tp_sharding_axis=0
+                        self.bias, fsdp_sharding_dim=None, tp_sharding_dim=0
                     ),
                 ),
-                pc.get_data_partition_for(x, tp_sharding_axis=-1),
+                pc.get_data_partition_for(x, tp_sharding_dim=-1),
             )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.rowwise:
             assert pc.tp_sharding_axis is not None
             out = pc.shard_map(
                 linear,
                 (
-                    pc.get_data_partition_for(x, tp_sharding_axis=-1),
+                    pc.get_data_partition_for(x, tp_sharding_dim=-1),
                     pc.get_param_partition_for(
-                        self.weight, fsdp_sharding_axis=None, tp_sharding_axis=1
+                        self.weight, fsdp_sharding_dim=None, tp_sharding_dim=1
                     ),
                     None,
                     None,
