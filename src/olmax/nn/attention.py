@@ -1,9 +1,11 @@
+import math
 import warnings
 from dataclasses import dataclass
 from typing import Literal
 
 import equinox as eqx
 import jax
+import jax.numpy as jnp
 
 from ..distributed.parallel import MeshResource
 from ..jax_utils import get_cudnn_version
@@ -32,7 +34,7 @@ class MultiheadSelfAttention(Attention):
     n_kv_heads: int = eqx.field(static=True)
     head_dim: int = eqx.field(static=True)
     window_size: int | tuple[int, int] | None = eqx.field(static=True)
-    implementation: Literal["xla", "cudnn"] | None = eqx.field(static=True)
+    implementation: Literal["xla", "cudnn", "te_fused"] | None = eqx.field(static=True)
 
     def __init__(
         self,
@@ -48,19 +50,26 @@ class MultiheadSelfAttention(Attention):
         bias: bool = True,
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike = "float32",
-        implementation: Literal["xla", "cudnn"] | None = None,
+        implementation: Literal["xla", "cudnn", "te_fused"] | None = None,
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
+        inference_mode: bool = False,
     ):
-        super().__init__(mesh_resource, checkpoint_name)
+        super().__init__(mesh_resource, checkpoint_name, inference_mode)
 
-        if implementation is None and jax.default_backend() == "gpu":
-            if get_cudnn_version() is not None:
-                implementation = "cudnn"
-            else:
-                warnings.warn(
-                    "cuDNN not detected, falling back to slower XLA attention implementation"
-                )
+        if implementation is None:
+            if mesh_resource is not None and mesh_resource.cp_sharding_axis is not None:
+                from olmax.te_utils import assert_te
+
+                assert_te("context parallelism")
+                implementation = "te_fused"
+            elif jax.default_backend() == "gpu":
+                if get_cudnn_version() is not None:
+                    implementation = "cudnn"
+                else:
+                    warnings.warn(
+                        "cuDNN not detected, falling back to slower XLA attention implementation"
+                    )
 
         self.n_heads = n_heads
         self.n_kv_heads = n_kv_heads or n_heads
@@ -183,14 +192,43 @@ class MultiheadSelfAttention(Attention):
             k = self.rope(k, head_first=False)
 
         # shape: (batch_size, seq_len, n_heads, head_dim)
-        att = jax.nn.dot_product_attention(
-            q,
-            k,
-            v,
-            is_causal=True,
-            local_window_size=self.window_size,
-            implementation=self.implementation,
-        )
+        if self.implementation == "te_fused":
+            from olmax.te_utils import assert_te
+
+            te = assert_te("fused attention")
+
+            with jax.ensure_compile_time_eval():
+                seq_lens = jnp.zeros(B, dtype=int) + S
+                seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
+
+            att = te.jax.attention.fused_attn(
+                qkv=(q, k, v),
+                bias=None,
+                sequence_descriptor=seq_descriptor,
+                seed=None,
+                attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
+                attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
+                qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
+                scaling_factor=1.0 / math.sqrt(self.head_dim),
+                dropout_probability=0.0,
+                is_training=self.training,
+                max_segments_per_seq=1,
+                window_size=self.window_size,
+                context_parallel_strategy=te.jax.attention.CPStrategy.DEFAULT,
+                context_parallel_causal_load_balanced=True,
+                context_parallel_axis=""
+                if self.mesh_resource is None
+                else (self.mesh_resource.cp_sharding_axis or ""),
+            )
+        else:
+            att = jax.nn.dot_product_attention(
+                q,
+                k,
+                v,
+                is_causal=True,
+                local_window_size=self.window_size,
+                implementation=self.implementation,
+            )
 
         # shape: (batch_size, seq_len, n_heads * head_dim)
         att = att.reshape(B, S, self.n_heads * self.head_dim)
@@ -211,7 +249,7 @@ class MultiheadSelfAttentionConfig:
     qk_norm_headwise: bool = False
     bias: bool = True
     window_size: int | tuple[int, int] | None = None
-    implementation: Literal["xla", "cudnn"] | None = None
+    implementation: Literal["xla", "cudnn", "te_fused"] | None = None
     dtype: DTypeLike = "float32"
 
     def build(

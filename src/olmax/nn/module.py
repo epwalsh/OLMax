@@ -122,10 +122,20 @@ class Module(eqx.Module):
         if self.mesh_resource is None:
             return None
         else:
-            return jax.tree.map(lambda a: a.sharding.spec if eqx.is_array(a) else None, self)
+            return jax.tree.map(
+                lambda a: a.sharding.spec
+                if eqx.is_array(a)
+                else self.mesh_resource.get_replicated_partition(),
+                self,
+            )
 
     def get_param_shardings(self) -> PyTree:
         if self.mesh_resource is None:
             return None
         else:
-            return jax.tree.map(lambda a: a.sharding if eqx.is_array(a) else None, self)
+            return jax.tree.map(
+                lambda a: a.sharding
+                if eqx.is_array(a)
+                else self.mesh_resource.get_replicated_sharding(),
+                self,
+            )
