@@ -341,7 +341,7 @@ class MeshResource:
         from olmax.te_utils import assert_te
 
         te = assert_te("context parallelism")
-        return te.jax.attention.reorder_for_causal_load_balancing(
+        return te.jax.attention.reorder_causal_load_balancing(
             x, te.jax.attention.ReorderStrategy.DualChunkSwap, sequence_dim
         )
 
