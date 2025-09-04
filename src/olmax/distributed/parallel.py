@@ -208,6 +208,14 @@ class MeshResource:
         )
 
     @ft.cached_property
+    def data_parallel_size(self) -> int:
+        size = self.size
+        for axis in (self.cp_sharding_axis, self.tp_sharding_axis):
+            if axis is not None:
+                size //= self.axis_size(axis)
+        return size
+
+    @ft.cached_property
     def size(self) -> int:
         """
         The size of the mesh, i.e. the total number of devices.
