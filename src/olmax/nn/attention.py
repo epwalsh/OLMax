@@ -201,26 +201,29 @@ class MultiheadSelfAttention(Attention):
                 seq_lens = jnp.zeros(B, dtype=int) + S
                 seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
 
-            att = te.jax.attention.fused_attn(
-                qkv=(q, k, v),
-                bias=None,
-                sequence_descriptor=seq_descriptor,
-                seed=None,
-                attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
-                attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
-                qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
-                scaling_factor=1.0 / math.sqrt(self.head_dim),
-                dropout_probability=0.0,
-                #  is_training=self.training,
-                is_training=True,
-                max_segments_per_seq=1,
-                window_size=self.window_size,
-                context_parallel_strategy=te.jax.attention.CPStrategy.DEFAULT,
-                context_parallel_causal_load_balanced=True,
-                context_parallel_axis=""
-                if self.mesh_resource is None
-                else (self.mesh_resource.cp_sharding_axis or ""),
-            )
+            if self.training:
+                att = te.jax.attention.fused_attn(
+                    qkv=(q, k, v),
+                    bias=None,
+                    sequence_descriptor=seq_descriptor,
+                    seed=None,
+                    attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
+                    attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
+                    qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
+                    scaling_factor=1.0 / math.sqrt(self.head_dim),
+                    dropout_probability=0.0,
+                    #  is_training=self.training,  # TODO: fix, might have to change back to static
+                    is_training=True,
+                    max_segments_per_seq=1,
+                    window_size=self.window_size,
+                    context_parallel_strategy=te.jax.attention.CPStrategy.DEFAULT,
+                    context_parallel_causal_load_balanced=True,
+                    context_parallel_axis=""
+                    if self.mesh_resource is None
+                    else (self.mesh_resource.cp_sharding_axis or ""),
+                )
+            else:
+                raise NotImplementedError  # TODO: handle this
         else:
             att = jax.nn.dot_product_attention(
                 q,
