@@ -707,14 +707,14 @@ class Trainer(Generic[M, B]):
     ):
         @jax.named_scope("compute_loss_and_grads")
         def compute_loss_and_grads(params: M, batch: B) -> tuple[Array, M]:
-            # Reconstruct full model object and enforce sharding constraints.
-            model = eqx.combine(params, static)
+            # Cast params to the compute dtype.
+            params_with_compute_dtype = jax_utils.cast_tree(params, self.compute_dtype)
 
-            # Cast model to the compute dtype.
-            model_with_compute_dtype = jax_utils.cast_tree(model, self.compute_dtype)
+            # Reconstruct full model object and enforce sharding constraints.
+            model = eqx.combine(params_with_compute_dtype, static)
 
             # Do forward+backward passes.
-            loss, grads = eqx.filter_value_and_grad(self.loss_fun)(model_with_compute_dtype, batch)
+            loss, grads = eqx.filter_value_and_grad(self.loss_fun)(model, batch)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
             # Cast grads to the right dtype.
