@@ -113,6 +113,19 @@ class RotaryPositionalEmbedding(Module):
 
             freqs_cos = freqs_cos[:, :S]
             freqs_sin = freqs_sin[:, :S]
+            if self.mesh_resource is not None and self.mesh_resource.cp_sharding_axis is not None:
+                freqs_cos = self.mesh_resource.reorder_cp_array_for_causal_load_balancing(
+                    freqs_cos, 1
+                )
+                freqs_cos = self.mesh_resource.with_data_sharding_constraint(
+                    freqs_cos, batch_dim=None, sequence_dim=1
+                )
+                freqs_sin = self.mesh_resource.reorder_cp_array_for_causal_load_balancing(
+                    freqs_sin, 1
+                )
+                freqs_sin = self.mesh_resource.with_data_sharding_constraint(
+                    freqs_sin, batch_dim=None, sequence_dim=1
+                )
 
         freqs_cos = jnp.tile(jnp.expand_dims(freqs_cos, 0), (1, 2))
         freqs_sin = jnp.tile(jnp.expand_dims(freqs_sin, 0), (1, 2))

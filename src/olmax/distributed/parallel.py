@@ -295,12 +295,12 @@ class MeshResource:
     def get_data_partition_for(
         self,
         x: Array | tuple[int, ...],
-        batch_dim: int = 0,
+        batch_dim: int | None = 0,
         sequence_dim: int | None = None,
         tp_sharding_dim: int | None = None,
     ) -> P:
         axes: dict[int, str | tuple[str, ...] | None] = {}
-        if self.batch_sharding_axis is not None:
+        if batch_dim is not None and self.batch_sharding_axis is not None:
             axes[batch_dim] = self.batch_sharding_axis
         if sequence_dim is not None and self.cp_sharding_axis is not None:
             axes[sequence_dim] = self.cp_sharding_axis
@@ -311,7 +311,7 @@ class MeshResource:
     def get_data_sharding_for(
         self,
         x: Array | tuple[int, ...],
-        batch_dim: int = 0,
+        batch_dim: int | None = 0,
         sequence_dim: int | None = None,
         tp_sharding_dim: int | None = None,
     ) -> NamedSharding:
@@ -326,7 +326,7 @@ class MeshResource:
     def with_data_sharding_constraint(
         self,
         x: Array,
-        batch_dim: int = 0,
+        batch_dim: int | None = 0,
         sequence_dim: int | None = None,
         tp_sharding_dim: int | None = None,
     ) -> Array:
@@ -335,6 +335,14 @@ class MeshResource:
             self.get_data_sharding_for(
                 x, batch_dim=batch_dim, sequence_dim=sequence_dim, tp_sharding_dim=tp_sharding_dim
             ),
+        )
+
+    def reorder_cp_array_for_causal_load_balancing(self, x: Array, sequence_dim: int) -> Array:
+        from olmax.te_utils import assert_te
+
+        te = assert_te("context parallelism")
+        return te.jax.attention.reorder_for_causal_load_balancing(
+            x, te.jax.attention.ReorderStrategy.DualChunkSwap, sequence_dim
         )
 
     def get_opt_state_sharding(self, opt_state: optax.OptState) -> optax.OptState:
@@ -351,27 +359,33 @@ class MeshResource:
         )
 
     def all_gather(self, tree: T, axis: str) -> T:
-        return jax.tree.map(ft.partial(jax.lax.all_gather, axis_name=axis, tiled=True), tree)
+        def _all_gather(x: Array) -> Array:
+            if x.ndim > 0:
+                return jax.lax.all_gather(x, axis_name=axis, tiled=True)
+            else:
+                return x
+
+        return jax.tree.map(_all_gather, tree)
 
     def reduce_scatter(self, tree: T, axis: str) -> T:
         axis_size = self.axis_size(axis)
         divide_factor = dist_utils.get_reduce_divide_factor(axis_size)
 
-        def reduce_scatter(x: Array) -> Array:
+        def _reduce_scatter(x: Array) -> Array:
             x = jax.lax.psum_scatter(x / divide_factor, axis_name=axis, tiled=True)
             return x * divide_factor / axis_size
 
-        return jax.tree.map(reduce_scatter, tree)
+        return jax.tree.map(_reduce_scatter, tree)
 
     def all_reduce(self, tree: T, axis: str) -> T:
         axis_size = self.axis_size(axis)
         divide_factor = dist_utils.get_reduce_divide_factor(axis_size)
 
-        def all_reduce(x: Array) -> Array:
+        def _all_reduce(x: Array) -> Array:
             x = jax.lax.psum(x / divide_factor, axis_name=axis)
             return x * divide_factor / axis_size
 
-        return jax.tree.map(all_reduce, tree)
+        return jax.tree.map(_all_reduce, tree)
 
     def get_mesh_axes_repr(self) -> str:
         axes_repr = []

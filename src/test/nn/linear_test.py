@@ -34,9 +34,11 @@ def test_linear():
     key, batch_key = jax.random.split(key)
     batch = _get_batch(batch_key, 2, 4, 4)
     linear = nn.Linear(4, 4, key=key)
+    assert linear.training
     loss, grads = _get_loss_and_grads(linear, batch)
     assert loss is not None
     assert grads is not None
+    assert not linear.eval().training
 
 
 def test_linear_3d():

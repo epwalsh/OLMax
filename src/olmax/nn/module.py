@@ -23,12 +23,22 @@ class Module(eqx.Module):
     mesh_resource: MeshResource | None = eqx.field(static=True, repr=False)
     checkpoint_name: str | None = eqx.field(static=True)
     """A name to assign to the output the module for activation checkpointing."""
+    inference_mode: bool = eqx.field(static=False, repr=False)
 
     def __init__(
         self, mesh_resource: MeshResource | None = None, checkpoint_name: str | None = None
     ):
         self.mesh_resource = mesh_resource
         self.checkpoint_name = checkpoint_name
+        self.inference_mode = False
+
+    @property
+    def training(self) -> bool:
+        """
+        Whether the module is in training mode or not. This is determined by checking the
+        ``inference_mode`` flag of the module and all its children recursively.
+        """
+        return not self.inference_mode
 
     def __call__(self, *args, **kwargs):
         out = self.forward(*args, **kwargs)
@@ -60,16 +70,20 @@ class Module(eqx.Module):
         .. important::
             Unlike the equivalent in Pytorch this does not modify the module in-place!
         """
-        return eqx.nn.inference_mode(self, value=True)
+        return self.train(False)
 
-    def train(self) -> Self:
+    def train(self, mode: bool = True) -> Self:
         """
         Returns a copy of the module with all inference flags set to ``False`` recursively.
 
         .. important::
             Unlike the equivalent in Pytorch this does not modify the module in-place!
         """
-        return eqx.nn.inference_mode(self, value=False)
+        return eqx.tree_at(
+            lambda m: (m.inference_mode,) + tuple(c.inference_mode for c in m.children()),
+            self,
+            replace_fn=lambda _: not mode,
+        )
 
     def get_checkpoint_names(self) -> Iterable[str]:
         """
@@ -105,10 +119,10 @@ class Module(eqx.Module):
         if self.mesh_resource is None:
             return None
         else:
-            return jax.tree.map(lambda a: a.sharding.spec, self)
+            return jax.tree.map(lambda a: a.sharding.spec if eqx.is_array(a) else None, self)
 
     def get_param_shardings(self) -> PyTree:
         if self.mesh_resource is None:
             return None
         else:
-            return jax.tree.map(lambda a: a.sharding, self)
+            return jax.tree.map(lambda a: a.sharding if eqx.is_array(a) else None, self)

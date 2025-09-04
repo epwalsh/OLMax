@@ -4,27 +4,32 @@ from typing import Generator
 import jax
 import jax.numpy as jnp
 from jax import random
-from jax.sharding import NamedSharding
 
 from ..distributed.parallel import MeshResource
 from ..types import Array, PRNGKeyArray
 
 
-@ft.partial(jax.jit, static_argnames=("sharding",))
+@ft.partial(jax.jit, static_argnames=("mesh_resource",))
 def _randomize_start_offsets(
     *,
     microbatch: Array,
     vocab_size: int,
     key: PRNGKeyArray,
-    sharding: NamedSharding | None,
+    mesh_resource: MeshResource | None,
 ) -> tuple[Array, Array]:
     num_instances, sequence_length = microbatch.shape
     start_offsets = random.randint(key, (num_instances, 1), 0, vocab_size - sequence_length - 1)
     inputs = microbatch + start_offsets
     targets = inputs + 1
-    if sharding is not None:
-        inputs = jax.lax.with_sharding_constraint(inputs, sharding)
-        targets = jax.lax.with_sharding_constraint(targets, sharding)
+
+    if mesh_resource is not None:
+        if mesh_resource.cp_sharding_axis is not None:
+            inputs = mesh_resource.reorder_cp_array_for_causal_load_balancing(inputs, 1)
+            targets = mesh_resource.reorder_cp_array_for_causal_load_balancing(targets, 1)
+
+        inputs = mesh_resource.with_data_sharding_constraint(inputs, sequence_dim=1)
+        targets = mesh_resource.with_data_sharding_constraint(targets, sequence_dim=1)
+
     return inputs, targets
 
 
@@ -45,7 +50,6 @@ def generate_batches_of_sequential_tokens(
     microbatch = (
         jnp.arange(0, sequence_length).reshape(1, -1).repeat(global_microbatch_size_instances, 0)
     )
-    sharding = None if mesh_resource is None else mesh_resource.get_data_sharding_for(microbatch)
     for batch_idx in range(start_batch, total_batches):
         batch_key = jax.random.fold_in(key, batch_idx)
         batch = []
@@ -56,7 +60,7 @@ def generate_batches_of_sequential_tokens(
                     microbatch=microbatch,
                     vocab_size=vocab_size,
                     key=microbatch_key,
-                    sharding=sharding,
+                    mesh_resource=mesh_resource,
                 )
             )
         yield batch

@@ -34,9 +34,14 @@ def test_mlp(d_model: int = 4, hidden_size: int = 8, batch_size: int = 2):
     key, batch_key = jax.random.split(key)
     batch = _get_batch(batch_key, batch_size, d_model)
     mlp = nn.GatedMLP(d_model, hidden_size, key=key)
+    assert mlp.training
     loss, grads = _get_loss_and_grads(mlp, batch)
     assert loss is not None
     assert grads is not None
+
+    mlp = mlp.eval()
+    assert not mlp.training
+    assert not mlp.up_proj.training
 
 
 def _run_mlp_parallel(mesh_resource: dist.MeshResource):
