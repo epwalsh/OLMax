@@ -26,11 +26,14 @@ class Module(eqx.Module):
     inference_mode: bool = eqx.field(static=False, repr=False)
 
     def __init__(
-        self, mesh_resource: MeshResource | None = None, checkpoint_name: str | None = None
+        self,
+        mesh_resource: MeshResource | None = None,
+        checkpoint_name: str | None = None,
+        inference_mode: bool = False,
     ):
         self.mesh_resource = mesh_resource
         self.checkpoint_name = checkpoint_name
-        self.inference_mode = False
+        self.inference_mode = inference_mode
 
     @property
     def training(self) -> bool:
