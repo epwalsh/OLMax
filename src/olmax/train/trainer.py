@@ -706,7 +706,10 @@ class Trainer(Generic[M, B]):
         num_microbatches: int,
     ):
         @jax.named_scope("compute_loss_and_grads")
-        def compute_loss_and_grads(model: M, batch: B) -> tuple[Array, M]:
+        def compute_loss_and_grads(params: M, batch: B) -> tuple[Array, M]:
+            # Reconstruct full model object and enforce sharding constraints.
+            model = eqx.combine(params, static)
+
             # Cast model to the compute dtype.
             model_with_compute_dtype = jax_utils.cast_tree(model, self.compute_dtype)
 
@@ -741,13 +744,12 @@ class Trainer(Generic[M, B]):
         def process_microbatch(
             params: M, microbatch: B, opt_state: OptState
         ) -> tuple[M, OptState, Array]:
-            # Reconstruct full model object and enforce sharding constraints.
-            model = eqx.combine(params, static)
-            model = jax.lax.with_sharding_constraint(model, param_sharding)
+            # Enforce sharding constraints.
+            params = jax.lax.with_sharding_constraint(params, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
             # Compute loss and gradients.
-            loss, grads = compute_loss_and_grads(model, microbatch)
+            loss, grads = compute_loss_and_grads(params, microbatch)
 
             # Take optimizer step.
             params, opt_state = step_optimizer(params, grads, opt_state)
