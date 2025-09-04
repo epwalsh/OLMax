@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from ..activation_checkpointing import ActivationCheckpointingPolicy
 from ..distributed.parallel import MeshResource
+from ..jax_utils import is_in_jit
 from ..types import Array, PyTree
 
 M = TypeVar("M", bound="Module")
@@ -41,7 +42,10 @@ class Module(eqx.Module):
         Whether the module is in training mode or not. This is determined by checking the
         ``inference_mode`` flag of the module and all its children recursively.
         """
-        return not self.inference_mode
+        if is_in_jit():
+            return jax.lax.cond(self.inference_mode, lambda: False, lambda: True)
+        else:
+            return not self.inference_mode
 
     def __call__(self, *args, **kwargs):
         out = self.forward(*args, **kwargs)
