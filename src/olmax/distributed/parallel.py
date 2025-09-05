@@ -144,6 +144,37 @@ class MeshResource:
         )
 
     @classmethod
+    def FSDP_with_CP(
+        cls,
+        cp_degree: int | None = None,
+        global_device_count: int | None = None,
+        local_device_count: int | None = None,
+    ) -> Self:
+        if cp_degree is None or cp_degree < 0:
+            cp_degree = (
+                local_device_count
+                if local_device_count is not None
+                else dist_utils.get_local_device_count()
+            )
+        else:
+            assert cp_degree > 0
+        batch_degree = (
+            global_device_count
+            if global_device_count is not None
+            else dist_utils.get_global_device_count()
+        ) // cp_degree
+        return cls(
+            axes=(
+                (batch_degree, "batch", AxisType.Auto),
+                (cp_degree, "context", AxisType.Auto),
+            ),
+            batch_sharding_axis="batch",
+            fsdp_sharding_axis=("batch", "context"),
+            tp_sharding_axis=None,
+            cp_sharding_axis="context",
+        )
+
+    @classmethod
     def HSDP_with_CP(
         cls,
         shard_degree: int | None = None,

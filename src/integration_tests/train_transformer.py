@@ -293,7 +293,7 @@ def _parse_args():
     )
     parser.add_argument(
         "--mesh-type",
-        choices=["FSDP", "HSDP", "HSDP_with_CP"],
+        choices=["FSDP", "HSDP", "FSDP_with_CP", "HSDP_with_CP"],
         default="FSDP",
         help="""The type of distributed mesh to use.""",
     )
@@ -334,6 +334,12 @@ def main():
     elif opts.mesh_type == "HSDP":
         mesh_resource = dist.MeshResource.HSDP(
             shard_degree=opts.shard_degree,
+            global_device_count=opts.global_device_count,
+            local_device_count=opts.local_device_count,
+        )
+    elif opts.mesh_type == "FSDP_with_CP":
+        mesh_resource = dist.MeshResource.FSDP_with_CP(
+            cp_degree=opts.shard_degree,
             global_device_count=opts.global_device_count,
             local_device_count=opts.local_device_count,
         )
