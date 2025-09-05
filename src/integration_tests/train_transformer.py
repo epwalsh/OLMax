@@ -217,6 +217,8 @@ def train(
 
 
 def _parse_args():
+    # Some configuration depend on others, so it's better to parse those base fields here instead of
+    # as overrides.
     parser = argparse.ArgumentParser(
         prog=sys.argv[0],
         usage=f"{sys.argv[0]} --recipe=RECIPE [OPTIONS...] [CONFIG_OVERRIDES...]",
@@ -295,8 +297,12 @@ def _parse_args():
         default="FSDP",
         help="""The type of distributed mesh to use.""",
     )
-    # Some configuration depend on others, so it's better to parse those base fields here instead of
-    # as overrides.
+    parser.add_argument(
+        "--shard-degree",
+        type=int,
+        default=None,
+        help="""Override the shard degree for the given mesh type.""",
+    )
     parser.add_argument(
         "--steps", type=int, default=100, help="""The number of steps to train for."""
     )
@@ -327,11 +333,15 @@ def main():
         mesh_resource = dist.MeshResource.FSDP(global_device_count=opts.global_device_count)
     elif opts.mesh_type == "HSDP":
         mesh_resource = dist.MeshResource.HSDP(
-            global_device_count=opts.global_device_count, local_device_count=opts.local_device_count
+            shard_degree=opts.shard_degree,
+            global_device_count=opts.global_device_count,
+            local_device_count=opts.local_device_count,
         )
     elif opts.mesh_type == "HSDP_with_CP":
         mesh_resource = dist.MeshResource.HSDP_with_CP(
-            global_device_count=opts.global_device_count, local_device_count=opts.local_device_count
+            shard_degree=opts.shard_degree,
+            global_device_count=opts.global_device_count,
+            local_device_count=opts.local_device_count,
         )
     else:
         raise ValueError(f"Unsupported mesh type '{opts.mesh_type}'")
