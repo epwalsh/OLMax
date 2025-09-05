@@ -225,7 +225,7 @@ class JAXConfig(_EnvBaseConfig):
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
     ) -> "JAXConfig":
         if gpu_architecture is not None:
-            return cls(platforms="gpu,cpu", **overrides)
+            return cls(platforms="cuda,cpu", **overrides)
         else:
             return cls(**overrides)
 
