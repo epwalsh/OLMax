@@ -121,8 +121,8 @@ def train(
     recipe_name = recipe_type.name
     batch_size_per_device = config.device_microbatch_size * config.num_microbatches
     instances_per_device = batch_size_per_device // config.sequence_length
-    global_batch_size = batch_size_per_device * dist.get_global_device_count()
-    global_batch_size_instances = instances_per_device * config.mesh.data_parallel_size
+    global_batch_size = batch_size_per_device * config.mesh.data_parallel_size
+    global_batch_size_instances = instances_per_device // config.sequence_length
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
