@@ -129,11 +129,11 @@ def train(
         f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
+        f"Using per-device batch size of {batch_size_per_device:,d} tokens (before division from TP/CP), "
         f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device micro-batch size of {config.device_microbatch_size:,d} tokens, "
+        f"Using per-device micro-batch size of {config.device_microbatch_size:,d} tokens (before division from TP/CP), "
         f"which is {instances_per_device//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
     )
 
