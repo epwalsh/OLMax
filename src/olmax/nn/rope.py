@@ -76,8 +76,8 @@ class RotaryPositionalEmbedding(Module):
             freqs_cos, freqs_sin = self.get_freqs_cis(seq_len)
         else:
             freqs_cos, freqs_sin = buffer_cache[cache_key]
-        x = jax.vmap(self._apply_rope, head_dim, head_dim)(
-            x, freqs_cos=freqs_cos, freqs_sin=freqs_sin
+        x = jax.vmap(self._apply_rope, (head_dim, None, None), (head_dim, None, None))(
+            x, freqs_cos, freqs_sin
         )
         return x
 
@@ -98,7 +98,7 @@ class RotaryPositionalEmbedding(Module):
         if key not in cache or cache[key][0].shape[0] < sequence_length:
             cache[key] = self.get_freqs_cis(sequence_length)
 
-    def _apply_rope(self, x: Array, *, freqs_cos: Array, freqs_sin: Array) -> Array:
+    def _apply_rope(self, x: Array, freqs_cos: Array, freqs_sin: Array) -> Array:
         H = x.shape[-1]
         og_dtype = x.dtype
         if H != self.head_dim:
