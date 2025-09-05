@@ -593,6 +593,10 @@ class Trainer(Generic[M, B]):
 
             # Record throughput.
             batch_end = time.perf_counter()
+            if self._step_this_run == 1:
+                log.info(
+                    f"Compiled and processed first batch in {utils.format_timedelta(batch_end - batch_start)}"
+                )
             bps = 1 / (batch_end - batch_start)
             bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
             bps_std = (
