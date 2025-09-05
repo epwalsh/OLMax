@@ -27,7 +27,7 @@ class IntegrationTestConfig:
     model: TransformerConfig
     optim: olmax.optim.OptimConfig
     sequence_length: int
-    device_microbatch_size: int
+    local_microbatch_size: int
     env: olmax.EnvConfig
 
     steps: int = 100
@@ -119,22 +119,27 @@ def train(
     log.info(f"Saving results to '{dir}'")
 
     recipe_name = recipe_type.name
-    batch_size_per_device = config.device_microbatch_size * config.num_microbatches
-    instances_per_device = batch_size_per_device // config.sequence_length
-    global_batch_size = batch_size_per_device * config.mesh.data_parallel_size
+
+    local_batch_size = config.local_microbatch_size * config.num_microbatches
+    assert local_batch_size > 0
+    local_batch_size_instances = local_batch_size // config.sequence_length
+    assert local_batch_size_instances > 0
+    global_batch_size = local_batch_size * config.mesh.data_parallel_size
+    assert global_batch_size > 0
     global_batch_size_instances = global_batch_size // config.sequence_length
+    assert global_batch_size_instances > 0
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
         f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device batch size of {batch_size_per_device:,d} tokens (before division from TP/CP), "
-        f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
+        f"Using local batch size of {local_batch_size:,d} tokens (before division from TP/CP), "
+        f"which is {local_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device micro-batch size of {config.device_microbatch_size:,d} tokens (before division from TP/CP), "
-        f"which is {instances_per_device//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
+        f"Using local micro-batch size of {config.local_microbatch_size:,d} tokens (before division from TP/CP), "
+        f"which is {local_batch_size_instances//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
@@ -344,7 +349,7 @@ def main():
             no_decay_modules=["embedding.weight"],
         ),
         sequence_length=recipe.sequence_length,
-        device_microbatch_size=recipe.device_microbatch_size,
+        local_microbatch_size=recipe.local_microbatch_size,
         mesh=mesh_resource,
         env=recipe.env,
         steps=opts.steps,

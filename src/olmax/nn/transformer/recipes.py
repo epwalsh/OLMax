@@ -38,7 +38,7 @@ class TransformerRecipeType(StrEnum):
 class TransformerRecipe:
     model: TransformerConfig
     sequence_length: int
-    device_microbatch_size: int
+    local_microbatch_size: int
     env: EnvConfig
 
     @classmethod
@@ -77,7 +77,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=1024,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -118,7 +118,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -160,7 +160,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=8192,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -195,7 +195,7 @@ class TransformerRecipe:
                 layer_ac_policy=NothingSaveable(prevent_cse=False),
             ),
             sequence_length=8192,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -238,7 +238,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -277,7 +277,7 @@ class TransformerRecipe:
                 layer_ac_policy=NothingSaveable(prevent_cse=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -315,7 +315,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -355,6 +355,6 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
