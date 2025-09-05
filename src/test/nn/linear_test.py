@@ -144,7 +144,7 @@ def _run_linear_manual_sharding(mesh_resource: dist.MeshResource):
             # size of that axis.
             #
             # So instead of doing this:
-            #  grads = mesh_resource.all_reduce(grads, dist.MeshAxesNames.DP.replicate)
+            #  grads = mesh_resource.all_reduce(grads, "fsdp_replicate")
             #
             # We just do this:
             grads = jax.tree.map(lambda x: x / mesh_resource.axis_size("fsdp_replicate"), grads)
