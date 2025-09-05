@@ -83,9 +83,9 @@ class RotaryPositionalEmbedding(Module):
 
     def get_freqs_cis(self, sequence_length: int) -> tuple[Array, Array]:
         return precompute_freqs_cis(
-            self.head_dim,
-            sequence_length,
-            self.theta,
+            head_dim=self.head_dim,
+            end=sequence_length,
+            theta=self.theta,
             dtype=self.dtype,
             mesh_resource=self.mesh_resource,
         )
@@ -117,12 +117,12 @@ class RotaryPositionalEmbedding(Module):
         return x_rope.astype(og_dtype)
 
 
-@ft.partial(jax.jit, static_argnames=("dtype", "mesh_resource"))
+@ft.partial(jax.jit, static_argnames=("head_dim", "end", "dtype", "mesh_resource"))
 def precompute_freqs_cis(
+    *,
     head_dim: int,
     end: int,
     theta: float,
-    *,
     dtype: DTypeLike,
     mesh_resource: MeshResource | None = None,
 ) -> tuple[Array, Array]:
