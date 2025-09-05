@@ -10,7 +10,7 @@ from ..distributed.parallel import MeshResource
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .module import Module
 
-internal_rope_embedding_cache: dict[tuple[int, DTypeLike], tuple[Array, Array]] = {}
+internal_rope_embedding_cache: dict[tuple[int, float, DTypeLike], tuple[Array, Array]] = {}
 cache_clears.append(internal_rope_embedding_cache.clear)
 
 
@@ -97,7 +97,7 @@ class RotaryPositionalEmbedding(Module):
         x = x.astype(self.dtype)
 
         with jax.ensure_compile_time_eval():
-            cache_key = (H, self.dtype)
+            cache_key = (H, self.theta, self.dtype)
             if cache_key not in internal_rope_embedding_cache:
                 internal_rope_embedding_cache[cache_key] = self.precompute_freqs_cis(
                     H, S, self.theta, self.dtype
