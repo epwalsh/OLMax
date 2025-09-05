@@ -218,13 +218,16 @@ class CUDAConfig(_EnvBaseConfig):
 class JAXConfig(_EnvBaseConfig):
     disable_jit: bool | None = None
     compiler_enable_remat_pass: bool | None = None
+    platforms: str | None = None
 
     @classmethod
     def recommended(
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
     ) -> "JAXConfig":
-        del gpu_architecture
-        return cls(**overrides)
+        if gpu_architecture is not None:
+            return cls(platforms="gpu,cpu", **overrides)
+        else:
+            return cls(**overrides)
 
     def apply(self):
         for name, value in self.__dict__.items():
