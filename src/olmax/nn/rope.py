@@ -76,9 +76,7 @@ class RotaryPositionalEmbedding(Module):
             freqs_cos, freqs_sin = self.get_freqs_cis(seq_len)
         else:
             freqs_cos, freqs_sin = buffer_cache[cache_key]
-        x = jax.vmap(self._apply_rope, (head_dim, None, None), (head_dim, None, None))(
-            x, freqs_cos, freqs_sin
-        )
+        x = jax.vmap(self._apply_rope, (head_dim, None, None), head_dim)(x, freqs_cos, freqs_sin)
         return x
 
     def get_freqs_cis(self, sequence_length: int) -> tuple[Array, Array]:
