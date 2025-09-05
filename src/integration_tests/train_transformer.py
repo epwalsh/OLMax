@@ -157,6 +157,7 @@ def train(
     model = config.model.build(
         model_key,
         mesh_resource=config.mesh,
+        dtype=config.param_dtype,
     )
     dist.barrier("post-init-model")
     if show_model:
