@@ -348,9 +348,16 @@ class MeshResource:
     def reorder_cp_array_for_causal_load_balancing(self, x: Array, sequence_dim: int) -> Array:
         from olmax.te_utils import assert_te
 
+        if self.cp_sharding_axis is None:
+            raise RuntimeError(
+                "'reorder_cp_array_for_causal_load_balancing' can only be used with a CP dimension in the mesh"
+            )
         te = assert_te("context parallelism")
         return te.jax.attention.reorder_causal_load_balancing(
-            x, te.jax.attention.ReorderStrategy.DualChunkSwap, sequence_dim
+            x,
+            te.jax.attention.ReorderStrategy.DualChunkSwap,
+            self.axis_size(self.cp_sharding_axis),
+            sequence_dim,
         )
 
     def get_opt_state_sharding(self, opt_state: optax.OptState) -> optax.OptState:
