@@ -344,9 +344,7 @@ def main():
         )
     elif opts.mesh_type == "FSDP_with_CP":
         mesh_resource = dist.MeshResource.FSDP_with_CP(
-            cp_degree=opts.shard_degree,
             global_device_count=opts.global_device_count,
-            local_device_count=opts.local_device_count,
         )
     elif opts.mesh_type == "HSDP_with_CP":
         mesh_resource = dist.MeshResource.HSDP_with_CP(
