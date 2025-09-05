@@ -170,7 +170,7 @@ def train(
     )
 
     buffer_cache = model.get_buffer_cache(config.sequence_length)
-    log.info(f"Initialize buffer cache with keys: {list(buffer_cache.keys())}")
+    log.info(f"Initialized buffer cache with keys: {list(buffer_cache.keys())}")
 
     param_sharding = model.get_param_shardings()
 
