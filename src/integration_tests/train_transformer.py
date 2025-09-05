@@ -131,15 +131,15 @@ def train(
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
-        f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
+        f"which is {global_batch_size_instances:,d} instance(s) of length {config.sequence_length:,d}."
     )
     log.info(
         f"Using local batch size of {local_batch_size:,d} tokens (before division from TP/CP), "
-        f"which is {local_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
+        f"which is {local_batch_size_instances:,d} instance(s) of length {config.sequence_length:,d}."
     )
     log.info(
         f"Using local micro-batch size of {config.local_microbatch_size:,d} tokens (before division from TP/CP), "
-        f"which is {local_batch_size_instances//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
+        f"which is {local_batch_size_instances//config.num_microbatches:,d} instance(s) of length {config.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
@@ -169,10 +169,13 @@ def train(
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
+    buffer_cache = model.get_buffer_cache(config.sequence_length)
     param_sharding = model.get_param_shardings()
 
     @jax.named_scope("compute_loss")
-    def loss_fun(model: nn.Transformer, batch: tuple[Array, Array]):
+    def loss_fun(
+        model: nn.Transformer, batch: tuple[Array, Array], buffer_cache: dict[str, PyTree] | None
+    ):
         input_ids, labels = batch
 
         # Enforce sharding constraints.
@@ -181,7 +184,7 @@ def train(
         labels = config.mesh.with_data_sharding_constraint(labels, sequence_dim=1)
 
         # Get predicted logits.
-        logits = model(input_ids)
+        logits = model(input_ids, buffer_cache=buffer_cache)
         logits = config.mesh.with_data_sharding_constraint(logits, sequence_dim=1)
 
         # Compute and reduce loss.
@@ -210,7 +213,7 @@ def train(
         num_microbatches=config.num_microbatches,
     )
 
-    trainer.fit(model, data_loader, load_path=config.load_path)
+    trainer.fit(model, data_loader, load_path=config.load_path, buffer_cache=buffer_cache)
 
     if trace_download_command is not None:
         log.info(f"To download the profiler trace, run:\n❯ {trace_download_command}")

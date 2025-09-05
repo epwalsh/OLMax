@@ -9,7 +9,7 @@ import jax.numpy as jnp
 
 from ..distributed.parallel import MeshResource
 from ..jax_utils import get_cudnn_version
-from ..types import Array, DTypeLike, PRNGKeyArray
+from ..types import Array, DTypeLike, PRNGKeyArray, PyTree
 from .linear import Linear
 from .module import Module
 from .normalization import Normalizer, NormalizerConfig
@@ -159,7 +159,7 @@ class MultiheadSelfAttention(Attention):
         return MultiheadSelfAttentionConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.MultiheadSelfAttention")
-    def forward(self, x: Array) -> Array:
+    def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3  # (batch_size, seq_len, d_model)
         B, S, _ = x.shape
 
@@ -188,8 +188,8 @@ class MultiheadSelfAttention(Attention):
             k = self.k_norm(k)
 
         if self.rope is not None:
-            q = self.rope(q, head_first=False)
-            k = self.rope(k, head_first=False)
+            q = self.rope(q, head_first=False, buffer_cache=buffer_cache)
+            k = self.rope(k, head_first=False, buffer_cache=buffer_cache)
 
         # shape: (batch_size, seq_len, n_heads, head_dim)
         if self.implementation == "te_fused":

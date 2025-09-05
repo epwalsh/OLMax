@@ -10,7 +10,7 @@ from dataclass_extensions import Registrable
 from ...activation_checkpointing import ActivationCheckpointingPolicy
 from ...distributed.parallel import MeshResource
 from ...jax_utils import shaped_rng_split
-from ...types import Array, DTypeLike, PRNGKeyArray
+from ...types import Array, DTypeLike, PRNGKeyArray, PyTree
 from ..attention import MultiheadSelfAttention, MultiheadSelfAttentionConfig
 from ..mlp import GatedMLP
 from ..module import Module
@@ -78,9 +78,9 @@ class TransformerLayer(Module):
         return DefaultTransformerLayerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.TransformerLayer")
-    def forward(self, x: Array) -> Array:
+    def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3
-        h = x + self.attention(self.attention_norm(x))
+        h = x + self.attention(self.attention_norm(x), buffer_cache=buffer_cache)
         h = h + self.mlp(self.mlp_norm(h))
         return h
 
@@ -91,9 +91,9 @@ class ReorderedNormTransformerLayer(TransformerLayer):
         return ReorderedNormTransformerLayerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.ReorderedTransformerLayer")
-    def forward(self, x: Array) -> Array:
+    def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3
-        h = x + self.attention_norm(self.attention(x))
+        h = x + self.attention_norm(self.attention(x, buffer_cache=buffer_cache))
         h = h + self.mlp_norm(self.mlp(h))
         return h
 
@@ -149,9 +149,11 @@ class GemmaTransformerLayer(TransformerLayer):
         return GemmaTransformerLayerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.Gemma2TransformerLayer")
-    def forward(self, x: Array) -> Array:
+    def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3
-        h = x + self.attention_norm(self.attention(self.attention_input_norm(x)))
+        h = x + self.attention_norm(
+            self.attention(self.attention_input_norm(x), buffer_cache=buffer_cache)
+        )
         h = h + self.mlp_norm(self.mlp(self.mlp_input_norm(h)))
         return h
 
