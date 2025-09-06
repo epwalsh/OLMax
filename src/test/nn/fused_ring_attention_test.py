@@ -56,23 +56,7 @@ def test_fused_ring_attention():
     k = jax.device_put(k, NamedSharding(mesh, P(None, "context")))
     v = jax.device_put(v, NamedSharding(mesh, P(None, "context")))
 
-    att = run_fused_attn(
-        qkv=(q, k, v),
-        bias=None,
-        sequence_descriptor=seq_descriptor,
-        seed=None,
-        attn_bias_type=te_attn.AttnBiasType.NO_BIAS,
-        attn_mask_type=te_attn.AttnMaskType.CAUSAL_MASK,
-        qkv_layout=te_attn.QKVLayout.BSHD_BSHD_BSHD,
-        scaling_factor=1.0 / math.sqrt(D),
-        dropout_probability=0.0,
-        is_training=True,
-        max_segments_per_seq=1,
-        window_size=None,
-        context_parallel_strategy=te_attn.CPStrategy.RING,
-        context_parallel_causal_load_balanced=True,
-        context_parallel_axis="context",
-    )
+    att = run_fused_attn(q, k, v)
     assert att.shape == (B, S, H, D)
     #  jnp.mean(jnp.sum((att - y)**2, axis=-1))
 
