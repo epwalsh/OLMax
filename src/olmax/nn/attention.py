@@ -191,6 +191,11 @@ class MultiheadSelfAttention(Attention):
             q = self.rope(q, head_first=False, buffer_cache=buffer_cache)
             k = self.rope(k, head_first=False, buffer_cache=buffer_cache)
 
+        if self.mesh_resource is not None:
+            q = self.mesh_resource.with_data_sharding_constraint(q, sequence_dim=1)
+            k = self.mesh_resource.with_data_sharding_constraint(k, sequence_dim=1)
+            v = self.mesh_resource.with_data_sharding_constraint(v, sequence_dim=1)
+
         # shape: (batch_size, seq_len, n_heads, head_dim)
         if self.implementation == "te_fused":
             from olmax.te_utils import assert_te
@@ -229,6 +234,10 @@ class MultiheadSelfAttention(Attention):
                 local_window_size=self.window_size,
                 implementation=self.implementation,
             )
+
+        if self.mesh_resource is not None:
+            # shape: (batch_size, seq_len, n_heads, head_dim)
+            att = self.mesh_resource.with_data_sharding_constraint(att, sequence_dim=1)
 
         # shape: (batch_size, seq_len, n_heads * head_dim)
         att = att.reshape(B, S, self.n_heads * self.head_dim)
