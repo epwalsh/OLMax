@@ -206,9 +206,6 @@ class MultiheadSelfAttention(Attention):
                 seq_lens = jnp.zeros(B, dtype=int) + S
                 seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
 
-            jax.debug.inspect_array_sharding(q, callback=print)
-            jax.debug.inspect_array_sharding(k, callback=print)
-            jax.debug.inspect_array_sharding(v, callback=print)
             att = te.jax.attention.fused_attn(
                 qkv=(q, k, v),
                 bias=None,
