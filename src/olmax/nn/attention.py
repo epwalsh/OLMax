@@ -202,14 +202,15 @@ class MultiheadSelfAttention(Attention):
 
             te = assert_te("fused attention")
 
-            with jax.ensure_compile_time_eval():
-                seq_lens = jnp.zeros(B, dtype=int) + S
-                seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
+            #  with jax.ensure_compile_time_eval():
+            #      seq_lens = jnp.zeros(B, dtype=int) + S
+            #      seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
 
             att = te.jax.attention.fused_attn(
                 qkv=(q, k, v),
                 bias=None,
-                sequence_descriptor=seq_descriptor,
+                #  sequence_descriptor=seq_descriptor,
+                sequence_descriptor=None,
                 seed=None,
                 attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
                 attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
