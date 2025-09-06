@@ -40,7 +40,7 @@ def test_fused_ring_attention():
             is_training=True,
             max_segments_per_seq=1,
             window_size=None,
-            context_parallel_strategy=te_attn.CPStrategy.RING,
+            context_parallel_strategy=te_attn.CPStrategy.ALL_GATHER,
             context_parallel_causal_load_balanced=True,
             context_parallel_axis="context",
         )
