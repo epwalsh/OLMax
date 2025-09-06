@@ -221,10 +221,9 @@ class MultiheadSelfAttention(Attention):
                 window_size=self.window_size,
                 context_parallel_strategy=te.jax.attention.CPStrategy.RING,
                 context_parallel_causal_load_balanced=True,
-                context_parallel_axis="fsdp_shard"
-                #  context_parallel_axis=""
-                #  if self.mesh_resource is None
-                #  else (self.mesh_resource.cp_sharding_axis or ""),
+                context_parallel_axis=""
+                if self.mesh_resource is None
+                else (self.mesh_resource.cp_sharding_axis or ""),
             )
         else:
             att = jax.nn.dot_product_attention(
