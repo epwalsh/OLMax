@@ -1,4 +1,4 @@
-ARG NVCR_TAG=25.04
+ARG NVCR_TAG=25.08
 FROM nvcr.io/nvidia/jax:${NVCR_TAG}-py3
 
 # Install direct dependencies, but not source code.
