@@ -21,14 +21,14 @@ def test_fused_ring_attention():
     mesh = jax.make_mesh((jax.local_device_count(),), ("context",))
     print("Running test on mesh:", mesh)
 
-    B, S, H, D = 1, 32, 4, 8
+    B, S, H, H_kv, D = 1, 32, 16, 4, 8
 
     key = jax.random.PRNGKey(0)
     q_key, k_key, v_key = jax.random.split(key, 3)
 
     q = jax.random.normal(q_key, (B, S, H, D), dtype=jax.dtypes.bfloat16)
-    k = jax.random.normal(k_key, (B, S, H, D), dtype=jax.dtypes.bfloat16)
-    v = jax.random.normal(v_key, (B, S, H, D), dtype=jax.dtypes.bfloat16)
+    k = jax.random.normal(k_key, (B, S, H_kv, D), dtype=jax.dtypes.bfloat16)
+    v = jax.random.normal(v_key, (B, S, H_kv, D), dtype=jax.dtypes.bfloat16)
 
     q = jax.device_put(q, NamedSharding(mesh, P(None, "context")))
     k = jax.device_put(k, NamedSharding(mesh, P(None, "context")))
