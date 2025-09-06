@@ -1,4 +1,5 @@
 import math
+import os
 
 import jax
 import jax.numpy as jnp
@@ -64,4 +65,5 @@ def test_fused_ring_attention():
 
 
 if __name__ == "__main__":
+    os.environ["JAX_TRACEBACK_FILTERING"] = "off"
     test_fused_ring_attention()
