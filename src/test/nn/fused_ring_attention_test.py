@@ -1,5 +1,4 @@
 import math
-import os
 
 import jax
 import jax.numpy as jnp
@@ -59,11 +58,9 @@ def test_fused_ring_attention():
 
     att = run_fused_attn(q, k, v)
     assert att.shape == (B, S, H, D)
-    #  jnp.mean(jnp.sum((att - y)**2, axis=-1))
 
     print("Done")
 
 
 if __name__ == "__main__":
-    os.environ["JAX_TRACEBACK_FILTERING"] = "off"
     test_fused_ring_attention()
