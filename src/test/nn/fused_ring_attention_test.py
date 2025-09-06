@@ -16,7 +16,11 @@ def test_fused_ring_attention():
     if jax.local_device_count() < 2:
         pytest.skip("requires multiple devices")
 
+    print("Starting test...")
+
     mesh = jax.make_mesh((jax.local_device_count(),), ("context",))
+    print("Running test on mesh:", mesh)
+
     B, S, H, D = 1, 32, 4, 8
 
     key = jax.random.PRNGKey(0)
@@ -52,6 +56,8 @@ def test_fused_ring_attention():
     )
     assert att.shape == (B, S, H, D)
     #  jnp.mean(jnp.sum((att - y)**2, axis=-1))
+
+    print("Done")
 
 
 if __name__ == "__main__":
