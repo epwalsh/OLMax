@@ -21,7 +21,7 @@ def test_fused_ring_attention():
     mesh = jax.make_mesh((jax.local_device_count(),), ("context",))
     print("Running test on mesh:", mesh)
 
-    B, S, H, H_kv, D = 1, 32, 16, 4, 8
+    B, S, H, H_kv, D = 1, 64, 16, 16, 8
     seq_lens = jnp.zeros(B, dtype=int) + S
     seq_descriptor = te_attn.SequenceDescriptor.from_seqlens(seq_lens)
 
