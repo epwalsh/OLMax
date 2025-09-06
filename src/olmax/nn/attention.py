@@ -206,6 +206,10 @@ class MultiheadSelfAttention(Attention):
                 seq_lens = jnp.zeros(B, dtype=int) + S
                 seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
 
+            jax.debug.print("Q sharding: {}", q.sharding)
+            jax.debug.print("K sharding: {}", k.sharding)
+            jax.debug.print("V sharding: {}", v.sharding)
+
             att = te.jax.attention.fused_attn(
                 qkv=(q, k, v),
                 bias=None,
@@ -225,6 +229,7 @@ class MultiheadSelfAttention(Attention):
                 if self.mesh_resource is None
                 else (self.mesh_resource.cp_sharding_axis or ""),
             )
+            jax.debug.print("ATT sharding: {}", att.sharding)
         else:
             att = jax.nn.dot_product_attention(
                 q,
