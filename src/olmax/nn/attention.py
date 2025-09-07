@@ -7,8 +7,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 
-from ..distributed.parallel import MeshResource
-from ..distributed.utils import get_global_device_count
+from .. import distributed as dist
 from ..jax_utils import get_cudnn_version
 from ..types import Array, DTypeLike, PRNGKeyArray, PyTree
 from .linear import Linear
@@ -52,7 +51,7 @@ class MultiheadSelfAttention(Attention):
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike = "float32",
         implementation: Literal["xla", "cudnn", "te_fused"] | None = None,
-        mesh_resource: MeshResource | None = None,
+        mesh_resource: dist.MeshResource | None = None,
         checkpoint_name: str | None = None,
         inference_mode: bool = False,
     ):
@@ -207,7 +206,7 @@ class MultiheadSelfAttention(Attention):
                 seq_lens = jnp.zeros(B, dtype=int) + S
                 seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
                 seed = jnp.zeros(2, dtype=jnp.uint32)
-                seed = jnp.repeat(seed, get_global_device_count())
+                seed = jnp.repeat(seed, 2)
 
             att = te.jax.attention.fused_attn(
                 qkv=(q, k, v),
@@ -280,7 +279,7 @@ class MultiheadSelfAttentionConfig:
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike | None = None,
         implementation: Literal["xla", "cudnn"] | None = None,
-        mesh_resource: MeshResource | None = None,
+        mesh_resource: dist.MeshResource | None = None,
         checkpoint_name: str | None = None,
     ) -> MultiheadSelfAttention:
         return MultiheadSelfAttention(
