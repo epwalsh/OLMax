@@ -259,6 +259,11 @@ def _parse_args():
     parser.add_argument(
         "--beaker-image", type=str, default="petew/olmax-25.08", help="""The Beaker image to use."""
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="""Include debugging environment variables to get extra logging and information in tracebacks.""",
+    )
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
         parser.print_help()
@@ -275,6 +280,14 @@ def main():
     prepare_cli_environment()
     opts, command = _parse_args()
     is_multi_node = opts.nodes > 1
+    debug_env_vars = (
+        [
+            "JAX_TRACEBACK_FILTERING=off",
+            # "XLA_FLAGS=--xla_dump_to=/tmp/xla_dumps",
+        ]
+        if opts.debug
+        else []
+    )
     launch_experiment(
         command,
         workspace=opts.workspace,
@@ -286,7 +299,7 @@ def main():
         clusters=opts.cluster,
         hostnames=opts.hostname,
         beaker_image=opts.beaker_image,
-        env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"],
+        env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"] + debug_env_vars,
         env_secrets=["BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
         system_python=True,
