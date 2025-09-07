@@ -205,14 +205,12 @@ class MultiheadSelfAttention(Attention):
             with jax.ensure_compile_time_eval():
                 seq_lens = jnp.zeros(B, dtype=int) + S
                 seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
-                seed = jnp.zeros(2, dtype=jnp.uint32)
-                seed = jnp.repeat(seed, 2 * dist.get_global_device_count())
 
             att = te.jax.attention.fused_attn(
                 qkv=(q, k, v),
                 bias=None,
                 sequence_descriptor=seq_descriptor,
-                seed=seed,
+                seed=None,
                 attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
                 attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
                 qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
