@@ -206,7 +206,7 @@ class MultiheadSelfAttention(Attention):
                 seq_lens = jnp.zeros(B, dtype=int) + S
                 seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
                 seed = jnp.zeros(2, dtype=jnp.uint32)
-                seed = jnp.repeat(seed, 2)
+                seed = jnp.repeat(seed, 2 * dist.get_global_device_count())
 
             att = te.jax.attention.fused_attn(
                 qkv=(q, k, v),
