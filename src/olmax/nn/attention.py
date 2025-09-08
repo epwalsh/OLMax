@@ -35,7 +35,7 @@ class MultiheadSelfAttention(Attention):
     head_dim: int = eqx.field(static=True)
     window_size: int | tuple[int, int] | None = eqx.field(static=True)
     implementation: Literal["xla", "cudnn", "te_fused"] | None = eqx.field(static=True)
-    cp_strategy: Literal["default", "all_gather", "ring"] | None = eqx.field(status=True)
+    cp_strategy: Literal["default", "all_gather", "ring"] | None = eqx.field(static=True)
 
     def __init__(
         self,
