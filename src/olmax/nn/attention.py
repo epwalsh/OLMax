@@ -20,6 +20,95 @@ class Attention(Module):
     pass
 
 
+class AttentionKernel(Module):
+    n_heads: int = eqx.field(static=True)
+    n_kv_heads: int = eqx.field(static=True)
+    head_dim: int = eqx.field(static=True)
+    window_size: int | tuple[int, int] | None = eqx.field(static=True)
+    implementation: Literal["xla", "cudnn", "te_fused"] | None = eqx.field(static=True)
+    cp_strategy: Literal["default", "all_gather", "ring"] | None = eqx.field(static=True)
+
+    def __init__(
+        self,
+        *,
+        head_dim: int,
+        n_heads: int,
+        n_kv_heads: int | None = None,
+        window_size: int | tuple[int, int] | None = None,
+        implementation: Literal["xla", "cudnn", "te_fused"] | None = None,
+        cp_strategy: Literal["default", "all_gather", "ring"] | None = None,
+        mesh_resource: dist.MeshResource | None = None,
+        checkpoint_name: str | None = None,
+        inference_mode: bool = False,
+    ):
+        super().__init__(mesh_resource, checkpoint_name, inference_mode)
+        self.head_dim = head_dim
+        self.n_heads = n_heads
+        self.n_kv_heads = n_kv_heads or n_heads
+        self.window_size = window_size
+        self.implementation = implementation
+        self.cp_strategy = cp_strategy
+
+    @jax.named_scope("olmax.nn.AttentionKernel")
+    def forward(self, q: Array, k: Array, v: Array) -> Array:
+        assert q.ndim == k.ndim == v.ndim == 4  # (batch_size, seq_len, n_heads, head_dim)
+        B, S_q, *_ = q.shape
+        S_kv = k.shape[1]
+
+        if self.mesh_resource is not None:
+            q = self.mesh_resource.with_data_sharding_constraint(q, sequence_dim=1)
+            k = self.mesh_resource.with_data_sharding_constraint(k, sequence_dim=1)
+            v = self.mesh_resource.with_data_sharding_constraint(v, sequence_dim=1)
+
+        # shape: (batch_size, seq_len, n_heads, head_dim)
+        if self.implementation == "te_fused":
+            from olmax.te_utils import assert_te
+
+            te = assert_te("fused attention")
+
+            with jax.ensure_compile_time_eval():
+                zeros = jnp.zeros(B, dtype=int)
+                seq_lens = (zeros + S_q, zeros + S_kv)
+                seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
+
+            att = te.jax.attention.fused_attn(
+                qkv=(q, k, v),
+                bias=None,
+                sequence_descriptor=seq_descriptor,
+                seed=None,
+                attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
+                attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
+                qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
+                scaling_factor=1.0 / math.sqrt(self.head_dim),
+                dropout_probability=0.0,
+                is_training=self.training,
+                max_segments_per_seq=1,
+                window_size=self.window_size,
+                context_parallel_strategy=getattr(
+                    te.jax.attention.CPStrategy, (self.cp_strategy or "default").upper()
+                ),
+                context_parallel_causal_load_balanced=True,
+                context_parallel_axis=""
+                if self.mesh_resource is None
+                else (self.mesh_resource.cp_sharding_axis or ""),
+            )
+        else:
+            att = jax.nn.dot_product_attention(
+                q,
+                k,
+                v,
+                is_causal=True,
+                local_window_size=self.window_size,
+                implementation=self.implementation,
+            )
+
+        if self.mesh_resource is not None:
+            # shape: (batch_size, seq_len, n_heads, head_dim)
+            att = self.mesh_resource.with_data_sharding_constraint(att, sequence_dim=1)
+
+        return att
+
+
 class MultiheadSelfAttention(Attention):
     q_proj: Linear
     k_proj: Linear
@@ -34,8 +123,6 @@ class MultiheadSelfAttention(Attention):
     n_kv_heads: int = eqx.field(static=True)
     head_dim: int = eqx.field(static=True)
     window_size: int | tuple[int, int] | None = eqx.field(static=True)
-    implementation: Literal["xla", "cudnn", "te_fused"] | None = eqx.field(static=True)
-    cp_strategy: Literal["default", "all_gather", "ring"] | None = eqx.field(static=True)
 
     def __init__(
         self,
@@ -77,8 +164,6 @@ class MultiheadSelfAttention(Attention):
         self.n_kv_heads = n_kv_heads or n_heads
         self.head_dim = head_dim if head_dim is not None else d_model // n_heads
         self.window_size = window_size
-        self.implementation = implementation
-        self.cp_strategy = cp_strategy
 
         (
             q_proj_key,
@@ -115,6 +200,17 @@ class MultiheadSelfAttention(Attention):
             dtype=dtype,
             mesh_resource=mesh_resource,
             checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.v_proj",
+        )
+        self.sdpa = AttentionKernel(
+            head_dim=self.head_dim,
+            n_heads=self.n_heads,
+            n_kv_heads=self.n_kv_heads,
+            window_size=self.window_size,
+            implementation=implementation,
+            cp_strategy=cp_strategy,
+            mesh_resource=mesh_resource,
+            checkpoint_name=None if checkpoint_name is None else f"{checkpoint_name}.sdpa",
+            inference_mode=inference_mode,
         )
         self.o_proj = Linear(
             self.n_heads * self.head_dim,
@@ -208,46 +304,7 @@ class MultiheadSelfAttention(Attention):
             v = self.mesh_resource.with_data_sharding_constraint(v, sequence_dim=1)
 
         # shape: (batch_size, seq_len, n_heads, head_dim)
-        if self.implementation == "te_fused":
-            from olmax.te_utils import assert_te
-
-            te = assert_te("fused attention")
-
-            with jax.ensure_compile_time_eval():
-                seq_lens = jnp.zeros(B, dtype=int) + S
-                seq_descriptor = te.jax.attention.SequenceDescriptor.from_seqlens(seq_lens)
-
-            att = te.jax.attention.fused_attn(
-                qkv=(q, k, v),
-                bias=None,
-                sequence_descriptor=seq_descriptor,
-                seed=None,
-                attn_bias_type=te.jax.attention.AttnBiasType.NO_BIAS,
-                attn_mask_type=te.jax.attention.AttnMaskType.CAUSAL_MASK,
-                qkv_layout=te.jax.attention.QKVLayout.BSHD_BSHD_BSHD,
-                scaling_factor=1.0 / math.sqrt(self.head_dim),
-                dropout_probability=0.0,
-                is_training=self.training,
-                max_segments_per_seq=1,
-                window_size=self.window_size,
-                context_parallel_strategy=getattr(
-                    te.jax.attention.CPStrategy, (self.cp_strategy or "default").upper()
-                ),
-                context_parallel_causal_load_balanced=True,
-                context_parallel_axis=""
-                if self.mesh_resource is None
-                else (self.mesh_resource.cp_sharding_axis or ""),
-            )
-        else:
-            att = jax.nn.dot_product_attention(
-                q,
-                k,
-                v,
-                is_causal=True,
-                local_window_size=self.window_size,
-                implementation=self.implementation,
-            )
-
+        att = self.sdpa(q, k, v)
         if self.mesh_resource is not None:
             # shape: (batch_size, seq_len, n_heads, head_dim)
             att = self.mesh_resource.with_data_sharding_constraint(att, sequence_dim=1)
