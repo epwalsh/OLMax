@@ -136,6 +136,7 @@ class Trainer(Generic[M, B]):
     log_to_console: Sequence[str] = (
         "train/loss",
         "optim/lr",
+        "optim/g_norm",
         "system/*",
         "throughput/data loading*",
         "throughput/TPS device*",
