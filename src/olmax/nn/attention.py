@@ -113,6 +113,7 @@ class MultiheadSelfAttention(Attention):
     q_proj: Linear
     k_proj: Linear
     v_proj: Linear
+    sdpa: AttentionKernel
     o_proj: Linear
     rope: RotaryPositionalEmbedding | None
     q_norm: Normalizer | None
