@@ -264,6 +264,10 @@ def _parse_args():
         action="store_true",
         help="""Include debugging environment variables to get extra logging and information in tracebacks.""",
     )
+    parser.add_argument(
+        "--post-setup",
+        type=str,
+    )
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
         parser.print_help()
@@ -310,6 +314,7 @@ def main():
         propagate_preemption=is_multi_node,
         synchronized_start_timeout="5m" if is_multi_node else None,
         preemptible=opts.preemptible,
+        post_setup=opts.post_setup,
     )
 
 
