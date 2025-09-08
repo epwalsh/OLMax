@@ -63,5 +63,5 @@ def test_fused_ring_attention():
 
 
 if __name__ == "__main__":
-    jax.config.update("jax_disable_jit", True)
+    #  jax.config.update("jax_disable_jit", True)
     test_fused_ring_attention()
