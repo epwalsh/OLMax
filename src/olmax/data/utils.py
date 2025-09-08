@@ -17,9 +17,9 @@ def _randomize_start_offsets(
     key: PRNGKeyArray,
     mesh_resource: MeshResource | None,
 ) -> tuple[Array, Array]:
-    num_instances, sequence_length = microbatch.shape
-    start_offsets = random.randint(key, (num_instances, 1), 0, vocab_size - sequence_length - 1)
-    inputs = microbatch + start_offsets
+    num_instances, _ = microbatch.shape
+    start_offsets = random.randint(key, (num_instances, 1), 0, vocab_size - 1)
+    inputs = (microbatch + start_offsets) % vocab_size
     targets = inputs + 1
 
     if mesh_resource is not None:
