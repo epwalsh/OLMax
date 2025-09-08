@@ -339,7 +339,7 @@ def main():
     recipe = recipe_type.build_recipe(env, device_type)
 
     learning_rate: float
-    if "32B" in opts.recipe or "27B" in opts.recipe:
+    if "32B" in opts.recipe or "27B" in opts.recipe or "70B" in opts.recipe:
         learning_rate = 1e-5
     elif "7B" in opts.recipe or "8B" in opts.recipe:
         learning_rate = 1e-4
