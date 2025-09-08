@@ -51,7 +51,7 @@ def count_params(tree: PyTree) -> tuple[int, int]:
     return jax.tree.reduce(
         lambda c, p: (
             c[0] + (p.size if eqx.is_array(p) else 0),
-            c[1] + (p.dtype.itemsize if eqx.is_array(p) else 0),
+            c[1] + (p.size * p.dtype.itemsize if eqx.is_array(p) else 0),
         ),
         tree,
         (0, 0),
