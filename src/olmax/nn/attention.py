@@ -166,12 +166,20 @@ class MultiheadSelfAttention(Attention):
         assert x.ndim == 3  # (batch_size, seq_len, d_model)
         B, S, _ = x.shape
 
+        if self.mesh_resource is not None:
+            x = self.mesh_resource.with_data_sharding_constraint(x, sequence_dim=1)
+
         # shape: (batch_size, seq_len, n_heads * head_dim)
         q = self.q_proj(x)
         # shape: (batch_size, seq_len, n_kv_heads * head_dim)
         k = self.k_proj(x)
         # shape: (batch_size, seq_len, n_kv_heads * head_dim)
         v = self.v_proj(x)
+
+        if self.mesh_resource is not None:
+            q = self.mesh_resource.with_data_sharding_constraint(q, sequence_dim=1)
+            k = self.mesh_resource.with_data_sharding_constraint(k, sequence_dim=1)
+            v = self.mesh_resource.with_data_sharding_constraint(v, sequence_dim=1)
 
         if self.q_norm is not None and not self.qk_norm_headwise:
             q = self.q_norm(q)
@@ -249,6 +257,9 @@ class MultiheadSelfAttention(Attention):
 
         # shape: (batch_size, seq_len, d_model)
         out = self.o_proj(att)
+
+        if self.mesh_resource is not None:
+            out = self.mesh_resource.with_data_sharding_constraint(out, sequence_dim=1)
 
         return out
 
