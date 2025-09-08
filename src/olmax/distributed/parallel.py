@@ -411,7 +411,7 @@ class MeshResource:
     def get_mesh_axes_repr(self) -> str:
         axes_repr = []
         for axis_size, axis_name, _ in self.axes:
-            axes_repr.append(f"{axis_name} x {axis_size}")
+            axes_repr.append(f"{axis_name}[{axis_size}]")
         return f"({', '.join(axes_repr)},)"
 
     def set_mesh(self):

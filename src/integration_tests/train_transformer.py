@@ -146,6 +146,18 @@ def train(
     model_key, data_key = jax.random.split(key)
 
     log.info(f"Using mesh with axes {config.mesh.get_mesh_axes_repr()}")
+    if config.mesh.batch_sharding_axis is not None:
+        log.info(f"Batches will be sharded over axis '{config.mesh.batch_sharding_axis}'")
+    if config.mesh.fsdp_sharding_axis is not None:
+        log.info(
+            f"FSDP will shard parameters and optim state over axis '{config.mesh.fsdp_sharding_axis}'"
+        )
+    if config.mesh.tp_sharding_axis is not None:
+        log.info(
+            f"Tensor parallelism will shard activations and parameters over axis '{config.mesh.tp_sharding_axis}'"
+        )
+    if config.mesh.cp_sharding_axis is not None:
+        log.info(f"Context will be sharded over axis '{config.mesh.cp_sharding_axis}'")
 
     if beaker_runtime is not None and beaker_runtime.is_experiment:
         beaker_runtime.set_description(
