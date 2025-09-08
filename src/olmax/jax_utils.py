@@ -43,7 +43,7 @@ def uncommit_single_device_arrays(tree: T) -> T:
     return jax.tree.map(uncommit, tree)
 
 
-@eqx.filter_jit(donate="all")
+@eqx.filter_jit
 def count_params(tree: PyTree) -> tuple[int, int]:
     """
     Get the total number of params and the total size in bytes of those params.
