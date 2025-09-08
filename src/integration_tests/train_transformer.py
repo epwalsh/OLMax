@@ -163,10 +163,10 @@ def train(
     if show_model:
         log.info(model)
 
-    num_params = olmax.jax_utils.count_params(model)
+    num_params, num_bytes = olmax.jax_utils.count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     log.info(
-        f"Built model with {num_params:,d} total parameters, "
+        f"Built model with {num_params:,d} total parameters ({num_bytes:,d} bytes), "
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 

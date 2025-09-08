@@ -44,8 +44,18 @@ def uncommit_single_device_arrays(tree: T) -> T:
 
 
 @eqx.filter_jit(donate="all")
-def count_params(tree: PyTree) -> int:
-    return jax.tree.reduce(lambda c, p: c + (p.size if eqx.is_array(p) else 0), tree, 0)
+def count_params(tree: PyTree) -> tuple[int, int]:
+    """
+    Get the total number of params and the total size in bytes of those params.
+    """
+    return jax.tree.reduce(
+        lambda c, p: (
+            c[0] + (p.size if eqx.is_array(p) else 0),
+            c[1] + (p.dtype.itemsize if eqx.is_array(p) else 0),
+        ),
+        tree,
+        (0, 0),
+    )
 
 
 def with_optional_sharding_contraint(tree: T, sharding: Specs, cond: Callable[[Array], bool]) -> T:
