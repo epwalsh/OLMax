@@ -35,6 +35,7 @@ class MultiheadSelfAttention(Attention):
     head_dim: int = eqx.field(static=True)
     window_size: int | tuple[int, int] | None = eqx.field(static=True)
     implementation: Literal["xla", "cudnn", "te_fused"] | None = eqx.field(static=True)
+    cp_strategy: Literal["default", "all_gather", "ring"] | None = eqx.field(status=True)
 
     def __init__(
         self,
@@ -51,6 +52,7 @@ class MultiheadSelfAttention(Attention):
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike = "float32",
         implementation: Literal["xla", "cudnn", "te_fused"] | None = None,
+        cp_strategy: Literal["default", "all_gather", "ring"] | None = None,
         mesh_resource: dist.MeshResource | None = None,
         checkpoint_name: str | None = None,
         inference_mode: bool = False,
@@ -76,6 +78,7 @@ class MultiheadSelfAttention(Attention):
         self.head_dim = head_dim if head_dim is not None else d_model // n_heads
         self.window_size = window_size
         self.implementation = implementation
+        self.cp_strategy = cp_strategy
 
         (
             q_proj_key,
@@ -219,8 +222,9 @@ class MultiheadSelfAttention(Attention):
                 is_training=self.training,
                 max_segments_per_seq=1,
                 window_size=self.window_size,
-                context_parallel_strategy=te.jax.attention.CPStrategy.RING,
-                #  context_parallel_strategy=te.jax.attention.CPStrategy.ALL_GATHER,
+                context_parallel_strategy=getattr(
+                    te.jax.attention.CPStrategy, (self.cp_strategy or "default").upper()
+                ),
                 context_parallel_causal_load_balanced=True,
                 context_parallel_axis=""
                 if self.mesh_resource is None
@@ -260,6 +264,7 @@ class MultiheadSelfAttentionConfig:
     bias: bool = True
     window_size: int | tuple[int, int] | None = None
     implementation: Literal["xla", "cudnn", "te_fused"] | None = None
+    cp_strategy: Literal["default", "all_gather", "ring"] | None = None
     dtype: DTypeLike = "float32"
 
     def build(
@@ -277,6 +282,7 @@ class MultiheadSelfAttentionConfig:
         window_size: int | tuple[int, int] | None = None,
         dtype: DTypeLike | None = None,
         implementation: Literal["xla", "cudnn"] | None = None,
+        cp_strategy: Literal["default", "all_gather", "ring"] | None = None,
         mesh_resource: dist.MeshResource | None = None,
         checkpoint_name: str | None = None,
     ) -> MultiheadSelfAttention:
@@ -295,6 +301,7 @@ class MultiheadSelfAttentionConfig:
             window_size=window_size if window_size is not None else self.window_size,
             dtype=dtype if dtype is not None else self.dtype,
             implementation=implementation if implementation is not None else self.implementation,
+            cp_strategy=cp_strategy if cp_strategy is not None else self.cp_strategy,
             mesh_resource=mesh_resource,
             checkpoint_name=checkpoint_name,
         )
