@@ -268,6 +268,10 @@ def _parse_args():
         "--post-setup",
         type=str,
     )
+    parser.add_argument(
+        "--slack-webhook-url",
+        type=str,
+    )
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
         parser.print_help()
@@ -315,6 +319,7 @@ def main():
         synchronized_start_timeout="5m" if is_multi_node else None,
         preemptible=opts.preemptible,
         post_setup=opts.post_setup,
+        slack_webhook_url=opts.slack_webhook_url,
     )
 
 
