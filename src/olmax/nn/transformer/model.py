@@ -127,7 +127,7 @@ class Transformer(Module):
         return out
 
     def get_buffer_cache(self, sequence_length: int) -> dict[str, PyTree]:
-        cache = {}
+        cache: dict[str, PyTree] = {}
         for layer in self.layers:
             rope = layer.attention.rope
             if rope is not None:
