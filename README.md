@@ -40,7 +40,7 @@ All run below shared these common trainer settings:
 
 - [12,035 TPS/GPU](https://beaker.org/ex/01JXDC25DM5GJRMWNDXSJ2QA7J) on 2 Jupiter H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
   ```fish
-  python -m olmax.launch.beaker --cluster=ai3/jupiter-cirrascale-2 --nodes=2 -- \
+  python -m olmax.launch.beaker --cluster=ai2/jupiter-cirrascale-2 --nodes=2 -- \
     python src/integration_tests/train_transformer.py --recipe=llama_like_7B
   ```
 - [11,854 TPS/GPU](https://beaker.org/ex/01JZ1S2X9QF8T3GK3KXME61K0Q) on 2 Augusta H100 nodes with full FSDP, micro-batch size of 2 instances/GPU
