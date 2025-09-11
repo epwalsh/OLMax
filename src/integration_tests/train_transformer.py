@@ -27,7 +27,7 @@ class IntegrationTestConfig:
     model: TransformerConfig
     optim: olmax.optim.OptimConfig
     sequence_length: int
-    device_microbatch_size: int
+    local_microbatch_size: int
     env: olmax.EnvConfig
 
     steps: int = 100
@@ -119,28 +119,45 @@ def train(
     log.info(f"Saving results to '{dir}'")
 
     recipe_name = recipe_type.name
-    batch_size_per_device = config.device_microbatch_size * config.num_microbatches
-    instances_per_device = batch_size_per_device // config.sequence_length
-    global_batch_size = batch_size_per_device * dist.get_global_device_count()
-    global_batch_size_instances = instances_per_device * dist.get_global_device_count()
+
+    local_batch_size = config.local_microbatch_size * config.num_microbatches
+    assert local_batch_size > 0
+    local_batch_size_instances = local_batch_size // config.sequence_length
+    assert local_batch_size_instances > 0
+    global_batch_size = local_batch_size * config.mesh.data_parallel_size
+    assert global_batch_size > 0
+    global_batch_size_instances = global_batch_size // config.sequence_length
+    assert global_batch_size_instances > 0
 
     log.info(
         f"Using global batch size of {global_batch_size:,d} tokens, "
-        f"which is {global_batch_size_instances:,d} instances of length {config.sequence_length:,d}."
+        f"which is {global_batch_size_instances:,d} instance(s) of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device batch size of {batch_size_per_device:,d} tokens, "
-        f"which is {instances_per_device:,d} instances of length {config.sequence_length:,d}."
+        f"Using local batch size of {local_batch_size:,d} tokens (before division from TP/CP), "
+        f"which is {local_batch_size_instances:,d} instance(s) of length {config.sequence_length:,d}."
     )
     log.info(
-        f"Using per-device micro-batch size of {config.device_microbatch_size:,d} tokens, "
-        f"which is {instances_per_device//config.num_microbatches:,d} instances of length {config.sequence_length:,d}."
+        f"Using local micro-batch size of {config.local_microbatch_size:,d} tokens (before division from TP/CP), "
+        f"which is {local_batch_size_instances//config.num_microbatches:,d} instance(s) of length {config.sequence_length:,d}."
     )
 
     key = jax.random.PRNGKey(0)
     model_key, data_key = jax.random.split(key)
 
     log.info(f"Using mesh with axes {config.mesh.get_mesh_axes_repr()}")
+    if config.mesh.batch_sharding_axis is not None:
+        log.info(f"Batches will be sharded over axis '{config.mesh.batch_sharding_axis}'")
+    if config.mesh.fsdp_sharding_axis is not None:
+        log.info(
+            f"FSDP will shard parameters and optim state over axis '{config.mesh.fsdp_sharding_axis}'"
+        )
+    if config.mesh.tp_sharding_axis is not None:
+        log.info(
+            f"Tensor parallelism will shard activations and parameters over axis '{config.mesh.tp_sharding_axis}'"
+        )
+    if config.mesh.cp_sharding_axis is not None:
+        log.info(f"Context will be sharded over axis '{config.mesh.cp_sharding_axis}'")
 
     if beaker_runtime is not None and beaker_runtime.is_experiment:
         beaker_runtime.set_description(
@@ -152,33 +169,38 @@ def train(
     model = config.model.build(
         model_key,
         mesh_resource=config.mesh,
+        dtype=config.param_dtype,
     )
     dist.barrier("post-init-model")
     if show_model:
         log.info(model)
 
-    num_params = olmax.jax_utils.count_params(model)
+    num_params, num_bytes = olmax.jax_utils.count_params(model)
     num_non_embedding_prams = num_params - model.embedding.weight.size
     log.info(
-        f"Built model with {num_params:,d} total parameters, "
+        f"Built model with {num_params:,d} total parameters ({num_bytes:,d} bytes), "
         f"{num_non_embedding_prams:,d} non-embedding parameters"
     )
 
+    buffer_cache = model.get_buffer_cache(config.sequence_length)
+    log.info(f"Initialized buffer cache with keys: {list(buffer_cache.keys())}")
+
     param_sharding = model.get_param_shardings()
-    data_sharding = config.mesh.get_data_sharding()
 
     @jax.named_scope("compute_loss")
-    def loss_fun(model: nn.Transformer, batch: tuple[Array, Array]):
+    def loss_fun(
+        model: nn.Transformer, batch: tuple[Array, Array], buffer_cache: dict[str, PyTree] | None
+    ):
         input_ids, labels = batch
 
         # Enforce sharding constraints.
         model = jax.lax.with_sharding_constraint(model, param_sharding)
-        input_ids = jax.lax.with_sharding_constraint(input_ids, data_sharding)
-        labels = jax.lax.with_sharding_constraint(labels, data_sharding)
+        input_ids = config.mesh.with_data_sharding_constraint(input_ids, sequence_dim=1)
+        labels = config.mesh.with_data_sharding_constraint(labels, sequence_dim=1)
 
         # Get predicted logits.
-        logits = model(input_ids)
-        logits = jax.lax.with_sharding_constraint(logits, data_sharding)
+        logits = model(input_ids, buffer_cache=buffer_cache)
+        logits = config.mesh.with_data_sharding_constraint(logits, sequence_dim=1)
 
         # Compute and reduce loss.
         return F.cross_entropy_loss(logits, labels)
@@ -206,13 +228,15 @@ def train(
         num_microbatches=config.num_microbatches,
     )
 
-    trainer.fit(model, data_loader, load_path=config.load_path)
+    trainer.fit(model, data_loader, load_path=config.load_path, buffer_cache=buffer_cache)
 
     if trace_download_command is not None:
         log.info(f"To download the profiler trace, run:\n❯ {trace_download_command}")
 
 
 def _parse_args():
+    # Some configuration depend on others, so it's better to parse those base fields here instead of
+    # as overrides.
     parser = argparse.ArgumentParser(
         prog=sys.argv[0],
         usage=f"{sys.argv[0]} --recipe=RECIPE [OPTIONS...] [CONFIG_OVERRIDES...]",
@@ -269,8 +293,34 @@ def _parse_args():
         action="store_true",
         help="""Print out the model structure after initialization.""",
     )
-    # Some configuration depend on others, so it's better to parse those base fields here instead of
-    # as overrides.
+    parser.add_argument(
+        "--local-device-count",
+        type=int,
+        default=jax.local_device_count()
+        if beaker_runtime is None
+        else beaker_runtime.local_device_count,
+        help="""The number of local devices.""",
+    )
+    parser.add_argument(
+        "--global-device-count",
+        type=int,
+        default=jax.local_device_count()
+        if beaker_runtime is None
+        else beaker_runtime.global_device_count,
+        help="""The number of global devices.""",
+    )
+    parser.add_argument(
+        "--mesh-type",
+        choices=["FSDP", "HSDP", "FSDP_with_CP", "HSDP_with_CP"],
+        default="FSDP",
+        help="""The type of distributed mesh to use.""",
+    )
+    parser.add_argument(
+        "--shard-degree",
+        type=int,
+        default=None,
+        help="""Override the shard degree for the given mesh type.""",
+    )
     parser.add_argument(
         "--steps", type=int, default=100, help="""The number of steps to train for."""
     )
@@ -289,12 +339,34 @@ def main():
     recipe = recipe_type.build_recipe(env, device_type)
 
     learning_rate: float
-    if "32B" in opts.recipe or "27B" in opts.recipe:
+    if "32B" in opts.recipe or "27B" in opts.recipe or "70B" in opts.recipe:
         learning_rate = 1e-5
     elif "7B" in opts.recipe or "8B" in opts.recipe:
         learning_rate = 1e-4
     else:
         learning_rate = 1e-3
+
+    mesh_resource: dist.MeshResource
+    if opts.mesh_type == "FSDP":
+        mesh_resource = dist.MeshResource.FSDP(global_device_count=opts.global_device_count)
+    elif opts.mesh_type == "HSDP":
+        mesh_resource = dist.MeshResource.HSDP(
+            shard_degree=opts.shard_degree,
+            global_device_count=opts.global_device_count,
+            local_device_count=opts.local_device_count,
+        )
+    elif opts.mesh_type == "FSDP_with_CP":
+        mesh_resource = dist.MeshResource.FSDP_with_CP(
+            global_device_count=opts.global_device_count,
+        )
+    elif opts.mesh_type == "HSDP_with_CP":
+        mesh_resource = dist.MeshResource.HSDP_with_CP(
+            shard_degree=opts.shard_degree,
+            global_device_count=opts.global_device_count,
+            local_device_count=opts.local_device_count,
+        )
+    else:
+        raise ValueError(f"Unsupported mesh type '{opts.mesh_type}'")
 
     config = IntegrationTestConfig(
         model=recipe.model,
@@ -309,7 +381,8 @@ def main():
             no_decay_modules=["embedding.weight"],
         ),
         sequence_length=recipe.sequence_length,
-        device_microbatch_size=recipe.device_microbatch_size,
+        local_microbatch_size=recipe.local_microbatch_size,
+        mesh=mesh_resource,
         env=recipe.env,
         steps=opts.steps,
     )

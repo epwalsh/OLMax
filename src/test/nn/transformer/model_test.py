@@ -91,7 +91,7 @@ def _run_transformer_parallel(
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, seq_len, vocab_size)
-    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding_for(full_batch[0]))
 
     full_model = _get_model(
         key=key,
@@ -120,16 +120,16 @@ def _run_transformer_parallel(
 @pytest.mark.parametrize(
     "mesh_resource",
     [
-        pytest.param(dist.MeshResource.FSDP(), id="FSDP"),
-        pytest.param(dist.MeshResource.DDP(), id="DDP"),
-        pytest.param(dist.MeshResource.HSDP(2, 2), id="HSDP"),
+        pytest.param(dist.MeshResource.FSDP(global_device_count=2), id="FSDP"),
+        pytest.param(dist.MeshResource.DDP(global_device_count=2), id="DDP"),
+        pytest.param(dist.MeshResource.HSDP(shard_degree=2, global_device_count=4), id="HSDP"),
     ],
 )
 def test_transformer_data_parallel(mesh_resource: dist.MeshResource):
     run_distributed_test(
         _run_transformer_parallel,
         num_processes=1,
-        devices_per_process=mesh_resource.get_min_device_count(),
+        devices_per_process=mesh_resource.size,
         args=(mesh_resource,),
     )
 
@@ -148,7 +148,7 @@ def main(
 
     key, batch_key = jax.random.split(key)
     full_batch = _get_batch(batch_key, batch_size, seq_len, vocab_size)
-    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding())
+    dist_batch = jax.device_put(full_batch, mesh_resource.get_data_sharding_for(full_batch[0]))
 
     dist_model = _get_model(
         key=key,

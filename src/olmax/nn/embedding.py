@@ -23,7 +23,7 @@ class Embedding(Module):
         self.weight = truncated_normal(
             key,
             (num_embeddings, d_model),
-            sharding=None if mesh_resource is None else mesh_resource.get_param_sharding(),
+            sharding=None if mesh_resource is None else mesh_resource.get_param_sharding_for(2),
             dtype=dtype,
         )
 

@@ -1,4 +1,5 @@
-FROM nvcr.io/nvidia/jax:25.04-py3
+ARG NVCR_TAG=25.08
+FROM nvcr.io/nvidia/jax:${NVCR_TAG}-py3
 
 # Install direct dependencies, but not source code.
 WORKDIR /stage

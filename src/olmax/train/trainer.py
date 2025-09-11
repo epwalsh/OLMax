@@ -83,9 +83,10 @@ class Trainer(Generic[M, B]):
     """
     Config for the optimizer to use.
     """
-    loss_fun: Callable[[M, B], Array]
+    loss_fun: Callable[[M, B, dict[str, PyTree] | None], Array]
     """
-    The loss function to use. Should take a model and a micro-batch and return a scalar array.
+    The loss function to use. Should take a model, a micro-batch, and an optional buffer cache as arguments
+    and return a scalar array.
     """
     mesh: dist.MeshResource = dataclasses.field(default_factory=dist.MeshResource.FSDP)
     """
@@ -135,6 +136,7 @@ class Trainer(Generic[M, B]):
     log_to_console: Sequence[str] = (
         "train/loss",
         "optim/lr",
+        "optim/g_norm",
         "system/*",
         "throughput/data loading*",
         "throughput/TPS device*",
@@ -354,7 +356,12 @@ class Trainer(Generic[M, B]):
             tmp_path.unlink(missing_ok=True)
 
     def fit(
-        self, model: M, data_loader: data.DataLoader, *, load_path: PathOrStr | None = None
+        self,
+        model: M,
+        data_loader: data.DataLoader,
+        *,
+        load_path: PathOrStr | None = None,
+        buffer_cache: dict[str, PyTree] | None,
     ) -> tuple[M, Optim, OptState]:
         """
         Fit a model to a dataset.
@@ -463,6 +470,7 @@ class Trainer(Generic[M, B]):
                     opt_state=opt_state,
                     data_loader=data_loader,
                     batches=batches,
+                    buffer_cache=buffer_cache,
                 )
                 batches = iter(data_loader)
         except BaseException as exc:
@@ -494,12 +502,15 @@ class Trainer(Generic[M, B]):
 
     def _fit_epoch(
         self,
-        train_batch: Callable[[M, OptState, Sequence[B]], tuple[M, OptState]],
+        train_batch: Callable[
+            [M, OptState, Sequence[B], dict[str, PyTree] | None], tuple[M, OptState]
+        ],
         params: M,
         static: M,
         opt_state: OptState,
         data_loader: data.DataLoader,
         batches: Iterator[Sequence[B]],
+        buffer_cache: dict[str, PyTree] | None,
     ) -> tuple[M, OptState]:
         log.info(f"Starting epoch {self.epoch}...")
         epoch_start = time.perf_counter()
@@ -555,7 +566,7 @@ class Trainer(Generic[M, B]):
 
                 # Train on batch.
                 with jax.profiler.TraceAnnotation("train_batch"):
-                    params, opt_state = train_batch(params, opt_state, batch)
+                    params, opt_state = train_batch(params, opt_state, batch, buffer_cache)
 
                 # More bookkeeping.
                 if global_train_tokens_this_batch is not None:
@@ -583,6 +594,10 @@ class Trainer(Generic[M, B]):
 
             # Record throughput.
             batch_end = time.perf_counter()
+            if self._step_this_run == 1:
+                log.info(
+                    f"Compilation completed in {utils.format_timedelta(batch_end - batch_start)}."
+                )
             bps = 1 / (batch_end - batch_start)
             bps_avg = None if self._step_this_run < 10 else self._bps_average.update(bps)
             bps_std = (
@@ -706,12 +721,17 @@ class Trainer(Generic[M, B]):
         num_microbatches: int,
     ):
         @jax.named_scope("compute_loss_and_grads")
-        def compute_loss_and_grads(model: M, batch: B) -> tuple[Array, M]:
-            # Cast model to the compute dtype.
-            model_with_compute_dtype = jax_utils.cast_tree(model, self.compute_dtype)
+        def compute_loss_and_grads(
+            params: M, batch: B, buffer_cache: dict[str, PyTree] | None
+        ) -> tuple[Array, M]:
+            # Cast params to the compute dtype.
+            params_with_compute_dtype = jax_utils.cast_tree(params, self.compute_dtype)
+
+            # Reconstruct full model object and enforce sharding constraints.
+            model = eqx.combine(params_with_compute_dtype, static)
 
             # Do forward+backward passes.
-            loss, grads = eqx.filter_value_and_grad(self.loss_fun)(model_with_compute_dtype, batch)
+            loss, grads = eqx.filter_value_and_grad(self.loss_fun)(model, batch, buffer_cache)
             grads = jax.lax.with_sharding_constraint(grads, param_sharding)
 
             # Cast grads to the right dtype.
@@ -739,28 +759,37 @@ class Trainer(Generic[M, B]):
         @ft.partial(jax.jit, donate_argnums=[0, 1, 2])
         @jax.named_scope("process_microbatch")
         def process_microbatch(
-            params: M, microbatch: B, opt_state: OptState
+            params: M,
+            microbatch: B,
+            opt_state: OptState,
+            buffer_cache: dict[str, PyTree] | None,
         ) -> tuple[M, OptState, Array]:
-            # Reconstruct full model object and enforce sharding constraints.
-            model = eqx.combine(params, static)
-            model = jax.lax.with_sharding_constraint(model, param_sharding)
+            # Enforce sharding constraints.
+            params = jax.lax.with_sharding_constraint(params, param_sharding)
             opt_state = jax.lax.with_sharding_constraint(opt_state, opt_state_sharding)
 
             # Compute loss and gradients.
-            loss, grads = compute_loss_and_grads(model, microbatch)
+            loss, grads = compute_loss_and_grads(params, microbatch, buffer_cache)
 
             # Take optimizer step.
             params, opt_state = step_optimizer(params, grads, opt_state)
 
             return params, opt_state, loss
 
-        def train_batch(params: M, opt_state: OptState, batch: Sequence[B]) -> tuple[M, OptState]:
+        def train_batch(
+            params: M,
+            opt_state: OptState,
+            batch: Sequence[B],
+            buffer_cache: dict[str, PyTree] | None,
+        ) -> tuple[M, OptState]:
             assert len(batch) == num_microbatches
 
             # Process one micro-batch at a time.
             batch_losses: list[Array] = []
             for microbatch in batch:
-                params, opt_state, mb_loss = process_microbatch(params, microbatch, opt_state)
+                params, opt_state, mb_loss = process_microbatch(
+                    params, microbatch, opt_state, buffer_cache
+                )
                 batch_losses.append(mb_loss)
 
             # Reduced loss over micro-batches.

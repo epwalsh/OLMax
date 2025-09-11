@@ -12,7 +12,7 @@ from ...activation_checkpointing import (
     NamedCheckpointPolicy,
 )
 from ...distributed.parallel import MeshResource
-from ...types import Array, DTypeLike, PRNGKeyArray
+from ...types import Array, DTypeLike, PRNGKeyArray, PyTree
 from ..embedding import Embedding
 from ..functional import scan_module
 from ..lm_head import LMHead, LMHeadConfig
@@ -93,7 +93,7 @@ class Transformer(Module):
         return DefaultTransformerConfig(**kwargs)
 
     @jax.named_scope("olmax.nn.Transformer")
-    def forward(self, x: Array) -> Array:
+    def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 2  # shape: (batch_size, seq_len)
 
         # shape: (batch, seq_len, d_model)
@@ -106,10 +106,10 @@ class Transformer(Module):
                 h,
                 input_sharding=None
                 if self.mesh_resource is None
-                else self.mesh_resource.get_data_sharding(),
+                else self.mesh_resource.get_data_sharding_for(h, sequence_dim=0),
                 output_sharding=None
                 if self.mesh_resource is None
-                else self.mesh_resource.get_data_sharding(),
+                else self.mesh_resource.get_data_sharding_for(h, sequence_dim=0),
                 #  param_sharding=None
                 #  if self.mesh_resource is None
                 #  else self.mesh_resource.get_data_sharding(),  # TODO: fix this
@@ -117,7 +117,7 @@ class Transformer(Module):
         else:
             for layer in self.layers:
                 # shape: (batch_size, seq_len, d_model)
-                h = layer(h)
+                h = layer(h, buffer_cache=buffer_cache)
 
         # shape: (batch_size, seq_len, d_model)
         h = self.norm(h)
@@ -125,6 +125,14 @@ class Transformer(Module):
         # shape: (batch_size, seq_len, vocab_size)
         out = self.lm_head(h)
         return out
+
+    def get_buffer_cache(self, sequence_length: int) -> dict[str, PyTree]:
+        cache: dict[str, PyTree] = {}
+        for layer in self.layers:
+            rope = layer.attention.rope
+            if rope is not None:
+                rope.update_buffer_cache(cache, sequence_length)
+        return cache
 
 
 T = TypeVar("T", bound=Transformer)

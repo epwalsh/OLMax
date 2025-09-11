@@ -1,7 +1,7 @@
 import equinox as eqx
 import jax
 
-from ..distributed.parallel import MeshAxesNames, MeshResource, TPStyle
+from ..distributed.parallel import MeshResource, TPStyle
 from ..types import Array, DTypeLike, PRNGKeyArray
 from .functional import linear
 from .init import truncated_normal
@@ -23,8 +23,9 @@ class Linear(Module):
         mesh_resource: MeshResource | None = None,
         checkpoint_name: str | None = None,
         tp_style: TPStyle | None = None,
+        inference_mode: bool = False,
     ):
-        super().__init__(mesh_resource, checkpoint_name)
+        super().__init__(mesh_resource, checkpoint_name, inference_mode)
 
         # Notes on tensor parallelism.
         # ============================
@@ -44,9 +45,10 @@ class Linear(Module):
             (out_size, in_size),
             sharding=None
             if mesh_resource is None
-            else mesh_resource.get_param_sharding(
-                dp_sharding_axis=1 if tp_style == TPStyle.colwise else 0,
-                tp_sharding_axis=0
+            else mesh_resource.get_param_sharding_for(
+                2,
+                fsdp_sharding_dim=1 if tp_style == TPStyle.colwise else 0,
+                tp_sharding_dim=0
                 if tp_style == TPStyle.colwise
                 else (1 if tp_style == TPStyle.rowwise else None),
             ),
@@ -60,9 +62,10 @@ class Linear(Module):
                 (out_size,),
                 sharding=None
                 if mesh_resource is None
-                else mesh_resource.get_param_sharding(
-                    dp_sharding_axis=0,
-                    tp_sharding_axis=0 if tp_style == TPStyle.colwise else None,
+                else mesh_resource.get_param_sharding_for(
+                    1,
+                    fsdp_sharding_dim=0,
+                    tp_sharding_dim=0 if tp_style == TPStyle.colwise else None,
                 ),
                 dtype=dtype,
             )
@@ -79,29 +82,30 @@ class Linear(Module):
                 (
                     pc.get_data_partition_for(x),
                     pc.get_param_partition_for(
-                        self.weight, dp_sharding_axis=None, tp_sharding_axis=0
+                        self.weight, fsdp_sharding_dim=None, tp_sharding_dim=0
                     ),
                     None
                     if self.bias is None
                     else pc.get_param_partition_for(
-                        self.bias, dp_sharding_axis=None, tp_sharding_axis=0
+                        self.bias, fsdp_sharding_dim=None, tp_sharding_dim=0
                     ),
                 ),
-                pc.get_data_partition_for(x, tp_sharding_axis=-1),
+                pc.get_data_partition_for(x, tp_sharding_dim=-1),
             )(x, self.weight, self.bias)
         elif self.tp_style == TPStyle.rowwise:
+            assert pc.tp_sharding_axis is not None
             out = pc.shard_map(
                 linear,
                 (
-                    pc.get_data_partition_for(x, tp_sharding_axis=-1),
+                    pc.get_data_partition_for(x, tp_sharding_dim=-1),
                     pc.get_param_partition_for(
-                        self.weight, dp_sharding_axis=None, tp_sharding_axis=1
+                        self.weight, fsdp_sharding_dim=None, tp_sharding_dim=1
                     ),
                     None,
                     None,
                 ),
                 pc.get_data_partition_for(x),
-            )(x, self.weight, self.bias, MeshAxesNames.TP.shard)
+            )(x, self.weight, self.bias, pc.tp_sharding_axis)
             return out
         else:
             raise ValueError(self.tp_style)

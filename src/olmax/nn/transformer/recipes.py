@@ -19,8 +19,12 @@ from .model import DefaultTransformerConfig, TransformerConfig
 class TransformerRecipeType(StrEnum):
     llama_like_271M = "llama_like_271M"
     llama_like_7B = "llama_like_7B"
+    llama3_8B = "llama3_8B"
+    llama3_70B = "llama3_70B"
+
     olmo2_7B = "olmo2_7B"
     olmo2_32B = "olmo2_32B"
+
     gemma2_like_27B = "gemma2_like_27B"
     gemma3_like_27B = "gemma3_like_27B"
 
@@ -34,7 +38,7 @@ class TransformerRecipeType(StrEnum):
 class TransformerRecipe:
     model: TransformerConfig
     sequence_length: int
-    device_microbatch_size: int
+    local_microbatch_size: int
     env: EnvConfig
 
     @classmethod
@@ -73,7 +77,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=1024,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -114,7 +118,84 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
+            env=env_defaults,
+        )
+
+    @classmethod
+    def llama3_8B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
+        device_mbz: int
+        if device_type == DeviceType.NVIDIA_H100:
+            device_mbz = 1 * 8192
+        elif device_type == DeviceType.NVIDIA_B200:
+            device_mbz = 2 * 8192
+        else:
+            raise NotImplementedError(
+                f"this recipe does not have a default configuration yet for device type {device_type}"
+            )
+
+        if env_defaults.xla.gpu_all_gather_combine_threshold_mib is None:
+            env_defaults.xla.gpu_all_gather_combine_threshold_mib = 1024
+        if env_defaults.xla.gpu_all_reduce_combine_threshold_mib is None:
+            env_defaults.xla.gpu_all_reduce_combine_threshold_mib = 1024
+
+        norm = RMSNormConfig(bias=False)
+        return cls(
+            model=DefaultTransformerConfig(
+                vocab_size=128_256,
+                d_model=4096,
+                hidden_size=14_336,
+                num_layers=32,
+                layer=DefaultTransformerLayerConfig(
+                    attention=MultiheadSelfAttentionConfig(
+                        n_heads=32,
+                        n_kv_heads=8,
+                        rope=RotaryPositionalEmbeddingConfig(theta=500_000.0),
+                        bias=False,
+                    ),
+                    norm=norm,
+                    bias=False,
+                ),
+                norm=norm,
+                lm_head=LMHeadConfig(bias=False),
+            ),
+            sequence_length=8192,
+            local_microbatch_size=device_mbz,
+            env=env_defaults,
+        )
+
+    @classmethod
+    def llama3_70B(cls, env_defaults: EnvConfig, device_type: DeviceType) -> "TransformerRecipe":
+        del device_type
+        device_mbz = 1 * 8192
+
+        if env_defaults.xla.disable_hlo_passes is None:
+            env_defaults.xla.disable_hlo_passes = "rematerialization"
+
+        norm = RMSNormConfig(bias=False)
+        return cls(
+            model=DefaultTransformerConfig(
+                vocab_size=128_256,
+                d_model=8192,
+                hidden_size=28_672,
+                num_layers=80,
+                layer=DefaultTransformerLayerConfig(
+                    attention=MultiheadSelfAttentionConfig(
+                        n_heads=64,
+                        n_kv_heads=8,
+                        rope=RotaryPositionalEmbeddingConfig(theta=500_000.0),
+                        bias=False,
+                    ),
+                    norm=norm,
+                    bias=False,
+                ),
+                norm=norm,
+                lm_head=LMHeadConfig(bias=False),
+                scan_layers=True,
+                layer_ac_policy=NothingSaveable(prevent_cse=False),
+            ),
+            sequence_length=8192,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -157,7 +238,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -196,7 +277,7 @@ class TransformerRecipe:
                 layer_ac_policy=NothingSaveable(prevent_cse=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -234,7 +315,7 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )
 
@@ -274,6 +355,6 @@ class TransformerRecipe:
                 lm_head=LMHeadConfig(bias=False),
             ),
             sequence_length=4096,
-            device_microbatch_size=device_mbz,
+            local_microbatch_size=device_mbz,
             env=env_defaults,
         )

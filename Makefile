@@ -26,11 +26,13 @@ build :
 dev-install :
 	pip install -e .[dev] --config-settings editable_mode=compat
 
+NVCR_TAG = 25.08
+
 .PHONY : docker-image
 docker-image :
-	docker build -f src/Dockerfile -t olmax .
-	echo "Built image 'olmax', size: $$(docker inspect -f '{{ .Size }}' olmax | numfmt --to=si)"
+	docker build -f src/Dockerfile --build-arg NVCR_TAG=$(NVCR_TAG) -t olmax-$(NVCR_TAG) .
+	echo "Built image 'olmax-$(NVCR_TAG)', size: $$(docker inspect -f '{{ .Size }}' olmax-$(NVCR_TAG) | numfmt --to=si)"
 
 .PHONY : beaker-image
 beaker-image : docker-image
-	./src/scripts/beaker/create_beaker_image.sh olmax olmax $(BEAKER_WORKSPACE)
+	./src/scripts/beaker/create_beaker_image.sh olmax-$(NVCR_TAG) olmax-$(NVCR_TAG) $(BEAKER_WORKSPACE)

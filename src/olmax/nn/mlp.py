@@ -28,7 +28,7 @@ class GatedMLP(Module):
         checkpoint_name: str | None = None,
     ):
         super().__init__(mesh_resource, checkpoint_name)
-        tp_enabled = mesh_resource is not None and mesh_resource.tp is not None
+        tp_enabled = mesh_resource is not None and mesh_resource.tp_sharding_axis is not None
         if tp_enabled and bias:
             raise ValueError(
                 f"bias=True is not allowed with tensor parallelism in {self.__class__.__name__}"

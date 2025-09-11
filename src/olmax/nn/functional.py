@@ -7,7 +7,7 @@ import jax.numpy as jnp
 from jax.sharding import NamedSharding
 
 from ..jax_utils import vmap_multiple
-from ..types import Array
+from ..types import Array, PyTree
 from .module import Module
 
 
@@ -122,19 +122,19 @@ def fused_cross_entropy_loss(
 
 
 def _apply_module(
-    carry: tuple[Module, Array],
+    carry: tuple[Module, dict[str, PyTree] | None, Array],
     params: Module,
     input_sharding: NamedSharding | None = None,
     output_sharding: NamedSharding | None = None,
-) -> tuple[tuple[Module, Array], None]:
-    static, x = carry
+) -> tuple[tuple[Module, dict[str, PyTree] | None, Array], None]:
+    static, buffer_cache, x = carry
     if input_sharding is not None:
         x = jax.lax.with_sharding_constraint(x, input_sharding)
     m = eqx.combine(params, static, is_leaf=eqx.is_array)
     y = m(x)
     if output_sharding is not None:
         y = jax.lax.with_sharding_constraint(y, output_sharding)
-    return (static, y), None
+    return (static, buffer_cache, y), None
 
 
 def scan_module(
@@ -142,9 +142,10 @@ def scan_module(
     x: Array,
     input_sharding: NamedSharding | None = None,
     output_sharding: NamedSharding | None = None,
+    buffer_cache: dict[str, PyTree] | None = None,
 ) -> Array:
     params, static = eqx.partition(m, eqx.is_array)
-    carry = (static, x)
+    carry = (static, buffer_cache, x)
     carry, _ = jax.lax.scan(
         ft.partial(
             _apply_module,
@@ -154,5 +155,5 @@ def scan_module(
         carry,
         params,
     )
-    _, y = carry
+    _, _, y = carry
     return y

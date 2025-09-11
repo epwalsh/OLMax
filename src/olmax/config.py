@@ -105,5 +105,8 @@ def _clean_opt(arg: str) -> tuple[str, Any]:
     else:
         name, val = arg.split("=", 1)
     name = name.strip(" -").replace("-", "_")
-    val = yaml.safe_load(val)
+    if not val or val.isspace():
+        val = ""
+    else:
+        val = yaml.safe_load(val)
     return (name, val)

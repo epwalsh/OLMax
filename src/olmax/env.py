@@ -41,26 +41,24 @@ class XLAConfig(_EnvBaseConfig):
     python_client_mem_fraction: float = 0.95
 
     gpu_enable_latency_hiding_scheduler: bool = True
-
     gpu_enable_pipelined_all_gather: bool = True
     gpu_enable_pipelined_reduce_scatter: bool = True
     gpu_enable_pipelined_all_reduce: bool = True
-
     gpu_enable_all_gather_combine_by_dim: bool = False
     gpu_enable_reduce_scatter_combine_by_dim: bool = False
-
     gpu_all_gather_combine_threshold_bytes: int | None = None
     gpu_reduce_scatter_combine_threshold_bytes: int | None = None
     gpu_all_reduce_combine_threshold_bytes: int | None = None
-
     gpu_enable_nccl_user_buffers: bool = False
     gpu_enable_nccl_comm_splitting: bool = True
     gpu_enable_nccl_per_stream_comms: bool | None = None
-
     gpu_enable_while_loop_double_buffering: bool = True
     gpu_enable_command_buffer: str | None = None
-
     gpu_enable_triton_gemm: bool = False
+    gpu_graph_level: int | None = None
+    gpu_enable_highest_priority_async_stream: bool | None = None
+
+    disable_hlo_passes: str | None = None
 
     @classmethod
     def recommended(
@@ -220,13 +218,16 @@ class CUDAConfig(_EnvBaseConfig):
 class JAXConfig(_EnvBaseConfig):
     disable_jit: bool | None = None
     compiler_enable_remat_pass: bool | None = None
+    platforms: str | None = None
 
     @classmethod
     def recommended(
         cls, gpu_architecture: GPUArchitecture | None = None, **overrides
     ) -> "JAXConfig":
-        del gpu_architecture
-        return cls(**overrides)
+        if gpu_architecture is not None:
+            return cls(platforms="cuda,cpu", **overrides)
+        else:
+            return cls(**overrides)
 
     def apply(self):
         for name, value in self.__dict__.items():

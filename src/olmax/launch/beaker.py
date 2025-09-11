@@ -159,6 +159,18 @@ class BeakerRuntime:
         return self.node.hostname.split("-")[0]
 
     @property
+    def local_device_count(self) -> int:
+        return self.resources.gpu_count
+
+    @property
+    def global_device_count(self) -> int:
+        local_device_count = self.resources.gpu_count
+        if self.replica is not None:
+            return self.replica.count * local_device_count
+        else:
+            return local_device_count
+
+    @property
     def is_experiment(self) -> bool:
         return self.workload.task_id is not None
 
@@ -215,6 +227,7 @@ def _parse_args():
             {},
         ),
     )
+    parser.add_argument("--workspace", type=str, help="""The Beaker workspace to use.""")
     parser.add_argument("--nodes", type=int, default=1, help="""The number of nodes/replicas.""")
     parser.add_argument(
         "--gpus-per-node",
@@ -244,7 +257,20 @@ def _parse_args():
         help="""If the job should be preemptible.""",
     )
     parser.add_argument(
-        "--beaker-image", type=str, default="petew/olmax", help="""The Beaker image to use."""
+        "--beaker-image", type=str, default="petew/olmax-25.08", help="""The Beaker image to use."""
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="""Include debugging environment variables to get extra logging and information in tracebacks.""",
+    )
+    parser.add_argument(
+        "--post-setup",
+        type=str,
+    )
+    parser.add_argument(
+        "--slack-webhook-url",
+        type=str,
     )
 
     if len(sys.argv) < 3 or "--" not in sys.argv:
@@ -262,8 +288,17 @@ def main():
     prepare_cli_environment()
     opts, command = _parse_args()
     is_multi_node = opts.nodes > 1
+    debug_env_vars = (
+        [
+            "JAX_TRACEBACK_FILTERING=off",
+            # "XLA_FLAGS=--xla_dump_to=/tmp/xla_dumps",
+        ]
+        if opts.debug
+        else []
+    )
     launch_experiment(
         command,
+        workspace=opts.workspace,
         priority=opts.priority,
         yes=True,
         timeout=-1,
@@ -272,8 +307,8 @@ def main():
         clusters=opts.cluster,
         hostnames=opts.hostname,
         beaker_image=opts.beaker_image,
-        env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"],
-        env_secrets=["BEAKER_TOKEN=PETEW_BEAKER_TOKEN"],
+        env_vars=["PYTHONUNBUFFERED=1", "FORCE_COLOR=1"] + debug_env_vars,
+        env_secrets=["BEAKER_TOKEN"],
         allow_dirty=opts.allow_dirty,
         system_python=True,
         replicas=opts.nodes if is_multi_node else None,
@@ -283,6 +318,8 @@ def main():
         propagate_preemption=is_multi_node,
         synchronized_start_timeout="5m" if is_multi_node else None,
         preemptible=opts.preemptible,
+        post_setup=opts.post_setup,
+        slack_webhook_url=opts.slack_webhook_url,
     )
 
 
