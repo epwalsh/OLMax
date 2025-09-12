@@ -96,8 +96,13 @@ class Transformer(Module):
     def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 2  # shape: (batch_size, seq_len)
 
+        if self.mesh_resource is not None:
+            x = self.mesh_resource.with_data_sharding_constraint(x, sequence_dim=1)
+
         # shape: (batch, seq_len, d_model)
         h = self.embedding(x)
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
 
         if self.scan_layers:
             layer = self.layers[0]
@@ -121,9 +126,13 @@ class Transformer(Module):
 
         # shape: (batch_size, seq_len, d_model)
         h = self.norm(h)
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
 
         # shape: (batch_size, seq_len, vocab_size)
         out = self.lm_head(h)
+        if self.mesh_resource is not None:
+            out = self.mesh_resource.with_data_sharding_constraint(out, sequence_dim=1)
         return out
 
     def get_buffer_cache(self, sequence_length: int) -> dict[str, PyTree]:
