@@ -319,7 +319,13 @@ def _parse_args():
         "--shard-degree",
         type=int,
         default=None,
-        help="""Override the shard degree for the given mesh type.""",
+        help="""Override a particular sharding degree for the given mesh type.""",
+    )
+    parser.add_argument(
+        "--cp-degree",
+        type=int,
+        default=None,
+        help="""Override a particular sharding degree for the given mesh type.""",
     )
     parser.add_argument(
         "--steps", type=int, default=100, help="""The number of steps to train for."""
@@ -358,6 +364,7 @@ def main():
     elif opts.mesh_type == "FSDP_with_CP":
         mesh_resource = dist.MeshResource.FSDP_with_CP(
             global_device_count=opts.global_device_count,
+            cp_degree=opts.cp_degree if opts.cp_degree is not None else -1,
         )
     elif opts.mesh_type == "HSDP_with_CP":
         mesh_resource = dist.MeshResource.HSDP_with_CP(

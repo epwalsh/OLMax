@@ -147,22 +147,49 @@ class MeshResource:
     def FSDP_with_CP(
         cls,
         global_device_count: int | None = None,
+        cp_degree: int = -1,
     ) -> Self:
-        return cls(
-            axes=(
-                (
-                    global_device_count
-                    if global_device_count is not None
-                    else dist_utils.get_global_device_count(),
-                    "context",
-                    AxisType.Auto,
-                ),
-            ),
-            batch_sharding_axis=None,
-            fsdp_sharding_axis="context",
-            tp_sharding_axis=None,
-            cp_sharding_axis="context",
+        global_device_count = (
+            global_device_count
+            if global_device_count is not None
+            else dist_utils.get_global_device_count()
         )
+        assert global_device_count > 0
+        assert cp_degree > 0 or cp_degree == -1
+        if cp_degree < 0:
+            return cls(
+                axes=(
+                    (
+                        global_device_count,
+                        "context",
+                        AxisType.Auto,
+                    ),
+                ),
+                batch_sharding_axis=None,
+                fsdp_sharding_axis="context",
+                tp_sharding_axis=None,
+                cp_sharding_axis="context",
+            )
+        else:
+            assert global_device_count % cp_degree == 0
+            return cls(
+                axes=(
+                    (
+                        global_device_count // cp_degree,
+                        "batch",
+                        AxisType.Auto,
+                    ),
+                    (
+                        cp_degree,
+                        "context",
+                        AxisType.Auto,
+                    ),
+                ),
+                batch_sharding_axis="batch",
+                fsdp_sharding_axis=("batch", "context"),
+                tp_sharding_axis=None,
+                cp_sharding_axis="context",
+            )
 
     @classmethod
     def HSDP_with_CP(
