@@ -417,8 +417,15 @@ def glob_directory(pattern: str) -> Generator[str, None, None]:
         Only a subset of glob patterns are supported. Specifically, ``*`` and ``**`` wildcards,
         which the follow the semantics defined here https://docs.python.org/3/library/pathlib.html#pattern-language.
     """
-    # Pull out base directory from pattern.
-    dir = pattern.split("*", 1)[0]
+    # Pull out base directory from pattern by finding the first part before any wildcard.
+    # Split by '/' and take path components until we hit one with a wildcard.
+    parts = pattern.split("/")
+    base_parts = []
+    for part in parts:
+        if "*" in part:
+            break
+        base_parts.append(part)
+    dir = "/".join(base_parts) if base_parts else "."
 
     # Translate the glob pattern into a regex.
     # For example, "src/examples/**/*.py" --> "^src/examples/.*[^/]*\\.py$".
