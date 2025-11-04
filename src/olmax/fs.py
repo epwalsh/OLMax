@@ -541,6 +541,7 @@ def retriable(
     retriable_errors: tuple[Type[Exception], ...] = (
         requests.exceptions.ConnectionError,
         requests.exceptions.Timeout,
+        requests.exceptions.ChunkedEncodingError,
     ),
     retry_condition: Callable[[Exception], bool] | None = None,
 ):
@@ -591,7 +592,13 @@ def _http_file_size(url: str) -> int:
     return int(content_length)
 
 
-@retriable()
+@retriable(
+    retry_condition=lambda exc: (
+        isinstance(exc, requests.exceptions.HTTPError)
+        and exc.response is not None
+        and exc.response.status_code == 502
+    ),
+)
 def _http_get_bytes_range(url: str, bytes_start: int, num_bytes: int) -> bytes:
     response = requests.get(
         url, headers={"Range": f"bytes={bytes_start}-{bytes_start+num_bytes-1}"}
