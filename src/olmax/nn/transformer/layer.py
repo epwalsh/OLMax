@@ -80,8 +80,17 @@ class TransformerLayer(Module):
     @jax.named_scope("olmax.nn.TransformerLayer")
     def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3
+        if self.mesh_resource is not None:
+            x = self.mesh_resource.with_data_sharding_constraint(x, sequence_dim=1)
+
         h = x + self.attention(self.attention_norm(x), buffer_cache=buffer_cache)
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
+
         h = h + self.mlp(self.mlp_norm(h))
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
+
         return h
 
 
@@ -93,8 +102,17 @@ class ReorderedNormTransformerLayer(TransformerLayer):
     @jax.named_scope("olmax.nn.ReorderedTransformerLayer")
     def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3
+        if self.mesh_resource is not None:
+            x = self.mesh_resource.with_data_sharding_constraint(x, sequence_dim=1)
+
         h = x + self.attention_norm(self.attention(x, buffer_cache=buffer_cache))
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
+
         h = h + self.mlp_norm(self.mlp(h))
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
+
         return h
 
 
@@ -151,10 +169,19 @@ class GemmaTransformerLayer(TransformerLayer):
     @jax.named_scope("olmax.nn.Gemma2TransformerLayer")
     def forward(self, x: Array, *, buffer_cache: dict[str, PyTree] | None = None) -> Array:
         assert x.ndim == 3
+        if self.mesh_resource is not None:
+            x = self.mesh_resource.with_data_sharding_constraint(x, sequence_dim=1)
+
         h = x + self.attention_norm(
             self.attention(self.attention_input_norm(x), buffer_cache=buffer_cache)
         )
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
+
         h = h + self.mlp_norm(self.mlp(self.mlp_input_norm(h)))
+        if self.mesh_resource is not None:
+            h = self.mesh_resource.with_data_sharding_constraint(h, sequence_dim=1)
+
         return h
 
 

@@ -417,8 +417,15 @@ def glob_directory(pattern: str) -> Generator[str, None, None]:
         Only a subset of glob patterns are supported. Specifically, ``*`` and ``**`` wildcards,
         which the follow the semantics defined here https://docs.python.org/3/library/pathlib.html#pattern-language.
     """
-    # Pull out base directory from pattern.
-    dir = pattern.split("*", 1)[0]
+    # Pull out base directory from pattern by finding the first part before any wildcard.
+    # Split by '/' and take path components until we hit one with a wildcard.
+    parts = pattern.split("/")
+    base_parts = []
+    for part in parts:
+        if "*" in part:
+            break
+        base_parts.append(part)
+    dir = "/".join(base_parts) if base_parts else "."
 
     # Translate the glob pattern into a regex.
     # For example, "src/examples/**/*.py" --> "^src/examples/.*[^/]*\\.py$".
@@ -534,6 +541,7 @@ def retriable(
     retriable_errors: tuple[Type[Exception], ...] = (
         requests.exceptions.ConnectionError,
         requests.exceptions.Timeout,
+        requests.exceptions.ChunkedEncodingError,
     ),
     retry_condition: Callable[[Exception], bool] | None = None,
 ):
@@ -584,7 +592,13 @@ def _http_file_size(url: str) -> int:
     return int(content_length)
 
 
-@retriable()
+@retriable(
+    retry_condition=lambda exc: (
+        isinstance(exc, requests.exceptions.HTTPError)
+        and exc.response is not None
+        and exc.response.status_code == 502
+    ),
+)
 def _http_get_bytes_range(url: str, bytes_start: int, num_bytes: int) -> bytes:
     response = requests.get(
         url, headers={"Range": f"bytes={bytes_start}-{bytes_start+num_bytes-1}"}
@@ -626,6 +640,7 @@ def _get_gcs_client():
 def _gcs_is_retriable(exc: Exception) -> bool:
     from google.api_core.exceptions import BadRequest, GatewayTimeout
     from google.api_core.retry import if_transient_error
+    from google.auth.exceptions import RefreshError
 
     return if_transient_error(exc) or isinstance(
         exc,
@@ -633,6 +648,7 @@ def _gcs_is_retriable(exc: Exception) -> bool:
             requests.exceptions.Timeout,
             GatewayTimeout,
             BadRequest,  # Weird choice, but Google throws this transiently
+            RefreshError,
         ),
     )
 
@@ -770,8 +786,10 @@ def _gcs_list_directory(
         except NotFound:
             raise FileNotFoundError(f"gs://{bucket_name}/{prefix}")
 
-        if include_files:
-            for blob in blobs:
+        # NOTE: need to iterate over these blobs even if not yielding files, otherwise 'blobs.prefixes'
+        # won't be populated.
+        for blob in blobs:
+            if include_files:
                 yield f"gs://{bucket_name}/{blob.name}"
 
         for folder in blobs.prefixes:
